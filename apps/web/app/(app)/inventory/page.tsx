@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
-import { formatDate, formatSAR } from "@/lib/format";
+import { formatDate, formatSAR, roundQty } from "@/lib/format";
 import {
   InventoryMaterial,
   MaterialUnit,
@@ -264,7 +264,7 @@ export default function InventoryPage() {
                     </span>
                     <span className="text-xs text-gray-500">
                       سعر الشراء {formatSAR(m.purchasePrice)} لكل{" "}
-                      {Math.round(m.purchaseQty * 100) / 100} {UNIT_LABELS[m.unit]}
+                      {roundQty(m.purchaseQty, 2)} {UNIT_LABELS[m.unit]}
                       {m.vatRate > 0
                         ? ` · شامل ضريبة ${m.vatRate}% (${formatSAR(
                             (m.purchasePrice * m.vatRate) / (100 + m.vatRate),
@@ -281,7 +281,7 @@ export default function InventoryPage() {
                             : "text-gray-900"
                         }`}
                       >
-                        {Math.round(m.stockQty * 1000) / 1000}
+                        {roundQty(m.stockQty)}
                       </p>
                       <p className="text-[10px] text-gray-500">
                         {UNIT_LABELS[m.unit]}
@@ -371,10 +371,10 @@ export default function InventoryPage() {
                         }`}
                       >
                         {incoming ? "+" : ""}
-                        {Math.round(mv.qty * 1000) / 1000}
+                        {roundQty(mv.qty)}
                       </p>
                       <p className="text-[10px] text-gray-500">
-                        الرصيد {Math.round(mv.balanceAfter * 1000) / 1000}{" "}
+                        الرصيد {roundQty(mv.balanceAfter)}{" "}
                         {UNIT_LABELS[mv.material.unit]}
                       </p>
                     </div>
@@ -429,7 +429,7 @@ export default function InventoryPage() {
                   className={fieldClass}
                 />
                 <p className="mt-1 text-[11px] text-gray-500">
-                  لكل {Math.round(adjusting.purchaseQty * 100) / 100}{" "}
+                  لكل {roundQty(adjusting.purchaseQty, 2)}{" "}
                   {UNIT_LABELS[adjusting.unit]}
                 </p>
               </div>

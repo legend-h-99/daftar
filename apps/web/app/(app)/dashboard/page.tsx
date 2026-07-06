@@ -14,7 +14,7 @@ import {
   BarChart2,
 } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { formatSAR, formatDate, currentMonthStr, formatMonthLabel } from "@/lib/format";
+import { formatSAR, formatDate, currentMonthStr, formatMonthLabel, roundQty } from "@/lib/format";
 import { DashboardSummary, UNIT_LABELS } from "@/lib/types";
 import StatCard from "@/components/StatCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -176,7 +176,7 @@ export default function DashboardPage() {
                     .slice(0, 3)
                     .map(
                       (m) =>
-                        `${m.name} (${Math.round(m.stockQty * 100) / 100} ${UNIT_LABELS[m.unit]})`,
+                        `${m.name} (${roundQty(m.stockQty, 2)} ${UNIT_LABELS[m.unit]})`,
                     )
                     .join(" · ")}
                   {summary.lowStock.length > 3

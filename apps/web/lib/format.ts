@@ -1,4 +1,13 @@
 /**
+ * Rounds a quantity to a fixed number of decimals for display,
+ * e.g. roundQty(2.4999) => 2.5. Default 3 decimals for stock quantities.
+ */
+export function roundQty(value: number, decimals = 3): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+/**
  * Formats a number as Saudi Riyal currency, e.g. formatSAR(1250) => "1,250.00 ر.س"
  */
 export function formatSAR(amount: number | null | undefined): string {
