@@ -1,19 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
-import { apiDelete, apiGet, apiPost, ApiError } from "@/lib/api";
+import { apiDelete, apiGet, ApiError } from "@/lib/api";
 import { currentMonthStr, formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
-import { EXPENSE_CATEGORY_LABELS, Expense, ExpenseCategory } from "@/lib/types";
+import { EXPENSE_CATEGORY_LABELS, Expense } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
-import BottomSheet from "@/components/BottomSheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorAlert, fieldClass } from "@/components/ui/form-field";
-
-const CATEGORY_OPTIONS = Object.entries(EXPENSE_CATEGORY_LABELS) as [
-  ExpenseCategory,
-  string,
-][];
+import { ErrorAlert } from "@/components/ui/form-field";
+import AddExpenseSheet from "@/components/expenses/AddExpenseSheet";
 
 function shiftMonth(month: string, delta: number): string {
   const [year, m] = month.split("-").map(Number);
@@ -26,13 +21,6 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const [category, setCategory] = useState<ExpenseCategory>("INGREDIENTS");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   function loadExpenses() {
     setExpenses(null);
@@ -52,44 +40,6 @@ export default function ExpensesPage() {
     () => (expenses || []).reduce((sum, e) => sum + e.amount, 0),
     [expenses],
   );
-
-  function resetForm() {
-    setCategory("INGREDIENTS");
-    setAmount("");
-    setDate(new Date().toISOString().slice(0, 10));
-    setNote("");
-    setFormError(null);
-  }
-
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault();
-    const value = Number(amount);
-    if (!value || value <= 0) {
-      setFormError("أدخل مبلغ صحيح");
-      return;
-    }
-    if (!date) {
-      setFormError("اختر التاريخ");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    try {
-      await apiPost("/expenses", {
-        category,
-        amount: value,
-        date,
-        note: note.trim() || undefined,
-      });
-      setShowForm(false);
-      resetForm();
-      loadExpenses();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "تعذر إضافة المصروف");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleDelete(id: string) {
     if (!confirm("متأكد إنك تبي تحذف هذا المصروف؟")) return;
@@ -205,100 +155,10 @@ export default function ExpensesPage() {
       )}
 
       {showForm && (
-        <BottomSheet
-          title="مصروف جديد"
-          onClose={() => {
-            setShowForm(false);
-            resetForm();
-          }}
-        >
-          <form onSubmit={handleAdd} className="flex flex-col gap-4">
-            <div>
-              <label
-                htmlFor="expense-category"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                الفئة
-              </label>
-              <select
-                id="expense-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                className={fieldClass}
-              >
-                {CATEGORY_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label
-                htmlFor="expense-amount"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                المبلغ
-              </label>
-              <input
-                id="expense-amount"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className={fieldClass}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="expense-date"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                التاريخ
-              </label>
-              <input
-                id="expense-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="expense-note"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                ملاحظة <span className="font-normal text-gray-500">(اختياري)</span>
-              </label>
-              <input
-                id="expense-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="مثال: فاتورة كهرباء شهر ٧"
-                className={fieldClass}
-              />
-            </div>
-
-            {formError && (
-              <ErrorAlert>{formError}</ErrorAlert>
-            )}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
-            >
-              {saving ? "جاري الحفظ..." : "حفظ"}
-            </button>
-          </form>
-        </BottomSheet>
+        <AddExpenseSheet
+          onClose={() => setShowForm(false)}
+          onSaved={loadExpenses}
+        />
       )}
     </div>
   );
