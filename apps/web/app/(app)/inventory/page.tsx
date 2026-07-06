@@ -12,19 +12,19 @@ import {
   ShoppingCart,
   Trash2,
 } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { apiDelete, apiGet, ApiError } from "@/lib/api";
 import { formatDate, formatSAR, roundQty } from "@/lib/format";
 import {
   InventoryMaterial,
-  MaterialUnit,
   MOVEMENT_TYPE_LABELS,
   StockMovement,
   UNIT_LABELS,
 } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
-import BottomSheet from "@/components/BottomSheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorAlert, fieldClass } from "@/components/ui/form-field";
+import { ErrorAlert } from "@/components/ui/form-field";
+import AdjustStockSheet from "@/components/inventory/AdjustStockSheet";
+import AddMaterialSheet from "@/components/inventory/AddMaterialSheet";
 
 type Tab = "items" | "movements";
 
@@ -35,22 +35,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [adjusting, setAdjusting] = useState<InventoryMaterial | null>(null);
-  const [newQty, setNewQty] = useState("");
-  const [newReorder, setNewReorder] = useState("");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const [newPurchasePrice, setNewPurchasePrice] = useState("");
-  const [newVat, setNewVat] = useState("0");
-
   const [showAdd, setShowAdd] = useState(false);
-  const [addName, setAddName] = useState("");
-  const [addUnit, setAddUnit] = useState<MaterialUnit>("KG");
-  const [addQty, setAddQty] = useState("");
-  const [addPrice, setAddPrice] = useState("");
-  const [addVat, setAddVat] = useState("15");
-  const [addReorder, setAddReorder] = useState("");
 
   function load() {
     apiGet<InventoryMaterial[]>("/inventory")
@@ -64,88 +49,6 @@ export default function InventoryPage() {
   }
 
   useEffect(load, []);
-
-  async function handleAdjust() {
-    if (!adjusting) return;
-    const qty = Number(newQty);
-    if (Number.isNaN(qty) || qty < 0) {
-      setFormError("أدخل كمية صحيحة");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    try {
-      if (qty !== adjusting.stockQty) {
-        await apiPost("/inventory/adjust", {
-          materialId: adjusting.id,
-          newQty: qty,
-          note: note.trim() || undefined,
-        });
-      }
-      const reorder = newReorder === "" ? null : Number(newReorder);
-      const price = Number(newPurchasePrice);
-      const vat = Number(newVat);
-      const patch: Record<string, number> = {};
-      if (reorder !== null && reorder !== (adjusting.reorderLevel ?? null)) {
-        patch.reorderLevel = reorder;
-      }
-      if (!Number.isNaN(price) && price >= 0 && price !== adjusting.purchasePrice) {
-        patch.purchasePrice = price;
-      }
-      if (!Number.isNaN(vat) && vat !== adjusting.vatRate) {
-        patch.vatRate = vat;
-      }
-      if (Object.keys(patch).length > 0) {
-        await apiPatch(`/materials/${adjusting.id}`, patch);
-      }
-      setAdjusting(null);
-      setNewQty("");
-      setNewReorder("");
-      setNote("");
-      load();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "تعذر تعديل الكمية");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAdd() {
-    const price = Number(addPrice);
-    if (!addName.trim()) {
-      setFormError("أدخل اسم الصنف");
-      return;
-    }
-    if (Number.isNaN(price) || price < 0) {
-      setFormError("أدخل سعر شراء صحيحًا");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    try {
-      const qty = Number(addQty) || 0;
-      await apiPost("/materials", {
-        name: addName.trim(),
-        unit: addUnit,
-        // ما دفعته فعليًا مقابل الكمية المشتراة (شامل الضريبة إن وجدت)
-        purchasePrice: price,
-        purchaseQty: qty > 0 ? qty : 1,
-        vatRate: Number(addVat) || 0,
-        initialQty: qty,
-        reorderLevel: addReorder === "" ? undefined : Number(addReorder),
-      });
-      setShowAdd(false);
-      setAddName("");
-      setAddQty("");
-      setAddPrice("");
-      setAddReorder("");
-      load();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "تعذر إضافة الصنف");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleDelete(material: InventoryMaterial) {
     if (!confirm(`متأكد إنك تبي تحذف "${material.name}" من المخزون؟`)) return;
@@ -213,10 +116,7 @@ export default function InventoryPage() {
         <>
           <button
             type="button"
-            onClick={() => {
-              setShowAdd(true);
-              setFormError(null);
-            }}
+            onClick={() => setShowAdd(true)}
             className="flex items-center justify-center gap-1.5 rounded-2xl border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
           >
             <Plus className="h-4 w-4" />
@@ -289,16 +189,7 @@ export default function InventoryPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setAdjusting(m);
-                        setNewQty(String(m.stockQty));
-                        setNewReorder(
-                          m.reorderLevel != null ? String(m.reorderLevel) : "",
-                        );
-                        setNewPurchasePrice(String(m.purchasePrice));
-                        setNewVat(String(m.vatRate ?? 0));
-                        setFormError(null);
-                      }}
+                      onClick={() => setAdjusting(m)}
                       className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 active:bg-gray-50"
                     >
                       تعديل
@@ -387,260 +278,15 @@ export default function InventoryPage() {
       )}
 
       {adjusting && (
-        <BottomSheet
-          title={`تعديل كمية: ${adjusting.name}`}
+        <AdjustStockSheet
+          material={adjusting}
           onClose={() => setAdjusting(null)}
-        >
-          <div className="flex flex-col gap-4">
-            <div>
-              <label
-                htmlFor="adj-qty"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                الكمية الفعلية بعد الجرد ({UNIT_LABELS[adjusting.unit]})
-              </label>
-              <input
-                id="adj-qty"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={newQty}
-                onChange={(e) => setNewQty(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label
-                  htmlFor="adj-price"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  سعر الشراء (ر.س)
-                </label>
-                <input
-                  id="adj-price"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={newPurchasePrice}
-                  onChange={(e) => setNewPurchasePrice(e.target.value)}
-                  className={fieldClass}
-                />
-                <p className="mt-1 text-[11px] text-gray-500">
-                  لكل {roundQty(adjusting.purchaseQty, 2)}{" "}
-                  {UNIT_LABELS[adjusting.unit]}
-                </p>
-              </div>
-              <div>
-                <label
-                  htmlFor="adj-vat"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  ضريبة القيمة المضافة
-                </label>
-                <select
-                  id="adj-vat"
-                  value={newVat}
-                  onChange={(e) => setNewVat(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="15">شامل ضريبة 15%</option>
-                  <option value="0">بدون ضريبة</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label
-                htmlFor="adj-reorder"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                حد إعادة الطلب{" "}
-                <span className="font-normal text-gray-500">
-                  (ينبهك عند الوصول له)
-                </span>
-              </label>
-              <input
-                id="adj-reorder"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={newReorder}
-                onChange={(e) => setNewReorder(e.target.value)}
-                placeholder="مثال: 5"
-                className={fieldClass}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="adj-note"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                السبب <span className="font-normal text-gray-500">(اختياري)</span>
-              </label>
-              <input
-                id="adj-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="مثال: جرد نهاية الأسبوع"
-                className={fieldClass}
-              />
-            </div>
-            <ErrorAlert>{formError}</ErrorAlert>
-            <button
-              type="button"
-              onClick={handleAdjust}
-              disabled={saving}
-              className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
-            >
-              {saving ? "جاري الحفظ..." : "حفظ التعديل"}
-            </button>
-          </div>
-        </BottomSheet>
+          onSaved={load}
+        />
       )}
 
       {showAdd && (
-        <BottomSheet title="صنف جديد" onClose={() => setShowAdd(false)}>
-          <div className="flex flex-col gap-4">
-            <div>
-              <label
-                htmlFor="add-name"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                اسم الصنف
-              </label>
-              <input
-                id="add-name"
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-                placeholder="مثال: طحين"
-                className={fieldClass}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label
-                  htmlFor="add-unit"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  الوحدة
-                </label>
-                <select
-                  id="add-unit"
-                  value={addUnit}
-                  onChange={(e) => setAddUnit(e.target.value as MaterialUnit)}
-                  className={fieldClass}
-                >
-                  {(Object.entries(UNIT_LABELS) as [MaterialUnit, string][]).map(
-                    ([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-              <div>
-                <label
-                  htmlFor="add-qty"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  الكمية المشتراة
-                </label>
-                <input
-                  id="add-qty"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={addQty}
-                  onChange={(e) => setAddQty(e.target.value)}
-                  placeholder="مثال: 10"
-                  className={fieldClass}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label
-                  htmlFor="add-price"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  سعر الشراء الإجمالي (ر.س)
-                </label>
-                <input
-                  id="add-price"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={addPrice}
-                  onChange={(e) => setAddPrice(e.target.value)}
-                  placeholder="ما دفعته للكمية كاملة"
-                  className={fieldClass}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="add-vat"
-                  className="mb-1.5 block text-sm font-semibold text-gray-700"
-                >
-                  ضريبة القيمة المضافة
-                </label>
-                <select
-                  id="add-vat"
-                  value={addVat}
-                  onChange={(e) => setAddVat(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="15">شامل ضريبة 15%</option>
-                  <option value="0">بدون ضريبة</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label
-                htmlFor="add-reorder"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                حد إعادة الطلب{" "}
-                <span className="font-normal text-gray-500">(اختياري)</span>
-              </label>
-              <input
-                id="add-reorder"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={addReorder}
-                onChange={(e) => setAddReorder(e.target.value)}
-                placeholder="ينبهك عند الوصول له"
-                className={fieldClass}
-              />
-            </div>
-            {Number(addQty) > 0 && Number(addPrice) > 0 && (
-              <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">
-                سعر الوحدة: {(Number(addPrice) / Number(addQty)).toFixed(2)} ر.س
-                {Number(addVat) > 0 &&
-                  ` — منها ضريبة ${(
-                    (Number(addPrice) * Number(addVat)) /
-                    (100 + Number(addVat))
-                  ).toFixed(2)} ر.س`}
-              </p>
-            )}
-            <ErrorAlert>{formError}</ErrorAlert>
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={saving}
-              className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
-            >
-              {saving ? "جاري الحفظ..." : "إضافة للمخزون"}
-            </button>
-          </div>
-        </BottomSheet>
+        <AddMaterialSheet onClose={() => setShowAdd(false)} onSaved={load} />
       )}
     </div>
   );
