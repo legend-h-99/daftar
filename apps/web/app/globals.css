@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Segmented OTP input boxes */
+.otp-input {
+  -moz-appearance: textfield;
+}
+.otp-input::-webkit-outer-spin-button,
+.otp-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+::selection {
+  background-color: #b0f1d2;
+}
+
+@layer base {
+  :root {
+    /* دفتر brand: #0f7353 (brand-700) · surface: #f7f8f7 · ink: #101914 */
+    --background: oklch(0.974 0.003 163);   /* #f7f8f7 */
+    --foreground: oklch(0.115 0.016 163);   /* #101914 */
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.115 0.016 163);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.115 0.016 163);
+    --primary: oklch(0.456 0.114 162);      /* #0f7353 brand-700 */
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.984 0.022 162);    /* #eefdf6 brand-50 */
+    --secondary-foreground: oklch(0.456 0.114 162);
+    --muted: oklch(0.936 0.006 163);       /* gray-100 level, visible for skeletons */
+    --muted-foreground: oklch(0.556 0.006 163);
+    --accent: oklch(0.963 0.044 162);       /* #d6f9e7 brand-100 */
+    --accent-foreground: oklch(0.456 0.114 162);
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: oklch(1 0 0);
+    --border: oklch(0.936 0.006 163);
+    --input: oklch(0.936 0.006 163);
+    --ring: oklch(0.456 0.114 162);
+    --radius: 1rem;
+    --sidebar: oklch(0.984 0.022 162);
+    --sidebar-foreground: oklch(0.115 0.016 163);
+    --sidebar-primary: oklch(0.456 0.114 162);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.963 0.044 162);
+    --sidebar-accent-foreground: oklch(0.456 0.114 162);
+    --sidebar-border: oklch(0.936 0.006 163);
+    --sidebar-ring: oklch(0.456 0.114 162);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
+  html {
+    font-family: var(--font-sans, Tahoma, Arial, sans-serif);
+  }
+}

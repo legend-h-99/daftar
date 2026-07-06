@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Material" ADD COLUMN     "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 0;

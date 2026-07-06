@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-06T00:00:00.000Z",
+  "title": "Design System: دفتر",
+  "extensions": {
+    "colorMeta": {
+      "brand-deep": {
+        "role": "primary",
+        "displayName": "أخضر المحل",
+        "canonical": "#0f7353",
+        "tonalRamp": ["#062b20", "#0e4b39", "#0f7353", "#119065", "#1cb27c", "#42cd97", "#b0f1d2", "#eefdf6"]
+      },
+      "brand-mid": {
+        "role": "primary",
+        "displayName": "أخضر الحركة",
+        "canonical": "#1cb27c",
+        "tonalRamp": ["#062b20", "#0e4b39", "#0f7353", "#119065", "#1cb27c", "#42cd97", "#b0f1d2", "#eefdf6"]
+      },
+      "brand-light": {
+        "role": "accent",
+        "displayName": "أخضر باهت",
+        "canonical": "#b0f1d2",
+        "tonalRamp": ["#062b20", "#0e4b39", "#0f7353", "#1cb27c", "#42cd97", "#7be3b7", "#b0f1d2", "#eefdf6"]
+      },
+      "brand-wash": {
+        "role": "surface",
+        "displayName": "أخضر الغسيل",
+        "canonical": "#eefdf6",
+        "tonalRamp": ["#062b20", "#0e4b39", "#0f7353", "#1cb27c", "#42cd97", "#b0f1d2", "#d6f9e7", "#eefdf6"]
+      },
+      "surface-app": {
+        "role": "background",
+        "displayName": "سطح التطبيق",
+        "canonical": "#f7f8f7",
+        "tonalRamp": ["#1f2023", "#374151", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6", "#f7f8f7"]
+      },
+      "surface-card": {
+        "role": "surface",
+        "displayName": "صفحة بيضاء",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#111827", "#374151", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f9fafb", "#ffffff"]
+      },
+      "ink-primary": {
+        "role": "on-background",
+        "displayName": "حبر الدفتر",
+        "canonical": "#101914",
+        "tonalRamp": ["#101914", "#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db"]
+      },
+      "ink-secondary": {
+        "role": "on-surface",
+        "displayName": "حبر ثانوي",
+        "canonical": "#6b7280",
+        "tonalRamp": ["#101914", "#111827", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"]
+      },
+      "semantic-danger": {
+        "role": "error",
+        "displayName": "خطر",
+        "canonical": "#dc2626",
+        "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#fca5a5", "#fee2e2", "#fef2f2"]
+      },
+      "semantic-warning": {
+        "role": "warning",
+        "displayName": "تحذير",
+        "canonical": "#b45309",
+        "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#fcd34d", "#fde68a", "#fffbeb"]
+      },
+      "semantic-success": {
+        "role": "success",
+        "displayName": "نجاح",
+        "canonical": "#15803d",
+        "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#4ade80", "#bbf7d0", "#dcfce7"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "شاشة تسجيل الدخول والـ splash فقط." },
+      "title": { "displayName": "Title", "purpose": "عنوان كل صفحة رئيسية." },
+      "headline": { "displayName": "Headline", "purpose": "عناوين الأقسام وقيم StatCard." },
+      "body": { "displayName": "Body", "purpose": "الأوصاف ومحتوى القوائم والتواريخ." },
+      "label": { "displayName": "Label", "purpose": "الشارات والتسميات الصغيرة." }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "الظل الافتراضي على البطاقات البيضاء فوق سطح #f7f8f7. لا يُستخدم ظل أثقل من ذلك."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-standard",
+        "value": "cubic-bezier(0.0, 0.0, 0.2, 1)",
+        "purpose": "الـ easing الافتراضي لانتقالات الحالة (hover، focus، active)."
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "انتقالات الأزرار وحالات الـ focus."
+      },
+      {
+        "name": "duration-standard",
+        "value": "200ms",
+        "purpose": "انتقالات البطاقات والألوان."
+      }
+    ],
+    "breakpoints": [
+      { "name": "max-content", "value": "448px", "purpose": "max-w-md — الحد الأقصى للمحتوى، التطبيق للجوال فقط." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "الزر الرئيسي لكل فعل أساسي. يظهر مرة واحدة لكل شاشة.",
+      "html": "<button class=\"ds-btn-primary\">إرسال رمز التحقق</button>",
+      "css": ".ds-btn-primary { background: #0f7353; color: #ffffff; padding: 14px 20px; width: 100%; border-radius: 16px; border: none; font-family: Tajawal, Tahoma, Arial, sans-serif; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background 150ms cubic-bezier(0.0, 0.0, 0.2, 1); direction: rtl; } .ds-btn-primary:active { background: #105c44; } .ds-btn-primary:focus-visible { outline: 2px solid #1cb27c; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }"
+    },
+    {
+      "name": "FAB — زر إضافة عائم",
+      "kind": "button",
+      "refersTo": "button-fab",
+      "description": "زر الإضافة الدائري العائم في أعلى القوائم.",
+      "html": "<button class=\"ds-btn-fab\" aria-label=\"إضافة\">\n  <svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>\n</button>",
+      "css": ".ds-btn-fab { background: #0f7353; color: #ffffff; width: 40px; height: 40px; border-radius: 9999px; border: none; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); cursor: pointer; transition: background 150ms cubic-bezier(0.0, 0.0, 0.2, 1); } .ds-btn-fab:active { background: #105c44; } .ds-btn-fab:focus-visible { outline: 2px solid #1cb27c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "الحاوية الأساسية للمعلومات. بيضاء دائمًا فوق خلفية #f7f8f7.",
+      "html": "<div class=\"ds-card\">\n  <p class=\"ds-card-title\">اسم الزبون</p>\n  <p class=\"ds-card-sub\">فاتورة ١٢٣ · تستحق ١ يناير</p>\n</div>",
+      "css": ".ds-card { background: #ffffff; border-radius: 16px; border: 1px solid #f3f4f6; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); padding: 16px; direction: rtl; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-card-title { font-size: 1rem; font-weight: 600; color: #101914; margin: 0 0 4px 0; } .ds-card-sub { font-size: 0.75rem; color: #6b7280; margin: 0; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "حقل إدخال نصي. خلفية رمادية تتحوّل بيضاء عند الـ focus.",
+      "html": "<div class=\"ds-field\">\n  <label class=\"ds-label\" for=\"ds-input-demo\">رقم الجوال</label>\n  <input class=\"ds-input\" id=\"ds-input-demo\" type=\"tel\" placeholder=\"05xxxxxxxx\" />\n</div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; direction: rtl; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-label { font-size: 0.875rem; font-weight: 600; color: #374151; } .ds-input { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px 16px; font-size: 1rem; font-weight: 600; color: #101914; width: 100%; box-sizing: border-box; outline: none; font-family: Tajawal, Tahoma, Arial, sans-serif; transition: border-color 150ms, background 150ms, box-shadow 150ms; } .ds-input::placeholder { color: #9ca3af; } .ds-input:focus { background: #ffffff; border-color: #1cb27c; box-shadow: 0 0 0 2px rgb(17 178 124 / 0.25); }"
+    },
+    {
+      "name": "StatCard — بطاقة إحصائية",
+      "kind": "card",
+      "refersTo": "stat-card-brand",
+      "description": "بطاقة الأرقام الإجمالية في الرئيسية. أيقونة ملوّنة + تسمية + قيمة.",
+      "html": "<div class=\"ds-stat\">\n  <div class=\"ds-stat-row\">\n    <span class=\"ds-stat-label\">المبيعات</span>\n    <span class=\"ds-stat-icon\">\n      <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"23 6 13.5 15.5 8.5 10.5 1 18\"/><polyline points=\"17 6 23 6 23 12\"/></svg>\n    </span>\n  </div>\n  <span class=\"ds-stat-value\">٤٢٠ ر.س</span>\n</div>",
+      "css": ".ds-stat { background: #ffffff; border-radius: 16px; border: 1px solid #f3f4f6; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); padding: 16px; display: flex; flex-direction: column; gap: 8px; direction: rtl; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-stat-row { display: flex; justify-content: space-between; align-items: center; } .ds-stat-label { font-size: 0.875rem; font-weight: 500; color: #6b7280; } .ds-stat-icon { background: #eefdf6; color: #0f7353; border-radius: 9999px; padding: 8px; display: flex; align-items: center; justify-content: center; } .ds-stat-value { font-size: 1.25rem; font-weight: 700; color: #101914; letter-spacing: -0.025em; }"
+    },
+    {
+      "name": "Status Badge — شارة الحالة",
+      "kind": "chip",
+      "refersTo": "badge-paid",
+      "description": "شارة pill لحالة الفاتورة. ثلاث حالات: مدفوعة، غير مدفوعة، جزئي.",
+      "html": "<div style=\"display:flex;gap:8px;direction:rtl;font-family:Tajawal,Tahoma,Arial,sans-serif;\">\n  <span class=\"ds-badge ds-badge-paid\">مدفوعة</span>\n  <span class=\"ds-badge ds-badge-unpaid\">غير مدفوعة</span>\n  <span class=\"ds-badge ds-badge-partial\">جزئي</span>\n</div>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; border-radius: 9999px; padding: 4px 10px; font-size: 0.75rem; font-weight: 600; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-badge-paid { background: #dcfce7; color: #15803d; } .ds-badge-unpaid { background: #fef2f2; color: #dc2626; } .ds-badge-partial { background: #fefce8; color: #854d0e; }"
+    },
+    {
+      "name": "Empty State",
+      "kind": "card",
+      "description": "حالة الفراغ — تظهر عندما لا توجد بيانات. تشجيعية دائمًا.",
+      "html": "<div class=\"ds-empty\">\n  <span class=\"ds-empty-icon\">\n    <svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/></svg>\n  </span>\n  <p class=\"ds-empty-title\">ولا فاتورة بعد</p>\n  <p class=\"ds-empty-desc\">ابدأ بإضافة أول فاتورة لزبائنك</p>\n</div>",
+      "css": ".ds-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; border-radius: 16px; border: 1px dashed #e5e7eb; background: #ffffff; padding: 48px 24px; text-align: center; direction: rtl; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-empty-icon { background: #eefdf6; color: #0f7353; border-radius: 9999px; padding: 12px; display: flex; align-items: center; justify-content: center; } .ds-empty-title { font-size: 1rem; font-weight: 600; color: #1f2937; margin: 0; } .ds-empty-desc { font-size: 0.875rem; color: #6b7280; margin: 0; }"
+    },
+    {
+      "name": "Bottom Navigation",
+      "kind": "nav",
+      "description": "شريط التنقل السفلي الثابت. 5 تبويبات، التبويب النشط أخضر.",
+      "html": "<nav class=\"ds-bottom-nav\">\n  <a class=\"ds-nav-tab ds-nav-active\" href=\"#\">\n    <svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg>\n    <span>الرئيسية</span>\n  </a>\n  <a class=\"ds-nav-tab\" href=\"#\">\n    <svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"16.5\" y1=\"9.4\" x2=\"7.5\" y2=\"4.21\"/><path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/></svg>\n    <span>المنتجات</span>\n  </a>\n  <a class=\"ds-nav-tab\" href=\"#\">\n    <svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"7\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"/></svg>\n    <span>المخزون</span>\n  </a>\n</nav>",
+      "css": ".ds-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,0.95); border-top: 1px solid #e5e7eb; display: flex; justify-content: space-around; padding: 0 8px; direction: rtl; font-family: Tajawal, Tahoma, Arial, sans-serif; } .ds-nav-tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; font-size: 11px; font-weight: 500; color: #6b7280; text-decoration: none; flex: 1; } .ds-nav-active { color: #0f7353; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "دفتر الحساب الذكي",
+    "overview": "دفتر يقلّد تجربة الدفتر الورقي — المألوف والموثوق اللي كل صاحب محل يعرفه — لكنه أذكى وأسرع. الواجهة هادئة ونظيفة كصفحة بيضاء: كل شيء في مكانه، لا ضجيج، لا زخرفة. الإضاءة الخضراء الخاصة بالمشروع تبقى صادقة — لون السعي والإنتاج في السوق السعودي — لا تقتحم ولا تغيب.\n\nالنظام يرفض بشكل صريح: أسلوب لوحات SaaS الأمريكية، مصطلحات المحاسبة الغربية (QuickBooks، Wave)، وثقل التطبيقات البنكية الرسمية.",
+    "keyCharacteristics": [
+      "هادئ وأخضر — الألوان تحمل معنى، لا زينة",
+      "RTL عربي أصيل — التدفق من اليمين لليسار",
+      "بطاقات بيضاء على خلفية رمادية خفيفة — العمق بالحدود والظل الرفيع",
+      "خط Tajawal — عربي واضح وحديث، وزن ثقيل للأرقام والعناوين",
+      "الأيقونات دليل وليست ديكور"
+    ],
+    "rules": [
+      { "name": "قاعدة اللون بمعنى", "body": "كل لون له وظيفة واحدة. الأخضر العميق = فعل. الأحمر = مصروف أو خطأ. العنبر = تحذير. الأخضر الفاتح = نجاح. لا يُستخدم لون دلالي للزينة.", "section": "colors" },
+      { "name": "قاعدة البياض الأساسي", "body": "البطاقات دائمًا بيضاء. الخلفية دائمًا #f7f8f7. لا تُقلب الأدوار.", "section": "colors" },
+      { "name": "قاعدة الوزن يحمل الأولوية", "body": "الرقم الأهم يأخذ وزن 700-800. الاسم يأخذ 600. الوصف يأخذ 400-500.", "section": "typography" },
+      { "name": "قاعدة الظل الرفيع فقط", "body": "shadow-sm في كل مكان، لا shadow-md أو shadow-lg.", "section": "elevation" }
+    ],
+    "dos": [
+      "استخدم brand-700 (#0f7353) حصريًا للأفعال والحالات النشطة",
+      "أضف prefers-reduced-motion لكل transition أو animation",
+      "التزم بـ WCAG AA: 4.5:1 للنص العادي، 3:1 للنص الكبير",
+      "حافظ على max-w-md كحد أقصى للمحتوى",
+      "استخدم rounded-2xl (16px) على جميع البطاقات والحقول"
+    ],
+    "donts": [
+      "لا تُقلّد تصميمات QuickBooks أو Wave أو Xero",
+      "لا تستخدم gradients — لا على النص، ولا على خلفيات الأزرار",
+      "لا تستخدم border-left أو border-right بسماكة أكبر من 1px كشريط زخرفي",
+      "لا تُداخل بطاقات (card inside card)",
+      "لا تُضيف eyebrow فوق العناوين",
+      "لا تستخدم ألوانًا دلالية خارج وظيفتها",
+      "لا تُضيف ظلالًا أثقل من shadow-sm",
+      "لا تستخدم Glassmorphism أو backdrop-blur كزخرفة"
+    ]
+  }
+}

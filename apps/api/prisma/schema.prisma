@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Unit {
+  KG
+  GRAM
+  LITER
+  ML
+  PIECE
+}
+
+enum RecipeItemType {
+  RAW
+  PACKAGING
+}
+
+enum InvoiceStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+enum ExpenseCategory {
+  RENT
+  SALARIES
+  INGREDIENTS
+  PACKAGING
+  MARKETING
+  DELIVERY
+  UTILITIES
+  OTHER
+}
+
+model Business {
+  id         String   @id @default(uuid())
+  name       String
+  ownerPhone String   @unique
+  vatEnabled Boolean  @default(false)
+  vatNumber  String?
+  city       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users          User[]
+  materials      Material[]
+  products       Product[]
+  customers      Customer[]
+  invoices       Invoice[]
+  expenses       Expense[]
+  suppliers      Supplier[]
+  purchases      Purchase[]
+  stockMovements StockMovement[]
+}
+
+model User {
+  id         String    @id @default(uuid())
+  phone      String    @unique
+  name       String?
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
+  createdAt  DateTime  @default(now())
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  // Failed verification attempts; the code is invalidated after 5.
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+model Material {
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  name          String
+  unit          Unit
+  purchasePrice Float
+  purchaseQty   Float
+  unitPrice     Float
+  // VAT % included in purchasePrice (informational: cost basis stays what
+  // the owner actually paid; the extracted VAT portion is shown in the UI).
+  vatRate       Float    @default(0)
+  stockQty      Float    @default(0)
+  reorderLevel  Float?
+  createdAt     DateTime @default(now())
+
+  recipeItems    RecipeItem[]
+  purchaseItems  PurchaseItem[]
+  stockMovements StockMovement[]
+
+  @@index([businessId])
+}
+
+enum PurchaseSource {
+  MANUAL
+  OCR
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+}
+
+model Supplier {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  name       String
+  phone      String?
+  createdAt  DateTime @default(now())
+
+  purchases Purchase[]
+
+  @@index([businessId])
+}
+
+model Purchase {
+  id         String         @id @default(uuid())
+  businessId String
+  business   Business       @relation(fields: [businessId], references: [id])
+  supplierId String?
+  supplier   Supplier?      @relation(fields: [supplierId], references: [id])
+  number     Int
+  date       DateTime       @default(now())
+  total      Float
+  notes      String?
+  source     PurchaseSource @default(MANUAL)
+  createdAt  DateTime       @default(now())
+
+  items PurchaseItem[]
+
+  @@unique([businessId, number])
+  @@index([businessId])
+}
+
+model PurchaseItem {
+  id         String    @id @default(uuid())
+  purchaseId String
+  purchase   Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+  name       String
+  unit       Unit
+  quantity   Float
+  unitPrice  Float
+  lineTotal  Float
+}
+
+// Append-only inventory ledger: every stock change (purchase in, sale out,
+// manual adjustment) is one signed row, so the current balance is always
+// explainable and auditable.
+model StockMovement {
+  id           String            @id @default(uuid())
+  businessId   String
+  business     Business          @relation(fields: [businessId], references: [id])
+  materialId   String
+  material     Material          @relation(fields: [materialId], references: [id])
+  type         StockMovementType
+  qty          Float // signed: positive = in, negative = out
+  balanceAfter Float
+  refType      String? // 'purchase' | 'invoice' | null for manual adjustments
+  refId        String?
+  note         String?
+  createdAt    DateTime          @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([materialId])
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  name          String
+  category      String?
+  rawCost       Float    @default(0)
+  packagingCost Float    @default(0)
+  overheadCost  Float    @default(0)
+  totalCost     Float    @default(0)
+  profitMargin  Float    @default(30)
+  sellingPrice  Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recipeItems  RecipeItem[]
+  invoiceItems InvoiceItem[]
+
+  @@index([businessId])
+}
+
+model RecipeItem {
+  id           String         @id @default(uuid())
+  productId    String
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materialId   String?
+  material     Material?      @relation(fields: [materialId], references: [id])
+  name         String
+  unit         Unit
+  unitPrice    Float
+  quantityUsed Float
+  lineCost     Float
+  type         RecipeItemType @default(RAW)
+  createdAt    DateTime       @default(now())
+}
+
+model Customer {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  name       String
+  phone      String?
+  createdAt  DateTime @default(now())
+
+  invoices Invoice[]
+
+  @@index([businessId])
+}
+
+model Invoice {
+  id         String        @id @default(uuid())
+  businessId String
+  business   Business      @relation(fields: [businessId], references: [id])
+  customerId String?
+  customer   Customer?     @relation(fields: [customerId], references: [id])
+  number     Int
+  status     InvoiceStatus @default(UNPAID)
+  issueDate  DateTime      @default(now())
+  dueDate    DateTime?
+  subtotal   Float
+  vatAmount  Float         @default(0)
+  total      Float
+  paidAmount Float         @default(0)
+  notes      String?
+  createdAt  DateTime      @default(now())
+
+  items InvoiceItem[]
+
+  @@index([businessId])
+  @@unique([businessId, number])
+}
+
+model InvoiceItem {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  name      String
+  unitPrice Float
+  quantity  Float
+  lineTotal Float
+}
+
+model Expense {
+  id         String          @id @default(uuid())
+  businessId String
+  business   Business        @relation(fields: [businessId], references: [id])
+  category   ExpenseCategory
+  amount     Float
+  date       DateTime
+  note       String?
+  createdAt  DateTime        @default(now())
+
+  @@index([businessId])
+}
