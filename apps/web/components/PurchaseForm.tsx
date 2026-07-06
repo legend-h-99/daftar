@@ -2,49 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { formatSAR } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import { fieldClass } from "@/components/ui/form-field";
-import {
-  Material,
-  MaterialUnit,
-  OcrDraft,
-  PurchaseSource,
-  UNIT_LABELS,
-} from "@/lib/types";
-
-const NEW_MATERIAL = "__new__";
-
-interface RowState {
-  materialId?: string;
-  name: string;
-  unit: MaterialUnit;
-  quantity: string;
-  unitPrice: string;
-  confidence?: number;
-}
-
-function emptyRow(): RowState {
-  return { name: "", unit: "KG", quantity: "", unitPrice: "" };
-}
-
-function confidenceBadge(confidence?: number) {
-  if (confidence === undefined) return null;
-  const pct = Math.round(confidence * 100);
-  const tone =
-    confidence >= 0.85
-      ? "bg-green-50 text-green-700"
-      : confidence >= 0.7
-        ? "bg-amber-50 text-amber-700"
-        : "bg-red-50 text-red-600";
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tone}`}>
-      دقة القراءة {pct}%
-    </span>
-  );
-}
+import { Material, OcrDraft, PurchaseSource } from "@/lib/types";
+import PurchaseRow, {
+  emptyRow,
+  NEW_MATERIAL,
+  purchaseInputClass,
+  RowState,
+} from "@/components/purchases/PurchaseRow";
 
 /**
  * Shared purchase entry form. Used empty for manual entry, or pre-filled
@@ -112,6 +79,10 @@ export default function PurchaseForm({
     }
   }
 
+  function removeRow(index: number) {
+    setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const items = rows
@@ -143,8 +114,6 @@ export default function PurchaseForm({
     }
   }
 
-  const inputClass = cn(fieldClass, "px-3 py-2.5 text-sm");
-
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
@@ -157,7 +126,7 @@ export default function PurchaseForm({
             value={supplierName}
             onChange={(e) => setSupplierName(e.target.value)}
             placeholder="اسم المورد"
-            className={inputClass}
+            className={purchaseInputClass}
           />
         </div>
         <div>
@@ -169,114 +138,21 @@ export default function PurchaseForm({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className={inputClass}
+            className={purchaseInputClass}
           />
         </div>
       </div>
 
       <div className="flex flex-col gap-3">
         {rows.map((row, index) => (
-          <div
+          <PurchaseRow
             key={index}
-            className="flex flex-col gap-2.5 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <select
-                aria-label="اختر الصنف"
-                value={row.materialId ?? NEW_MATERIAL}
-                onChange={(e) => selectMaterial(index, e.target.value)}
-                className={inputClass}
-              >
-                <option value={NEW_MATERIAL}>صنف جديد (يُضاف للمخزون)</option>
-                {materials.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} — {UNIT_LABELS[m.unit]}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() =>
-                  setRows((prev) =>
-                    prev.length > 1 ? prev.filter((_, i) => i !== index) : prev,
-                  )
-                }
-                aria-label="حذف السطر"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-
-            {!row.materialId && (
-              <div className="grid grid-cols-2 gap-2.5">
-                <input
-                  aria-label="اسم الصنف"
-                  value={row.name}
-                  onChange={(e) => updateRow(index, { name: e.target.value })}
-                  placeholder="اسم الصنف"
-                  className={inputClass}
-                />
-                <select
-                  aria-label="الوحدة"
-                  value={row.unit}
-                  onChange={(e) =>
-                    updateRow(index, { unit: e.target.value as MaterialUnit })
-                  }
-                  className={inputClass}
-                >
-                  {(Object.entries(UNIT_LABELS) as [MaterialUnit, string][]).map(
-                    ([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="mb-1 block text-xs text-gray-500">الكمية</label>
-                <input
-                  aria-label="الكمية"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={row.quantity}
-                  onChange={(e) => updateRow(index, { quantity: e.target.value })}
-                  placeholder="0"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-gray-500">
-                  سعر الوحدة (ر.س)
-                </label>
-                <input
-                  aria-label="سعر الوحدة"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={row.unitPrice}
-                  onChange={(e) => updateRow(index, { unitPrice: e.target.value })}
-                  placeholder="0.00"
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              {confidenceBadge(row.confidence) ?? <span />}
-              <span className="text-xs font-bold text-gray-600">
-                الإجمالي:{" "}
-                {formatSAR((Number(row.quantity) || 0) * (Number(row.unitPrice) || 0))}
-              </span>
-            </div>
-          </div>
+            row={row}
+            materials={materials}
+            onSelect={(value) => selectMaterial(index, value)}
+            onChange={(patch) => updateRow(index, patch)}
+            onRemove={() => removeRow(index)}
+          />
         ))}
       </div>
 
