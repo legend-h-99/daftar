@@ -8,6 +8,15 @@ export function roundQty(value: number, decimals = 3): number {
 }
 
 /**
+ * نسبة مئوية مقرّبة لعدد صحيح، e.g. percentOf(25, 200) => 13.
+ * تُعيد 0 إذا كان المقام صفرًا.
+ */
+export function percentOf(value: number, total: number): number {
+  if (!total) return 0;
+  return Math.round((value / total) * 100);
+}
+
+/**
  * Formats a number as Saudi Riyal currency, e.g. formatSAR(1250) => "1,250.00 ر.س"
  */
 export function formatSAR(amount: number | null | undefined): string {
