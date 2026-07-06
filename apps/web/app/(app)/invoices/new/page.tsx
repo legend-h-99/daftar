@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { formatSAR } from "@/lib/format";
 import { Customer, Invoice, InvoiceItem, Product } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
+import { fieldClass } from "@/components/ui/form-field";
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -306,7 +307,7 @@ export default function NewInvoicePage() {
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+            className={fieldClass}
           />
         </div>
 

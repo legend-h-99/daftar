@@ -9,7 +9,7 @@ import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/ui/form-field";
 
 export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
@@ -49,9 +49,7 @@ export default function InvoiceDetailPage() {
 
   if (error && !invoice) {
     return (
-      <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-        <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-      </Alert>
+      <ErrorAlert>{error}</ErrorAlert>
     );
   }
 
@@ -205,9 +203,7 @@ export default function InvoiceDetailPage() {
       </div>
 
       {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-        </Alert>
+        <ErrorAlert>{error}</ErrorAlert>
       )}
     </div>
   );

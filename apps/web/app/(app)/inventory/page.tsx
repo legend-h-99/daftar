@@ -24,7 +24,7 @@ import {
 import EmptyState from "@/components/EmptyState";
 import BottomSheet from "@/components/BottomSheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert, fieldClass } from "@/components/ui/form-field";
 
 type Tab = "items" | "movements";
 
@@ -207,11 +207,7 @@ export default function InventoryPage() {
         ))}
       </div>
 
-      {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorAlert>{error}</ErrorAlert>
 
       {tab === "items" && (
         <>
@@ -411,7 +407,7 @@ export default function InventoryPage() {
                 step="any"
                 value={newQty}
                 onChange={(e) => setNewQty(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -430,7 +426,7 @@ export default function InventoryPage() {
                   step="any"
                   value={newPurchasePrice}
                   onChange={(e) => setNewPurchasePrice(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 />
                 <p className="mt-1 text-[11px] text-gray-500">
                   لكل {Math.round(adjusting.purchaseQty * 100) / 100}{" "}
@@ -448,7 +444,7 @@ export default function InventoryPage() {
                   id="adj-vat"
                   value={newVat}
                   onChange={(e) => setNewVat(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 >
                   <option value="15">شامل ضريبة 15%</option>
                   <option value="0">بدون ضريبة</option>
@@ -474,7 +470,7 @@ export default function InventoryPage() {
                 value={newReorder}
                 onChange={(e) => setNewReorder(e.target.value)}
                 placeholder="مثال: 5"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
             <div>
@@ -489,14 +485,10 @@ export default function InventoryPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="مثال: جرد نهاية الأسبوع"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
-            {formError && (
-              <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-                <AlertDescription className="text-red-600 font-medium">{formError}</AlertDescription>
-              </Alert>
-            )}
+            <ErrorAlert>{formError}</ErrorAlert>
             <button
               type="button"
               onClick={handleAdjust}
@@ -524,7 +516,7 @@ export default function InventoryPage() {
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
                 placeholder="مثال: طحين"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -539,7 +531,7 @@ export default function InventoryPage() {
                   id="add-unit"
                   value={addUnit}
                   onChange={(e) => setAddUnit(e.target.value as MaterialUnit)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 >
                   {(Object.entries(UNIT_LABELS) as [MaterialUnit, string][]).map(
                     ([value, label]) => (
@@ -566,7 +558,7 @@ export default function InventoryPage() {
                   value={addQty}
                   onChange={(e) => setAddQty(e.target.value)}
                   placeholder="مثال: 10"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 />
               </div>
             </div>
@@ -587,7 +579,7 @@ export default function InventoryPage() {
                   value={addPrice}
                   onChange={(e) => setAddPrice(e.target.value)}
                   placeholder="ما دفعته للكمية كاملة"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 />
               </div>
               <div>
@@ -601,7 +593,7 @@ export default function InventoryPage() {
                   id="add-vat"
                   value={addVat}
                   onChange={(e) => setAddVat(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                  className={fieldClass}
                 >
                   <option value="15">شامل ضريبة 15%</option>
                   <option value="0">بدون ضريبة</option>
@@ -625,7 +617,7 @@ export default function InventoryPage() {
                 value={addReorder}
                 onChange={(e) => setAddReorder(e.target.value)}
                 placeholder="ينبهك عند الوصول له"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
             {Number(addQty) > 0 && Number(addPrice) > 0 && (
@@ -638,11 +630,7 @@ export default function InventoryPage() {
                   ).toFixed(2)} ر.س`}
               </p>
             )}
-            {formError && (
-              <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-                <AlertDescription className="text-red-600 font-medium">{formError}</AlertDescription>
-              </Alert>
-            )}
+            <ErrorAlert>{formError}</ErrorAlert>
             <button
               type="button"
               onClick={handleAdd}

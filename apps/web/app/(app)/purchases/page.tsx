@@ -8,7 +8,7 @@ import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/ui/form-field";
 
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
@@ -47,9 +47,7 @@ export default function PurchasesPage() {
       </div>
 
       {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-        </Alert>
+        <ErrorAlert>{error}</ErrorAlert>
       )}
 
       {summary && summary.bySupplier.length > 0 && (

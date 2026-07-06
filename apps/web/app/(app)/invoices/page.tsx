@@ -9,7 +9,7 @@ import { Invoice, InvoiceStatus } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/ui/form-field";
 
 type FilterTab = "ALL" | "UNPAID";
 
@@ -71,9 +71,7 @@ export default function InvoicesPage() {
       </div>
 
       {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-        </Alert>
+        <ErrorAlert>{error}</ErrorAlert>
       )}
 
       {!invoices && !error && (

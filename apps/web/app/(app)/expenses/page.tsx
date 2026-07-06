@@ -8,7 +8,7 @@ import { EXPENSE_CATEGORY_LABELS, Expense, ExpenseCategory } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import BottomSheet from "@/components/BottomSheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert, fieldClass } from "@/components/ui/form-field";
 
 const CATEGORY_OPTIONS = Object.entries(EXPENSE_CATEGORY_LABELS) as [
   ExpenseCategory,
@@ -149,9 +149,7 @@ export default function ExpensesPage() {
       )}
 
       {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
-        </Alert>
+        <ErrorAlert>{error}</ErrorAlert>
       )}
 
       {!expenses && !error && (
@@ -226,7 +224,7 @@ export default function ExpensesPage() {
                 id="expense-category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               >
                 {CATEGORY_OPTIONS.map(([value, label]) => (
                   <option key={value} value={value}>
@@ -252,7 +250,7 @@ export default function ExpensesPage() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
 
@@ -268,7 +266,7 @@ export default function ExpensesPage() {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
 
@@ -284,14 +282,12 @@ export default function ExpensesPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="مثال: فاتورة كهرباء شهر ٧"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={fieldClass}
               />
             </div>
 
             {formError && (
-              <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl">
-                <AlertDescription className="text-red-600 font-medium">{formError}</AlertDescription>
-              </Alert>
+              <ErrorAlert>{formError}</ErrorAlert>
             )}
 
             <button
