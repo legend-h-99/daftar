@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { apiPost, ApiError } from "@/lib/api";
 import { getToken, setToken } from "@/lib/auth";
 import { Business } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { fieldClass } from "@/components/ui/form-field";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -77,7 +79,7 @@ export default function OnboardingPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="مثال: بيت الحلا"
-              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+              className={cn(fieldClass, "py-3.5")}
             />
           </div>
 
@@ -90,7 +92,7 @@ export default function OnboardingPage() {
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="مثال: الرياض"
-              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+              className={cn(fieldClass, "py-3.5")}
             />
           </div>
 
@@ -126,7 +128,7 @@ export default function OnboardingPage() {
                 onChange={(e) => setVatNumber(e.target.value)}
                 dir="ltr"
                 placeholder="3xxxxxxxxxxxxx03"
-                className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-left text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={cn(fieldClass, "py-3.5 text-left")}
               />
             </div>
           )}

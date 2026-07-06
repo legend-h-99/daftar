@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 /**
- * الستايل الموحّد لحقول الإدخال (input / select / textarea) في نماذج التطبيق.
- * مصدر واحد بدل تكرار السلسلة في كل صفحة.
+ * الستايل الموحّد لحقول الإدخال (input / select / textarea) في كل التطبيق.
+ * مصدر واحد يطابق DESIGN.md: rounded-2xl، خلفية gray-50، حدود gray-200،
+ * فوكس brand-500 مع ring brand-600. للحشو/الحجم السياقي استخدم cn(fieldClass, "…").
  */
 export const fieldClass =
-  "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600";
+  "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600";
 
 /** تنبيه خطأ موحّد؛ لا يعرض شيئًا إذا كان المحتوى فارغًا. */
 export function ErrorAlert({

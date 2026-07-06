@@ -8,6 +8,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { calculateCosts } from "@/lib/calc";
 import { formatSAR } from "@/lib/format";
 import { Material, Product, RecipeItem } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
 interface ProductFormProps {
@@ -113,7 +114,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="مثال: كيك شوكولاتة"
-          className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+          className={cn(fieldClass, "py-3.5")}
         />
       </div>
 
@@ -178,7 +179,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           max={99}
           value={profitMargin}
           onChange={(e) => setProfitMargin(Number(e.target.value) || 0)}
-          className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-center text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+          className={cn(fieldClass, "mt-2 py-2.5 text-center")}
         />
       </div>
 

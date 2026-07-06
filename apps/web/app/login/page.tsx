@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { fieldClass } from "@/components/ui/form-field";
 
 const PHONE_REGEX = /^05\d{8}$/;
 
@@ -78,7 +80,7 @@ export default function LoginPage() {
                 onChange={(e) =>
                   setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
                 }
-                className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3.5 pl-4 pr-11 text-left text-lg font-semibold tracking-wide text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+                className={cn(fieldClass, "py-3.5 pr-11 text-left text-lg font-semibold tracking-wide")}
               />
             </div>
           </div>

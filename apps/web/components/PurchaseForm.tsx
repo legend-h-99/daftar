@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { formatSAR } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { fieldClass } from "@/components/ui/form-field";
 import {
   Material,
   MaterialUnit,
@@ -141,8 +143,7 @@ export default function PurchaseForm({
     }
   }
 
-  const inputClass =
-    "w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600";
+  const inputClass = cn(fieldClass, "px-3 py-2.5 text-sm");
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">

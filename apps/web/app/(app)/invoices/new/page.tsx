@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { formatSAR } from "@/lib/format";
 import { Customer, Invoice, InvoiceItem, Product } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
+import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
 export default function NewInvoicePage() {
@@ -141,7 +142,7 @@ export default function NewInvoicePage() {
               }}
               onFocus={() => setShowCustomerList(true)}
               placeholder="اكتب اسم الزبون أو اختر من القائمة"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-4 pr-10 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+              className={cn(fieldClass, "pr-10")}
             />
             {customerQuery && (
               <button
@@ -319,7 +320,7 @@ export default function NewInvoicePage() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600"
+            className={cn(fieldClass, "resize-none")}
           />
         </div>
 
