@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Camera, Plus, ShoppingCart } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Plus, ShoppingCart } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
+import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth, toMonthStr } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorAlert } from "@/components/ui/form-field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function PurchasesPage() {
+  const [month, setMonth] = useState(currentMonthStr());
   const [purchases, setPurchases] = useState<Purchase[] | null>(null);
   const [summary, setSummary] = useState<PurchasesSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isCurrentMonth = month === currentMonthStr();
 
   useEffect(() => {
     apiGet<Purchase[]>("/purchases")
@@ -24,6 +27,16 @@ export default function PurchasesPage() {
     apiGet<PurchasesSummary>("/purchases/summary").then(setSummary).catch(() => {});
   }, []);
 
+  const filtered = useMemo(
+    () => purchases?.filter((p) => p.date && toMonthStr(p.date) === month) ?? null,
+    [purchases, month],
+  );
+
+  const monthTotal = useMemo(
+    () => (filtered ?? []).reduce((s, p) => s + p.total, 0),
+    [filtered],
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -32,7 +45,7 @@ export default function PurchasesPage() {
           <Link
             href="/purchases/scan"
             aria-label="تصوير فاتورة شراء"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm active:bg-gray-50"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700 shadow-sm active:bg-brand-100"
           >
             <Camera className="h-5 w-5" />
           </Link>
@@ -46,80 +59,119 @@ export default function PurchasesPage() {
         </div>
       </div>
 
-      {error && (
-        <ErrorAlert>{error}</ErrorAlert>
+      {/* Month navigation */}
+      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
+          aria-label="الشهر السابق"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+        <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
+        <button
+          type="button"
+          onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          disabled={isCurrentMonth}
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
+          aria-label="الشهر التالي"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Month total */}
+      {filtered && filtered.length > 0 && (
+        <div className="rounded-2xl bg-amber-50 px-4 py-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-amber-800">
+              إجمالي {formatMonthLabel(month)}
+            </span>
+            <span className="text-lg font-extrabold text-amber-900">
+              {formatSAR(monthTotal)}
+            </span>
+          </div>
+        </div>
       )}
 
+      {error && (
+        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-2xl">
+          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Top suppliers (all-time) */}
       {summary && summary.bySupplier.length > 0 && (
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-bold text-gray-700">أعلى الموردين</h2>
+          <h2 className="mb-3 text-xs font-semibold text-gray-700">
+            أكثر الموردين
+          </h2>
           <ul className="flex flex-col gap-2">
             {summary.bySupplier.slice(0, 3).map((s) => (
               <li key={s.name} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">
+                <span className="text-gray-700">
                   {s.name}
-                  <span className="mr-1.5 text-xs text-gray-500">
-                    ({s.count} فاتورة)
-                  </span>
+                  <span className="ms-1.5 text-xs text-gray-500">({s.count})</span>
                 </span>
                 <span className="font-bold text-gray-900">{formatSAR(s.total)}</span>
               </li>
             ))}
           </ul>
-          {summary.byMonth.length > 0 && (
-            <p className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">
-              مشتريات {formatMonthLabel(summary.byMonth[0].month)}:{" "}
-              <span className="font-bold text-gray-600">
-                {formatSAR(summary.byMonth[0].total)}
-              </span>
-            </p>
-          )}
         </div>
       )}
 
       {!purchases && !error && (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-2xl" />
+            <Skeleton key={i} className="h-20 rounded-2xl" />
           ))}
         </div>
       )}
 
-      {purchases && purchases.length === 0 && (
+      {filtered && filtered.length === 0 && (
         <EmptyState
           icon={ShoppingCart}
-          title="ما سجلت أي مشتريات"
-          description="سجّل مشترياتك يدويًا أو صوّر فاتورة الشراء — والمخزون يتحدث تلقائيًا"
+          title={`ما في مشتريات في ${formatMonthLabel(month)}`}
+          description="سجّل مشترياتك يدويًا أو صوّر فاتورة الشراء"
           actionLabel="تسجيل شراء"
           actionHref="/purchases/new"
         />
       )}
 
-      {purchases && purchases.length > 0 && (
+      {filtered && filtered.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {purchases.map((p) => (
+          {filtered.map((p) => (
             <li
               key={p.id}
               className="rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-gray-900">
-                      شراء رقم {p.number}
+                      {p.supplier?.name ?? "بدون مورد"}
                     </span>
                     {p.source === "OCR" && (
-                      <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">
-                        📷 من صورة
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">
+                        <Camera className="h-3 w-3" aria-hidden="true" />
+                        من صورة
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500">
-                    {p.supplier?.name ?? "بدون مورد"} · {formatDate(p.date)} ·{" "}
-                    {p.items.length} صنف
+                  <span className="text-xs text-gray-600">
+                    {formatDate(p.date)} · {p.items.length} صنف
                   </span>
+                  {p.items.length > 0 && (
+                    <span className="truncate text-xs text-gray-500">
+                      {p.items.slice(0, 2).map((i) => i.name).join("، ")}
+                      {p.items.length > 2 && ` و${p.items.length - 2} أخرى`}
+                    </span>
+                  )}
                 </div>
-                <span className="font-bold text-gray-900">{formatSAR(p.total)}</span>
+                <span className="shrink-0 font-bold text-gray-900">
+                  {formatSAR(p.total)}
+                </span>
               </div>
             </li>
           ))}

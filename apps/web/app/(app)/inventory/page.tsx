@@ -8,6 +8,7 @@ import {
   Boxes,
   Camera,
   ClipboardList,
+  Package,
   Plus,
   ShoppingCart,
   Trash2,
@@ -36,6 +37,7 @@ export default function InventoryPage() {
 
   const [adjusting, setAdjusting] = useState<InventoryMaterial | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function load() {
     apiGet<InventoryMaterial[]>("/inventory")
@@ -50,14 +52,16 @@ export default function InventoryPage() {
 
   useEffect(load, []);
 
-  async function handleDelete(material: InventoryMaterial) {
-    if (!confirm(`متأكد إنك تبي تحذف "${material.name}" من المخزون؟`)) return;
-    try {
-      await apiDelete(`/materials/${material.id}`);
-      load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر حذف الصنف");
+  function handleDelete(material: InventoryMaterial) {
+    if (deletingId !== material.id) {
+      setDeletingId(material.id);
+      setTimeout(() => setDeletingId((id) => id === material.id ? null : id), 3000);
+      return;
     }
+    setDeletingId(null);
+    apiDelete(`/materials/${material.id}`)
+      .then(load)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "تعذر حذف الصنف"));
   }
 
   const lowCount = (items ?? []).filter((m) => m.lowStock).length;
@@ -68,18 +72,19 @@ export default function InventoryPage() {
         <h1 className="text-xl font-extrabold text-gray-900">المخزون</h1>
         <div className="flex gap-2">
           <Link
+            href="/products"
+            aria-label="المنتجات"
+            className="flex h-10 items-center gap-1.5 rounded-full bg-brand-50 px-3.5 text-sm font-bold text-brand-700 shadow-sm active:bg-brand-100"
+          >
+            <Package className="h-4 w-4" />
+            المنتجات
+          </Link>
+          <Link
             href="/purchases/scan"
             className="flex h-10 items-center gap-1.5 rounded-full bg-brand-700 px-3.5 text-sm font-bold text-white shadow-sm active:bg-brand-800"
           >
             <Camera className="h-4 w-4" />
-            تصوير فاتورة
-          </Link>
-          <Link
-            href="/purchases"
-            aria-label="المشتريات"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm active:bg-gray-50"
-          >
-            <ShoppingCart className="h-5 w-5" />
+            تصوير
           </Link>
         </div>
       </div>
@@ -197,8 +202,13 @@ export default function InventoryPage() {
                     <button
                       type="button"
                       onClick={() => handleDelete(m)}
-                      aria-label={`حذف ${m.name}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
+                      aria-label={deletingId === m.id ? `تأكيد حذف ${m.name}` : `حذف ${m.name}`}
+                      title={deletingId === m.id ? "اضغط مرة ثانية للتأكيد" : ""}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                        deletingId === m.id
+                          ? "bg-red-500 text-white"
+                          : "bg-red-50 text-red-500 active:bg-red-100"
+                      }`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

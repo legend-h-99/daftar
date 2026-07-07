@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { Download, MessageCircle, CheckCircle2 } from "lucide-react";
-import { apiGet, apiGetBlob, apiPatch, ApiError } from "@/lib/api";
+import { useParams, useRouter } from "next/navigation";
+import { Download, MessageCircle, CheckCircle2, Trash2, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { apiGet, apiGetBlob, apiPatch, apiDelete, ApiError } from "@/lib/api";
+import { fieldClass } from "@/components/ui/form-field";
 import { formatSAR, formatDate, normalizeSaudiPhone } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
@@ -13,11 +15,16 @@ import { ErrorAlert } from "@/components/ui/form-field";
 
 export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { business } = useBusiness();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showPartialForm, setShowPartialForm] = useState(false);
+  const [partialAmount, setPartialAmount] = useState("");
+  const [savingPartial, setSavingPartial] = useState(false);
+  const [deletingId, setDeletingId] = useState(false);
 
   const load = useCallback(() => {
     return apiGet<Invoice>(`/invoices/${params.id}`)
@@ -30,6 +37,43 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function markAsPartial() {
+    if (!invoice) return;
+    const amount = parseFloat(partialAmount.replace(/,/g, ""));
+    if (isNaN(amount) || amount <= 0 || amount >= invoice.total) {
+      setError("أدخل مبلغًا أقل من الإجمالي وأكبر من صفر");
+      return;
+    }
+    setSavingPartial(true);
+    setError(null);
+    try {
+      const updated = await apiPatch<Invoice>(
+        `/invoices/${invoice.id}/status`,
+        { status: "PARTIAL", paidAmount: amount },
+      );
+      setInvoice(updated);
+      setShowPartialForm(false);
+      setPartialAmount("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "تعذر تحديث الحالة");
+    } finally {
+      setSavingPartial(false);
+    }
+  }
+
+  function handleDelete() {
+    if (!invoice) return;
+    if (!deletingId) {
+      setDeletingId(true);
+      setTimeout(() => setDeletingId(false), 3000);
+      return;
+    }
+    setDeletingId(false);
+    apiDelete(`/invoices/${invoice.id}`)
+      .then(() => router.replace("/invoices"))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "تعذر حذف الفاتورة"));
+  }
 
   async function markAsPaid() {
     if (!invoice) return;
@@ -93,6 +137,28 @@ export default function InvoiceDetailPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/invoices"
+          aria-label="رجوع"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
+        >
+          <ArrowRight className="h-5 w-5" />
+        </Link>
+        <button
+          type="button"
+          onClick={handleDelete}
+          aria-label={deletingId ? "تأكيد الحذف" : "حذف الفاتورة"}
+          className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
+            deletingId
+              ? "bg-red-500 text-white"
+              : "bg-red-50 text-red-500 active:bg-red-100"
+          }`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-start justify-between">
           <div>
@@ -170,15 +236,51 @@ export default function InvoiceDetailPage() {
       </div>
 
       {invoice.status !== "PAID" && (
-        <button
-          type="button"
-          onClick={markAsPaid}
-          disabled={updating}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
-        >
-          <CheckCircle2 className="h-5 w-5" />
-          {updating ? "جاري التحديث..." : 'تحديد كـ"مدفوعة"'}
-        </button>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={markAsPaid}
+            disabled={updating}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
+          >
+            <CheckCircle2 className="h-5 w-5" />
+            {updating ? "جاري التحديث..." : 'تحديد كـ"مدفوعة" كاملاً'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setShowPartialForm((v) => !v); setError(null); }}
+            className="w-full rounded-2xl border border-brand-300 py-3 text-sm font-semibold text-brand-700 active:bg-brand-50"
+          >
+            تسجيل دفع جزئي
+          </button>
+
+          {showPartialForm && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <label className="text-sm font-semibold text-gray-700">
+                المبلغ المدفوع <span className="font-normal text-gray-500">(من {formatSAR(invoice.total)})</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                value={partialAmount}
+                onChange={(e) => setPartialAmount(e.target.value)}
+                placeholder="0.00"
+                className={fieldClass}
+              />
+              <button
+                type="button"
+                onClick={markAsPartial}
+                disabled={savingPartial || !partialAmount}
+                className="w-full rounded-2xl bg-brand-700 py-3 text-sm font-bold text-white active:bg-brand-800 disabled:opacity-60"
+              >
+                {savingPartial ? "جاري الحفظ..." : "حفظ الدفع الجزئي"}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="flex gap-3">

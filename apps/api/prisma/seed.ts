@@ -146,7 +146,7 @@ async function main() {
     update: { businessId: b1.id },
     create: { phone: ownerPhone, name: 'أم سلطان', businessId: b1.id },
   });
-  await prisma.product.deleteMany({ where: { businessId: b1.id } });
+  await clearBusiness(b1.id);
 
   type SeedRecipeItem = {
     name: string; unit: Unit; unitPrice: number; quantityUsed: number; type: RecipeItemType;
@@ -202,6 +202,115 @@ async function main() {
       },
     });
   }
+
+  // --- B1 suppliers / materials / customers ---
+  const [s1a, s1b] = await Promise.all([
+    prisma.supplier.create({ data: { businessId: b1.id, name: 'محل الفرحان للمواد الغذائية', phone: '0504567890' } }),
+    prisma.supplier.create({ data: { businessId: b1.id, name: 'مزرعة الطائر الذهبي', phone: '0514567890' } }),
+  ]);
+
+  await prisma.material.createMany({
+    data: [
+      { businessId: b1.id, name: 'دجاج', unit: Unit.PIECE, purchasePrice: 8, purchaseQty: 10, unitPrice: 16, vatRate: 0, stockQty: 5, reorderLevel: 3 },
+      { businessId: b1.id, name: 'أرز', unit: Unit.KG, purchasePrice: 3.5, purchaseQty: 5, unitPrice: 7, vatRate: 0, stockQty: 4 },
+      { businessId: b1.id, name: 'بهارات الكبسة', unit: Unit.KG, purchasePrice: 18, purchaseQty: 0.5, unitPrice: 38, vatRate: 0, stockQty: 0.3 },
+      { businessId: b1.id, name: 'زيت', unit: Unit.LITER, purchasePrice: 7, purchaseQty: 2, unitPrice: 14, vatRate: 15, stockQty: 1.5 },
+      { businessId: b1.id, name: 'بصل', unit: Unit.KG, purchasePrice: 4, purchaseQty: 2, unitPrice: 8, vatRate: 0, stockQty: 1.2 },
+      { businessId: b1.id, name: 'طماطم', unit: Unit.KG, purchasePrice: 6, purchaseQty: 2, unitPrice: 12, vatRate: 0, stockQty: 0.8 },
+      { businessId: b1.id, name: 'طحين', unit: Unit.KG, purchasePrice: 2.5, purchaseQty: 5, unitPrice: 5, vatRate: 0, stockQty: 3.5 },
+      { businessId: b1.id, name: 'سكر', unit: Unit.KG, purchasePrice: 5.5, purchaseQty: 2, unitPrice: 11, vatRate: 0, stockQty: 1.8 },
+      { businessId: b1.id, name: 'زبدة', unit: Unit.KG, purchasePrice: 25, purchaseQty: 1, unitPrice: 50, vatRate: 0, stockQty: 0.5 },
+      { businessId: b1.id, name: 'علب تغليف', unit: Unit.PIECE, purchasePrice: 0.5, purchaseQty: 50, unitPrice: 1, vatRate: 0, stockQty: 35 },
+    ],
+  });
+
+  const [c1a, c1b, c1c, c1d] = await Promise.all([
+    prisma.customer.create({ data: { businessId: b1.id, name: 'شركة الوليد للمناسبات', phone: '0504567891' } }),
+    prisma.customer.create({ data: { businessId: b1.id, name: 'روضة أطفال الحياة', phone: '0514567891' } }),
+    prisma.customer.create({ data: { businessId: b1.id, name: 'أم فيصل العتيبي', phone: '0524567891' } }),
+    prisma.customer.create({ data: { businessId: b1.id, name: 'مطبخ الديوانية', phone: '0534567891' } }),
+  ]);
+
+  await mkPurchases(b1.id, [
+    // July 2026 — إجمالي: 214 ر.س
+    { num: 1, supplierId: s1a.id, date: new Date('2026-07-05'), items: [
+      { name: 'دجاج', unit: Unit.PIECE, quantity: 10, unitPrice: 8 },
+      { name: 'أرز', unit: Unit.KG, quantity: 5, unitPrice: 3.5 },
+      { name: 'بصل', unit: Unit.KG, quantity: 2, unitPrice: 4 },
+      { name: 'طماطم', unit: Unit.KG, quantity: 2, unitPrice: 6 },
+      { name: 'بهارات الكبسة', unit: Unit.KG, quantity: 0.5, unitPrice: 18 },
+    ]},
+    { num: 2, supplierId: s1b.id, date: new Date('2026-07-12'), items: [
+      { name: 'طحين', unit: Unit.KG, quantity: 5, unitPrice: 2.5 },
+      { name: 'سكر', unit: Unit.KG, quantity: 2, unitPrice: 5.5 },
+      { name: 'زبدة', unit: Unit.KG, quantity: 1, unitPrice: 25 },
+      { name: 'زيت', unit: Unit.LITER, quantity: 2, unitPrice: 7 },
+      { name: 'علب تغليف', unit: Unit.PIECE, quantity: 50, unitPrice: 0.5 },
+    ]},
+    // June 2026 — إجمالي: 139 ر.س
+    { num: 3, supplierId: s1a.id, date: new Date('2026-06-04'), items: [
+      { name: 'دجاج', unit: Unit.PIECE, quantity: 8, unitPrice: 8 },
+      { name: 'أرز', unit: Unit.KG, quantity: 4, unitPrice: 3.5 },
+      { name: 'بصل', unit: Unit.KG, quantity: 1.5, unitPrice: 4 },
+      { name: 'طماطم', unit: Unit.KG, quantity: 1.5, unitPrice: 6 },
+    ]},
+    { num: 4, supplierId: s1b.id, date: new Date('2026-06-15'), items: [
+      { name: 'طحين', unit: Unit.KG, quantity: 4, unitPrice: 2.5 },
+      { name: 'سكر', unit: Unit.KG, quantity: 1.5, unitPrice: 5.5 },
+      { name: 'زبدة', unit: Unit.KG, quantity: 0.5, unitPrice: 25 },
+      { name: 'علب تغليف', unit: Unit.PIECE, quantity: 30, unitPrice: 0.5 },
+    ]},
+    // May 2026 — إجمالي: 131 ر.س
+    { num: 5, supplierId: s1a.id, date: new Date('2026-05-06'), items: [
+      { name: 'دجاج', unit: Unit.PIECE, quantity: 8, unitPrice: 8 },
+      { name: 'أرز', unit: Unit.KG, quantity: 4, unitPrice: 3.5 },
+      { name: 'طماطم', unit: Unit.KG, quantity: 2, unitPrice: 6 },
+      { name: 'بهارات الكبسة', unit: Unit.KG, quantity: 0.3, unitPrice: 18 },
+    ]},
+    { num: 6, supplierId: s1b.id, date: new Date('2026-05-18'), items: [
+      { name: 'طحين', unit: Unit.KG, quantity: 3, unitPrice: 2.5 },
+      { name: 'سكر', unit: Unit.KG, quantity: 1, unitPrice: 5.5 },
+      { name: 'زبدة', unit: Unit.KG, quantity: 0.5, unitPrice: 25 },
+      { name: 'علب تغليف', unit: Unit.PIECE, quantity: 20, unitPrice: 0.5 },
+    ]},
+  ]);
+
+  await mkInvoices(b1.id, [
+    // July 2026 — مبيعات: 995 | مشتريات: 214 | مصاريف: 1,130 → خسارة −349
+    { num: 1, custId: c1a.id, date: new Date('2026-07-04'), status: InvoiceStatus.PAID, paid: 350, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 10 }] },
+    { num: 2, custId: c1b.id, date: new Date('2026-07-10'), status: InvoiceStatus.PAID, paid: 275, items: [{ name: 'سينابون', unitPrice: 55, quantity: 5 }] },
+    { num: 3, custId: c1c.id, date: new Date('2026-07-17'), dueDate: new Date('2026-07-31'), status: InvoiceStatus.PARTIAL, paid: 120, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 6 }] },
+    { num: 4, custId: c1d.id, date: new Date('2026-07-23'), dueDate: new Date('2026-08-08'), status: InvoiceStatus.UNPAID, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 3 }, { name: 'سينابون', unitPrice: 55, quantity: 1 }] },
+    // June 2026 — مبيعات: 840 | مشتريات: 139 | مصاريف: 950 → خسارة −249
+    { num: 5, custId: c1a.id, date: new Date('2026-06-06'), status: InvoiceStatus.PAID, paid: 280, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 8 }] },
+    { num: 6, custId: c1b.id, date: new Date('2026-06-13'), status: InvoiceStatus.PAID, paid: 220, items: [{ name: 'سينابون', unitPrice: 55, quantity: 4 }] },
+    { num: 7, custId: c1c.id, date: new Date('2026-06-19'), status: InvoiceStatus.PAID, paid: 175, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 5 }] },
+    { num: 8, custId: c1d.id, date: new Date('2026-06-25'), status: InvoiceStatus.PAID, paid: 165, items: [{ name: 'سينابون', unitPrice: 55, quantity: 3 }] },
+    // May 2026 — مبيعات: 730 | مشتريات: 131 | مصاريف: 1,025 → خسارة −426
+    { num: 9, custId: c1a.id, date: new Date('2026-05-08'), status: InvoiceStatus.PAID, paid: 210, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 6 }] },
+    { num: 10, custId: c1c.id, date: new Date('2026-05-15'), status: InvoiceStatus.PAID, paid: 140, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 4 }] },
+    { num: 11, custId: c1b.id, date: new Date('2026-05-22'), status: InvoiceStatus.PAID, paid: 165, items: [{ name: 'سينابون', unitPrice: 55, quantity: 3 }] },
+    { num: 12, custId: c1d.id, date: new Date('2026-05-28'), status: InvoiceStatus.PAID, paid: 215, items: [{ name: 'كبسة دجاج', unitPrice: 35, quantity: 3 }, { name: 'سينابون', unitPrice: 55, quantity: 2 }] },
+  ]);
+
+  await mkExpenses(b1.id, [
+    // July — إجمالي: 1,130 ر.س
+    { date: new Date('2026-07-01'), category: ExpenseCategory.RENT, amount: 600, note: 'إيجار المطبخ — الرياض' },
+    { date: new Date('2026-07-06'), category: ExpenseCategory.UTILITIES, amount: 180, note: 'فاتورة الكهرباء والغاز' },
+    { date: new Date('2026-07-12'), category: ExpenseCategory.PACKAGING, amount: 100, note: 'مستلزمات تغليف' },
+    { date: new Date('2026-07-20'), category: ExpenseCategory.DELIVERY, amount: 120, note: 'توصيل طلبيات' },
+    { date: new Date('2026-07-25'), category: ExpenseCategory.OTHER, amount: 130, note: 'مستلزمات متنوعة' },
+    // June — إجمالي: 950 ر.س
+    { date: new Date('2026-06-01'), category: ExpenseCategory.RENT, amount: 600 },
+    { date: new Date('2026-06-05'), category: ExpenseCategory.UTILITIES, amount: 170 },
+    { date: new Date('2026-06-18'), category: ExpenseCategory.PACKAGING, amount: 80 },
+    { date: new Date('2026-06-22'), category: ExpenseCategory.DELIVERY, amount: 100 },
+    // May — إجمالي: 1,025 ر.س
+    { date: new Date('2026-05-01'), category: ExpenseCategory.RENT, amount: 600 },
+    { date: new Date('2026-05-08'), category: ExpenseCategory.UTILITIES, amount: 165 },
+    { date: new Date('2026-05-15'), category: ExpenseCategory.MARKETING, amount: 200, note: 'إعلانات تويتر وسناب' },
+    { date: new Date('2026-05-20'), category: ExpenseCategory.PACKAGING, amount: 60 },
+  ]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Business 2 — مخبزة بيت الخبز — جدة — +966500000002

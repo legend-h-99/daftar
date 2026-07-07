@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Tajawal, Geist } from "next/font/google";
+import { Tajawal } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -31,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={cn("font-sans", geist.variable)}>
+    <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

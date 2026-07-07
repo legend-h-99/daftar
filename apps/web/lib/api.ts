@@ -1,7 +1,16 @@
 import { clearToken, getToken } from "./auth";
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+// In the browser, derive the API host from the page hostname so the app works
+// from any device on the local network (not just localhost).
+function resolveApiUrl(): string {
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001/api`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+}
+
+export const API_URL = resolveApiUrl();
 
 export class ApiError extends Error {
   status: number;

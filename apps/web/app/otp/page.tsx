@@ -16,7 +16,15 @@ export default function OtpPage() {
   const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(""));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(60);
+  const [resending, setResending] = useState(false);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const t = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCountdown]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("daftar_otp_flow");
@@ -59,6 +67,25 @@ export default function OtpPage() {
   function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Backspace" && !digits[index] && index > 0) {
       inputsRef.current[index - 1]?.focus();
+    }
+  }
+
+  async function handleResend() {
+    if (!phone || resendCountdown > 0 || resending) return;
+    setResending(true);
+    setError(null);
+    try {
+      const res = await apiPost<{ sent: boolean; devCode?: string }>(
+        "/auth/otp/request",
+        { phone },
+      );
+      if (res.devCode) setDevCode(res.devCode);
+      setResendCountdown(60);
+      setDigits(Array(CODE_LENGTH).fill(""));
+    } catch {
+      setError("تعذر إعادة الإرسال، حاول مرة أخرى");
+    } finally {
+      setResending(false);
     }
   }
 
@@ -172,6 +199,24 @@ export default function OtpPage() {
             {loading ? "جاري التأكيد..." : "تأكيد"}
           </button>
         </form>
+
+        <div className="mt-5 text-center">
+          {resendCountdown > 0 ? (
+            <p className="text-sm text-gray-400">
+              لم يصلك الرمز؟ أعد المحاولة بعد{" "}
+              <span className="font-bold text-gray-600">{resendCountdown}</span> ث
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="text-sm font-semibold text-brand-700 disabled:opacity-60"
+            >
+              {resending ? "جاري الإرسال..." : "أعد إرسال الرمز"}
+            </button>
+          )}
+        </div>
       </div>
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
@@ -10,7 +10,7 @@ import {
   formatMonthLabel,
   percentOf,
 } from "@/lib/format";
-import { DashboardSummary } from "@/lib/types";
+import { DashboardSummary, Expense, EXPENSE_CATEGORY_LABELS } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import CostBar from "@/components/reports/CostBar";
@@ -27,6 +27,7 @@ export default function ReportsPage() {
   const [month, setMonth] = useState(currentMonthStr());
   const [retryKey, setRetryKey] = useState(0);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,8 +38,17 @@ export default function ReportsPage() {
     setLoading(true);
     setError(null);
     setSummary(null);
-    apiGet<DashboardSummary>(`/dashboard/summary?month=${month}`)
-      .then((data) => { if (!cancelled) setSummary(data); })
+    setExpenses([]);
+    Promise.all([
+      apiGet<DashboardSummary>(`/dashboard/summary?month=${month}`),
+      apiGet<Expense[]>(`/expenses?month=${month}`),
+    ])
+      .then(([s, e]) => {
+        if (!cancelled) {
+          setSummary(s);
+          setExpenses(e);
+        }
+      })
       .catch((err) => {
         if (!cancelled)
           setError(err instanceof ApiError ? err.message : "تعذر تحميل البيانات");
@@ -46,6 +56,22 @@ export default function ReportsPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [month, retryKey]);
+
+  const expenseByCategory = useMemo(() => {
+    if (!expenses.length) return [];
+    const map = new Map<string, number>();
+    for (const e of expenses) {
+      map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
+    }
+    const total = expenses.reduce((s, e) => s + e.amount, 0);
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, amount]) => ({
+        category: cat as keyof typeof EXPENSE_CATEGORY_LABELS,
+        amount,
+        pct: total > 0 ? Math.round((amount / total) * 100) : 0,
+      }));
+  }, [expenses]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -142,6 +168,38 @@ export default function ReportsPage() {
               </div>
 
               <ProfitLossStatement summary={summary} />
+
+              {/* Expense breakdown by category */}
+              {expenseByCategory.length > 0 && (
+                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    تفصيل المصاريف
+                  </h2>
+                  <div className="flex flex-col gap-2.5">
+                    {expenseByCategory.map(({ category, amount, pct }) => (
+                      <div key={category}>
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-700">
+                            {EXPENSE_CATEGORY_LABELS[category]}
+                          </span>
+                          <span className="font-semibold text-gray-900">
+                            {formatSAR(amount)}
+                            <span className="mr-1.5 text-xs font-normal text-gray-400">
+                              {pct}%
+                            </span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className="h-full rounded-full bg-brand-600 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <ReportQuickLinks />
             </div>

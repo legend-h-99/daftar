@@ -57,6 +57,17 @@ export function currentMonthStr(): string {
   return `${now.getFullYear()}-${month}`;
 }
 
+export function shiftMonth(month: string, delta: number): string {
+  const [year, m] = month.split("-").map(Number);
+  const d = new Date(year, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function toMonthStr(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 /**
  * Normalizes a Saudi phone number to international format without the plus,
  * e.g. "0512345678" => "966512345678". Used for wa.me links.

@@ -26,9 +26,11 @@ async function bootstrap() {
 
   app.useGlobalFilters(new PrismaExceptionFilter());
 
-  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+  const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors({
-    origin: corsOrigin.split(',').map((origin) => origin.trim()),
+    // In dev (no CORS_ORIGIN set) reflect any origin so LAN devices can connect.
+    // In production, set CORS_ORIGIN to the exact frontend URL(s), comma-separated.
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : true,
     credentials: true,
   });
 

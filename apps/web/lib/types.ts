@@ -179,6 +179,7 @@ export interface Invoice {
   total: number;
   status: InvoiceStatus;
   paidAmount?: number | null;
+  issueDate?: string | null;
   dueDate?: string | null;
   notes?: string | null;
   createdAt?: string;

@@ -31,7 +31,7 @@ export default function EmptyState({
       {actionLabel && actionHref && (
         <Link
           href={actionHref}
-          className="mt-2 rounded-xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white active:bg-brand-800"
+          className="mt-2 rounded-2xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white active:bg-brand-800"
         >
           {actionLabel}
         </Link>

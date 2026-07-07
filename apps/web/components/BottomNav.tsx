@@ -19,11 +19,15 @@ export default function BottomNav() {
     <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {TABS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const active =
+            pathname === href ||
+            pathname.startsWith(`${href}/`) ||
+            (href === "/inventory" && pathname.startsWith("/products"));
           return (
             <Link
               key={href}
               href={href}
+              aria-current={active ? "page" : undefined}
               className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
             >
               <Icon

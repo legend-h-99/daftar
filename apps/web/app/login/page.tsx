@@ -9,6 +9,13 @@ import { fieldClass } from "@/components/ui/form-field";
 
 const PHONE_REGEX = /^05\d{8}$/;
 
+const DEMO_STORES = [
+  { phone: "0500000001", name: "مطبخ أم سلطان", city: "الرياض" },
+  { phone: "0500000002", name: "مخبزة بيت الخبز", city: "جدة" },
+  { phone: "0500000003", name: "حلويات أم يوسف", city: "مكة" },
+  { phone: "0500000004", name: "ورشة العود والبخور", city: "الدمام" },
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
@@ -47,18 +54,19 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col justify-center bg-white px-6 py-12">
+    <main className="flex min-h-screen flex-col justify-center bg-[#f7f8f7] px-6 py-12">
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-10 flex flex-col items-center gap-3 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-700 text-3xl font-extrabold text-white">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-700 text-3xl font-extrabold text-white">
             د
           </span>
           <h1 className="text-2xl font-extrabold text-gray-900">دفتر</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600">
             سجّل دخولك برقم جوالك وتابع حسابات محلك بكل سهولة
           </p>
         </div>
 
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
             <label
@@ -99,6 +107,40 @@ export default function LoginPage() {
             {loading ? "جاري الإرسال..." : "إرسال رمز التحقق"}
           </button>
         </form>
+
+        {/* Demo accounts */}
+        <div className="mt-8">
+          <p className="mb-3 text-center text-xs font-semibold text-gray-500">
+            حسابات تجريبية
+          </p>
+          <div className="flex flex-col gap-2">
+            {DEMO_STORES.map((store) => (
+              <button
+                key={store.phone}
+                type="button"
+                onClick={() => setPhone(store.phone)}
+                className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-right transition active:bg-gray-100"
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-gray-800">
+                    {store.name}
+                  </span>
+                  <span className="text-xs text-gray-400">{store.city}</span>
+                </div>
+                <span
+                  dir="ltr"
+                  className="text-sm font-mono font-medium text-brand-700"
+                >
+                  {store.phone}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-center text-xs text-gray-400">
+            رمز التحقق يظهر تلقائياً في الوضع التجريبي
+          </p>
+        </div>
+        </div>
       </div>
     </main>
   );
