@@ -1,4 +1,4 @@
-import { randomInt } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -140,6 +140,23 @@ export class AuthService {
   }
 
   signToken(payload: JwtPayload): string {
-    return this.jwtService.sign(payload, { expiresIn: '30d' });
+    return this.jwtService.sign(payload, {
+      expiresIn: '30d',
+      jwtid: randomUUID(),
+    });
+  }
+
+  async logout(rawToken: string): Promise<void> {
+    const payload = this.jwtService.decode(rawToken) as JwtPayload & { exp?: number };
+    const jti = payload?.jti;
+    if (!jti) return;
+    const expiresAt = payload.exp
+      ? new Date(payload.exp * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await this.prisma.tokenBlacklist.upsert({
+      where: { jti },
+      update: {},
+      create: { jti, expiresAt },
+    });
   }
 }

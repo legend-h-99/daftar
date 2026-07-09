@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { clearToken } from "@/lib/auth";
+import { apiPost } from "@/lib/api";
 
 interface TopBarProps {
   businessName?: string | null;
@@ -11,9 +12,15 @@ interface TopBarProps {
 export default function TopBar({ businessName }: TopBarProps) {
   const router = useRouter();
 
-  function handleSignOut() {
-    clearToken();
-    router.replace("/login");
+  async function handleSignOut() {
+    try {
+      await apiPost('/auth/logout', {});
+    } catch {
+      // If request fails (network error, expired token), still sign out locally.
+    } finally {
+      clearToken();
+      router.replace("/login");
+    }
   }
 
   return (

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -29,5 +30,14 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: CurrentUserData) {
     return this.authService.me(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  async logout(@Req() req: Request) {
+    const auth = req.headers.authorization;
+    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (token) await this.authService.logout(token);
+    return { loggedOut: true };
   }
 }

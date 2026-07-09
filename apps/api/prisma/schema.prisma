@@ -276,3 +276,11 @@ model Expense {
 
   @@index([businessId])
 }
+
+model TokenBlacklist {
+  jti       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
