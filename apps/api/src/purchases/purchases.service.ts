@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { OCR_PROVIDER, OcrProvider } from './ocr/ocr.provider';
+import { getMonthRange } from '../common/utils/month-range';
+import { FindPurchasesQueryDto } from './dto/find-purchases-query.dto';
 
 const MAX_NUMBER_ASSIGN_RETRIES = 5;
 
@@ -178,9 +180,13 @@ export class PurchasesService {
     throw lastError;
   }
 
-  findAll(businessId: string) {
+  findAll(businessId: string, query: FindPurchasesQueryDto = {}) {
+    const range = query.month ? getMonthRange(query.month) : undefined;
     return this.prisma.purchase.findMany({
-      where: { businessId },
+      where: {
+        businessId,
+        ...(range && { date: { gte: range.start, lt: range.end } }),
+      },
       include: { supplier: true, items: true },
       orderBy: { number: 'desc' },
     });

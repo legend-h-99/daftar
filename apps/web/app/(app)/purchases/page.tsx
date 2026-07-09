@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Camera, ChevronLeft, ChevronRight, Plus, ShoppingCart } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth, toMonthStr } from "@/lib/format";
+import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,18 +19,16 @@ export default function PurchasesPage() {
   const isCurrentMonth = month === currentMonthStr();
 
   useEffect(() => {
-    apiGet<Purchase[]>("/purchases")
+    setPurchases(null);
+    apiGet<Purchase[]>(`/purchases?month=${month}`)
       .then(setPurchases)
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "تعذر تحميل المشتريات"),
       );
     apiGet<PurchasesSummary>("/purchases/summary").then(setSummary).catch(() => {});
-  }, []);
+  }, [month]);
 
-  const filtered = useMemo(
-    () => purchases?.filter((p) => p.date && toMonthStr(p.date) === month) ?? null,
-    [purchases, month],
-  );
+  const filtered = purchases;
 
   const monthTotal = useMemo(
     () => (filtered ?? []).reduce((s, p) => s + p.total, 0),

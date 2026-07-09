@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileText, Plus } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth, toMonthStr } from "@/lib/format";
+import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import EmptyState from "@/components/EmptyState";
 import StatusBadge from "@/components/StatusBadge";
@@ -30,24 +30,22 @@ export default function InvoicesPage() {
   useEffect(() => {
     let cancelled = false;
     setInvoices(null);
-    apiGet<Invoice[]>("/invoices")
+    apiGet<Invoice[]>(`/invoices?month=${month}`)
       .then((data) => { if (!cancelled) setInvoices(data); })
       .catch((err) => {
         if (!cancelled)
           setError(err instanceof ApiError ? err.message : "تعذر تحميل الفواتير");
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [month]);
 
   const filtered = useMemo(() => {
     if (!invoices) return null;
     return invoices.filter((inv) => {
-      const dateStr = inv.issueDate || inv.createdAt;
-      const matchMonth = !dateStr || toMonthStr(dateStr) === month;
       const matchTab = tab === "ALL" || inv.status === tab;
-      return matchMonth && matchTab;
+      return matchTab;
     });
-  }, [invoices, month, tab]);
+  }, [invoices, tab]);
 
   const monthTotal = useMemo(
     () => (filtered ?? []).reduce((s, inv) => s + inv.total, 0),
