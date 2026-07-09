@@ -28,6 +28,17 @@ function buildPrismaMock(overrides: Partial<{
           invoiceFindManyCallCount === 1 ? paidInvoices : unpaidInvoices,
         );
       }),
+      aggregate: jest.fn().mockResolvedValue({
+        _count: { id: unpaidInvoices.length },
+        _sum: {
+          total: unpaidInvoices.length > 0
+            ? unpaidInvoices.reduce((s: number, i: any) => s + (i.total ?? 0), 0)
+            : null,
+          paidAmount: unpaidInvoices.length > 0
+            ? unpaidInvoices.reduce((s: number, i: any) => s + (i.paidAmount ?? 0), 0)
+            : null,
+        },
+      }),
     },
     purchase: {
       findMany: jest.fn().mockResolvedValue(purchases),
