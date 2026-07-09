@@ -231,5 +231,6 @@ export interface DashboardSummary {
   unpaidInvoices: UnpaidInvoiceSummary[];
   unpaidInvoicesCount: number;
   unpaidInvoicesTotal: number;
+  unpaidInvoicesLimitedTo: number;
   lowStock: LowStockMaterial[];
 }

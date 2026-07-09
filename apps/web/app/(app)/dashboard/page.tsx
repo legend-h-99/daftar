@@ -236,6 +236,13 @@ export default function DashboardPage() {
                   ))}
                 </ul>
               )}
+              {summary.unpaidInvoicesCount > summary.unpaidInvoicesLimitedTo && (
+                <div className="mt-2 text-center">
+                  <Link href="/invoices" className="text-xs text-brand-700 underline">
+                    عرض جميع الفواتير ({summary.unpaidInvoicesCount})
+                  </Link>
+                </div>
+              )}
             </section>
           </div>
         )}
