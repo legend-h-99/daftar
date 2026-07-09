@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
+import { CleanupModule } from './cleanup/cleanup.module';
 import { AuthModule } from './auth/auth.module';
 import { BusinessModule } from './business/business.module';
 import { MaterialsModule } from './materials/materials.module';
@@ -21,6 +23,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     // Global rate limit (per IP): generous default for normal app traffic;
     // auth and OCR-scan endpoints carry stricter @Throttle overrides.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     BusinessModule,
@@ -33,6 +36,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     SuppliersModule,
     InventoryModule,
     PurchasesModule,
+    CleanupModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

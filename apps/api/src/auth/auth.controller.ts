@@ -32,6 +32,7 @@ export class AuthController {
     return this.authService.me(user.userId);
   }
 
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@Req() req: Request) {
