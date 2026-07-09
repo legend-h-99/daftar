@@ -12,7 +12,7 @@ and update your row when done.
 |------|-------|----------|--------|------------|--------|
 | [001](001-test-baseline.md) | Establish test baseline for NestJS API | P1 | L | — | DONE |
 | [002](002-security-hardening.md) | Security hardening — CORS, headers, AUTH_DEV_OTP gate | P1 | S | — | DONE |
-| [003](003-dashboard-query-cap.md) | Cap dashboard unpaid-invoices query | P2 | S | — | TODO |
+| [003](003-dashboard-query-cap.md) | Cap dashboard unpaid-invoices query | P2 | S | — | DONE |
 | [004](004-server-side-month-filter.md) | Move month filtering server-side for invoices and purchases | P2 | M | — | DONE |
 | [005](005-jwt-revocation.md) | JWT revocation via token blacklist and logout endpoint | P2 | M | — | DONE |
 | [006](006-blacklist-cleanup-and-logout-ratelimit.md) | TokenBlacklist cleanup cron + logout rate limit | P1 | S | 005 | DONE |
