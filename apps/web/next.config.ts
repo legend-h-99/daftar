@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
   // dev server, which uses the default .next. Both can run at once.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
+    const isDev = process.env.NODE_ENV !== "production";
+    const scriptSrc = isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      : "script-src 'self' 'unsafe-inline'";
+
     return [
       {
         source: "/(.*)",
@@ -24,7 +29,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              scriptSrc,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self'",
