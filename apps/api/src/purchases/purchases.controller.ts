@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PurchasesService } from './purchases.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { ScanInvoiceDto } from './dto/scan-invoice.dto';
+import { FindPurchasesQueryDto } from './dto/find-purchases-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { BusinessGuard } from '../common/guards/business.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -26,8 +27,8 @@ export class PurchasesController {
   }
 
   @Get()
-  findAll(@CurrentUser() user: CurrentUserData) {
-    return this.purchasesService.findAll(user.businessId as string);
+  findAll(@CurrentUser() user: CurrentUserData, @Query() query: FindPurchasesQueryDto) {
+    return this.purchasesService.findAll(user.businessId as string, query);
   }
 
   @Get('summary')

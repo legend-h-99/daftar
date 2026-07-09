@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { FindInvoicesQueryDto } from './dto/find-invoices-query.dto';
+import { getMonthRange } from '../common/utils/month-range';
 
 const VAT_RATE = 0.15;
 const MAX_NUMBER_ASSIGN_RETRIES = 5;
@@ -145,8 +146,13 @@ export class InvoicesService {
   }
 
   findAll(businessId: string, query: FindInvoicesQueryDto) {
+    const range = query.month ? getMonthRange(query.month) : undefined;
     return this.prisma.invoice.findMany({
-      where: { businessId, status: query.status },
+      where: {
+        businessId,
+        status: query.status,
+        ...(range && { issueDate: { gte: range.start, lt: range.end } }),
+      },
       include: { customer: true },
       orderBy: { number: 'desc' },
     });
