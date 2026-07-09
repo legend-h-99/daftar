@@ -27,9 +27,16 @@ async function bootstrap() {
   app.useGlobalFilters(new PrismaExceptionFilter());
 
   const corsOrigin = process.env.CORS_ORIGIN;
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  if (!corsOrigin && !isDev) {
+    throw new Error(
+      'CORS_ORIGIN environment variable must be set in production. ' +
+      'Example: CORS_ORIGIN=https://app.daftar.sa',
+    );
+  }
+
   app.enableCors({
-    // In dev (no CORS_ORIGIN set) reflect any origin so LAN devices can connect.
-    // In production, set CORS_ORIGIN to the exact frontend URL(s), comma-separated.
     origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : true,
     credentials: true,
   });
