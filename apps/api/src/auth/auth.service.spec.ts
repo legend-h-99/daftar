@@ -67,9 +67,11 @@ describe('AuthService', () => {
   });
 
   it('requestOtp with AUTH_DEV_OTP=true returns devCode', async () => {
-    config.get = jest.fn().mockImplementation((key: string) =>
-      key === 'AUTH_DEV_OTP' ? 'true' : undefined,
-    );
+    config.get = jest.fn().mockImplementation((key: string) => {
+      if (key === 'AUTH_DEV_OTP') return 'true';
+      if (key === 'NODE_ENV') return 'development';
+      return undefined;
+    });
     // Rebuild module with devOtp enabled
     const module = await Test.createTestingModule({
       providers: [
@@ -127,5 +129,58 @@ describe('AuthService', () => {
     // not on a separate pre-check. We submit a wrong code so the mismatch branch runs.
     prisma.otpCode.update = jest.fn().mockResolvedValue({ ...mockOtp, attempts: 5 });
     await expect(service.verifyOtp('0500000001', 'wrong-code')).rejects.toThrow(BadRequestException);
+  });
+
+  // AUTH_DEV_OTP allowlist guard (plan 008)
+  it('should throw if AUTH_DEV_OTP=true and NODE_ENV=production', async () => {
+    const cfg = {
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === 'AUTH_DEV_OTP') return 'true';
+        if (key === 'NODE_ENV') return 'production';
+        return undefined;
+      }),
+    };
+    const mockPrisma = {
+      otpCode: { updateMany: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      user: { upsert: jest.fn() },
+    };
+    const mockJwt = { sign: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).toThrow(
+      'AUTH_DEV_OTP is only allowed when NODE_ENV is "development" or "test"',
+    );
+  });
+
+  it('should throw if AUTH_DEV_OTP=true and NODE_ENV=staging', async () => {
+    const cfg = {
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === 'AUTH_DEV_OTP') return 'true';
+        if (key === 'NODE_ENV') return 'staging';
+        return undefined;
+      }),
+    };
+    const mockPrisma = {
+      otpCode: { updateMany: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      user: { upsert: jest.fn() },
+    };
+    const mockJwt = { sign: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).toThrow(
+      'AUTH_DEV_OTP is only allowed when NODE_ENV is "development" or "test"',
+    );
+  });
+
+  it('should NOT throw if AUTH_DEV_OTP=true and NODE_ENV=development', async () => {
+    const cfg = {
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === 'AUTH_DEV_OTP') return 'true';
+        if (key === 'NODE_ENV') return 'development';
+        return undefined;
+      }),
+    };
+    const mockPrisma = {
+      otpCode: { updateMany: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      user: { upsert: jest.fn() },
+    };
+    const mockJwt = { sign: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).not.toThrow();
   });
 });

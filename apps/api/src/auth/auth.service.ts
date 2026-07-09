@@ -27,10 +27,11 @@ export class AuthService {
   ) {
     this.devOtpEnabled = configService.get<string>('AUTH_DEV_OTP') === 'true';
 
-    if (this.devOtpEnabled && configService.get<string>('NODE_ENV') === 'production') {
+    const allowedEnvs = new Set(['development', 'test']);
+    if (this.devOtpEnabled && !allowedEnvs.has(configService.get<string>('NODE_ENV') ?? '')) {
       throw new Error(
-        'AUTH_DEV_OTP must not be enabled in production. ' +
-        'Remove it from your environment or set it to false.',
+        'AUTH_DEV_OTP is only allowed when NODE_ENV is "development" or "test". ' +
+        'Remove AUTH_DEV_OTP or set it to false in this environment.',
       );
     }
   }
