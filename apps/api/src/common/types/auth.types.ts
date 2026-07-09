@@ -3,6 +3,7 @@ export interface JwtPayload {
   sub: string; // userId
   phone: string;
   businessId: string | null;
+  jti?: string;   // present on tokens issued after plan 005
 }
 
 /** Shape exposed to controllers via the @CurrentUser() decorator. */
