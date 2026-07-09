@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Tajawal } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -13,6 +14,14 @@ const tajawal = Tajawal({
 export const metadata: Metadata = {
   title: "دفتر - إدارة حسابات محلك بسهولة",
   description: "دفتر يساعدك تتابع مبيعاتك ومصاريفك وفواتيرك بكل سهولة، خاص بأصحاب المشاريع الصغيرة.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "دفتر",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export const viewport: Viewport = {
@@ -30,7 +39,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <ServiceWorkerRegistration />
+        {children}
+      </body>
     </html>
   );
 }
