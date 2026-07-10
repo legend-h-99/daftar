@@ -2,10 +2,16 @@ import { clearToken, getToken } from "./auth";
 
 // In the browser, derive the API host from the page hostname so the app works
 // from any device on the local network (not just localhost).
+// On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:3001/api`;
+    const isLocal =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+    if (isLocal) return `${protocol}//${hostname}:3001/api`;
+    return process.env.NEXT_PUBLIC_API_URL || `${protocol}//${hostname}:3001/api`;
   }
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 }

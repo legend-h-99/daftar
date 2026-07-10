@@ -29,10 +29,10 @@ function shiftMonth(month: string, delta: number): string {
 }
 
 export default function DashboardPage() {
-  const [month, setMonth] = useState(currentMonthStr());
+  const [month, setMonth]     = useState(currentMonthStr());
   const [retryKey, setRetryKey] = useState(0);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const isCurrentMonth = month === currentMonthStr();
@@ -43,24 +43,18 @@ export default function DashboardPage() {
     setError(null);
     setSummary(null);
     apiGet<DashboardSummary>(`/dashboard/summary?month=${month}`)
-      .then((data) => {
-        if (!cancelled) setSummary(data);
-      })
+      .then((data) => { if (!cancelled) setSummary(data); })
       .catch((err) => {
-        if (!cancelled) {
+        if (!cancelled)
           setError(err instanceof ApiError ? err.message : "تعذر تحميل البيانات");
-        }
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [month, retryKey]);
 
   return (
     <div className="flex flex-col gap-6">
+
       {/* Header + month navigation */}
       <div className="flex items-center justify-between">
         <div>
@@ -88,7 +82,7 @@ export default function DashboardPage() {
         </div>
         <Link
           href="/reports"
-          className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-600 active:bg-gray-200"
+          className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-600 transition active:bg-gray-200"
           aria-label="عرض التقرير الكامل"
         >
           <BarChart2 className="h-4 w-4" aria-hidden="true" />
@@ -97,12 +91,10 @@ export default function DashboardPage() {
       </div>
 
       <div aria-live="polite">
+
+        {/* Skeleton */}
         {loading && (
-          <div
-            role="status"
-            aria-label="جاري تحميل البيانات"
-            className="flex flex-col gap-3"
-          >
+          <div role="status" aria-label="جاري تحميل البيانات" className="flex flex-col gap-3">
             <Skeleton className="h-24 rounded-2xl" />
             <div className="flex gap-3">
               <Skeleton className="h-24 flex-1 rounded-2xl" />
@@ -112,9 +104,10 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Error */}
         {error && !loading && (
-          <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl gap-2">
-            <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
+          <Alert variant="destructive" className="animate-scale-in rounded-xl border-red-200 bg-red-50 gap-2">
+            <AlertDescription className="font-medium text-red-600">{error}</AlertDescription>
             <button
               onClick={() => setRetryKey((k) => k + 1)}
               className="text-xs font-semibold text-red-700 underline underline-offset-2"
@@ -124,40 +117,54 @@ export default function DashboardPage() {
           </Alert>
         )}
 
+        {/* Data */}
         {summary && !loading && (
           <div className="flex flex-col gap-4">
-            {/* Stats: sales full-width, purchases+expenses side-by-side, net profit hero */}
+
+            {/* Stat cards with staggered entrance */}
             <div className="flex flex-col gap-3">
               <StatCard
                 label="المبيعات"
                 value={formatSAR(summary.totalSales)}
+                rawValue={summary.totalSales}
+                formatter={formatSAR}
                 icon={TrendingUp}
                 tone="brand"
+                style={{ animationDelay: "0ms" }}
               />
               <div className="flex gap-3">
                 <div className="flex-1">
                   <StatCard
                     label="المشتريات"
                     value={formatSAR(summary.totalPurchases)}
+                    rawValue={summary.totalPurchases}
+                    formatter={formatSAR}
                     icon={ShoppingCart}
                     tone="amber"
+                    style={{ animationDelay: "80ms" }}
                   />
                 </div>
                 <div className="flex-1">
                   <StatCard
                     label="المصاريف"
                     value={formatSAR(summary.totalExpenses)}
+                    rawValue={summary.totalExpenses}
+                    formatter={formatSAR}
                     icon={TrendingDown}
                     tone="red"
+                    style={{ animationDelay: "80ms" }}
                   />
                 </div>
               </div>
               <StatCard
                 label="صافي الربح"
                 value={formatSAR(summary.netProfit)}
+                rawValue={summary.netProfit}
+                formatter={formatSAR}
                 icon={PiggyBank}
                 tone={summary.netProfit >= 0 ? "brand" : "red"}
                 hero
+                style={{ animationDelay: "160ms" }}
               />
             </div>
 
@@ -165,7 +172,8 @@ export default function DashboardPage() {
             {summary.lowStock && summary.lowStock.length > 0 && (
               <Link
                 href="/inventory"
-                className="flex flex-col gap-2 rounded-2xl bg-amber-50 px-4 py-3.5 active:bg-amber-100"
+                className="animate-fade-up flex flex-col gap-2 rounded-2xl bg-amber-50 px-4 py-3.5 transition active:bg-amber-100"
+                style={{ animationDelay: "240ms" }}
               >
                 <span className="flex items-center gap-1.5 text-sm font-bold text-amber-800">
                   <Boxes className="h-4 w-4" aria-hidden="true" />
@@ -174,10 +182,7 @@ export default function DashboardPage() {
                 <span className="text-xs text-amber-700">
                   {summary.lowStock
                     .slice(0, 3)
-                    .map(
-                      (m) =>
-                        `${m.name} (${roundQty(m.stockQty, 2)} ${UNIT_LABELS[m.unit]})`,
-                    )
+                    .map((m) => `${m.name} (${roundQty(m.stockQty, 2)} ${UNIT_LABELS[m.unit]})`)
                     .join(" · ")}
                   {summary.lowStock.length > 3
                     ? ` و${summary.lowStock.length - 3} أصناف أخرى`
@@ -187,7 +192,10 @@ export default function DashboardPage() {
             )}
 
             {/* Unpaid invoices */}
-            <section>
+            <section
+              className="animate-fade-up"
+              style={{ animationDelay: "280ms" }}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="flex items-center gap-1.5 text-base font-bold text-gray-900">
                   <Users className="h-4 w-4 text-gray-500" aria-hidden="true" />
@@ -208,12 +216,12 @@ export default function DashboardPage() {
                 />
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {summary.unpaidInvoices.map((inv) => (
-                    <li key={inv.id}>
+                  {summary.unpaidInvoices.map((inv, i) => (
+                    <li key={inv.id} className="animate-fade-up" style={{ animationDelay: `${320 + i * 50}ms` }}>
                       <Link
                         href={`/invoices/${inv.id}`}
                         aria-label={`فاتورة ${inv.number}، ${inv.customerName || "زبون بدون اسم"}، ${formatSAR(inv.total)}`}
-                        className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
+                        className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm transition active:bg-gray-50"
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
                           <span className="truncate font-semibold text-gray-900">
@@ -236,6 +244,7 @@ export default function DashboardPage() {
                   ))}
                 </ul>
               )}
+
               {summary.unpaidInvoicesCount > summary.unpaidInvoicesLimitedTo && (
                 <div className="mt-2 text-center">
                   <Link href="/invoices" className="text-xs text-brand-700 underline">

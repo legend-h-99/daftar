@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
     const scriptSrc = isDev
       ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
       : "script-src 'self' 'unsafe-inline'";
+    // In dev, allow the API on any local IP or HTTPS origin (for mobile testing via tunnel).
+    // In production, restrict to the known API origin.
+    const connectSrc = isDev
+      ? "connect-src 'self' http://*:3001 https://* https://wa.me"
+      : `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL ?? ""} https://wa.me`;
 
     return [
       {
@@ -33,7 +38,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self'",
-              "connect-src 'self' http://localhost:3001 https://wa.me",
+              connectSrc,
               "frame-ancestors 'none'",
             ].join("; "),
           },

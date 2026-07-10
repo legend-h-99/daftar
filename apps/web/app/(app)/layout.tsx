@@ -42,9 +42,15 @@ export default function AppLayout({
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f7f8f7]">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-700 text-xl font-extrabold text-white">
-          د
-        </span>
+        <div className="relative flex items-center justify-center">
+          {/* Pulsing rings */}
+          <span aria-hidden="true" className="absolute h-16 w-16 animate-pulse-ring rounded-full bg-brand-200" />
+          <span aria-hidden="true" className="absolute h-16 w-16 animate-pulse-ring rounded-full bg-brand-200" style={{ animationDelay: "0.8s" }} />
+          {/* Logo */}
+          <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-700 text-xl font-extrabold text-white">
+            د
+          </span>
+        </div>
       </div>
     );
   }
