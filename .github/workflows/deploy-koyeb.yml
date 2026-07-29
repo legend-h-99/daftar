@@ -1,0 +1,52 @@
+name: Deploy to Koyeb
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile.koyeb
+      - apps/api/**
+      - apps/web/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Koyeb CLI
+        uses: koyeb-community/koyeb-actions@v2
+        with:
+          api_token: "${{ secrets.KOYEB_API_TOKEN }}"
+
+      - name: Create DATABASE_URL secret
+        uses: koyeb/action-git-deploy/secret@v1
+        with:
+          secret-name: DAFTAR_DATABASE_URL
+          secret-value: "${{ secrets.DATABASE_URL }}"
+
+      - name: Create JWT_SECRET secret
+        uses: koyeb/action-git-deploy/secret@v1
+        with:
+          secret-name: DAFTAR_JWT_SECRET
+          secret-value: "${{ secrets.JWT_SECRET }}"
+
+      - name: Deploy full stack app to Koyeb
+        uses: koyeb/action-git-deploy@v1
+        with:
+          app-name: daftar
+          service-name: web
+          git-url: github.com/legend-h-99/daftar
+          git-branch: main
+          git-builder: docker
+          git-docker-dockerfile: Dockerfile.koyeb
+          service-instance-type: free
+          service-ports: "3000:http"
+          service-routes: "/:3000"
+          service-checks: "3000:http:/login"
+          service-env: NODE_ENV=production,PORT=3000,DATABASE_URL=@DAFTAR_DATABASE_URL,JWT_SECRET=@DAFTAR_JWT_SECRET,CORS_ORIGIN=*,DEMO_AUTH_ENABLED=true,NEXT_PUBLIC_DEMO_LOGIN=true

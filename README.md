@@ -65,3 +65,20 @@ displays it on the OTP screen behind a "وضع تجريبي" badge.
   PDF text shaping.
 - No payment gateway — "مدفوعة" is a manual status toggle, not a real
   collection flow.
+
+## Free hosted deployment: Koyeb
+
+`Dockerfile.koyeb` runs both the Next.js web app and the NestJS API in one
+container, which fits Koyeb's single free web service model:
+
+- public web service: Next.js on port `3000`
+- internal API: NestJS on port `3001`
+- browser calls stay same-origin through `/api-proxy`
+
+Required GitHub Actions secrets:
+
+- `KOYEB_API_TOKEN`
+- `DATABASE_URL`
+- `JWT_SECRET`
+
+Then run the `Deploy to Koyeb` workflow from GitHub Actions.

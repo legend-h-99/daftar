@@ -1,0 +1,30 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV PORT=3000
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+
+RUN pnpm install --frozen-lockfile --filter api... --filter web...
+
+COPY apps/api apps/api
+COPY apps/web apps/web
+
+RUN pnpm --filter api prisma:generate
+RUN pnpm --filter api build
+RUN pnpm --filter web build
+
+EXPOSE 3000
+
+CMD ["sh", "-c", "pnpm --filter api exec prisma migrate deploy && PORT=3001 pnpm --filter api start:prod & pnpm --filter web exec next start -p ${PORT:-3000}"]
