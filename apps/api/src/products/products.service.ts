@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, RecipeItemType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationParams } from '../common/dto/pagination.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CalculateProductDto } from './dto/calculate-product.dto';
@@ -159,10 +160,12 @@ export class ProductsService {
     });
   }
 
-  findAll(businessId: string) {
+  findAll(businessId: string, pagination: PaginationParams) {
     return this.prisma.product.findMany({
       where: { businessId },
       orderBy: { createdAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.skip,
     });
   }
 

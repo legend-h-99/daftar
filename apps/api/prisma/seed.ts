@@ -651,10 +651,306 @@ async function main() {
     { date: new Date('2026-05-10'), category: ExpenseCategory.MARKETING, amount: 300 },
   ]);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Business 5 — خياطة الأناقة (خياطة منزلية فردية) — الرياض — +966500000005
+  // مبيعات صغيرة · النتيجة: ربح بسيط
+  // ═══════════════════════════════════════════════════════════════════════════
+  const phone5 = '+966500000005';
+  const b5 = await prisma.business.upsert({
+    where: { ownerPhone: phone5 },
+    update: {},
+    create: { name: 'خياطة الأناقة', ownerPhone: phone5, vatEnabled: false, city: 'الرياض' },
+  });
+  await prisma.user.upsert({
+    where: { phone: phone5 },
+    update: { businessId: b5.id },
+    create: { phone: phone5, name: 'أم ريان', businessId: b5.id },
+  });
+  await clearBusiness(b5.id);
+  const [s5a] = await Promise.all([
+    prisma.supplier.create({ data: { businessId: b5.id, name: 'محل الأقمشة والخيوط', phone: '0552345678' } }),
+  ]);
+  await prisma.material.createMany({
+    data: [
+      { businessId: b5.id, name: 'قماش عباية (متر)', unit: Unit.PIECE, purchasePrice: 18, purchaseQty: 10, unitPrice: 35, vatRate: 0, stockQty: 6, reorderLevel: 3 },
+      { businessId: b5.id, name: 'خيط بوليستر', unit: Unit.PIECE, purchasePrice: 2, purchaseQty: 20, unitPrice: 5, vatRate: 0, stockQty: 12 },
+      { businessId: b5.id, name: 'كيس تغليف عباية', unit: Unit.PIECE, purchasePrice: 1, purchaseQty: 30, unitPrice: 2, vatRate: 0, stockQty: 18 },
+    ],
+  });
+  const abayaRI: RI[] = [
+    { name: 'قماش عباية (متر)', unit: Unit.PIECE, unitPrice: 35, quantityUsed: 3, type: RecipeItemType.RAW },
+    { name: 'خيط بوليستر', unit: Unit.PIECE, unitPrice: 5, quantityUsed: 0.2, type: RecipeItemType.RAW },
+    { name: 'كيس تغليف عباية', unit: Unit.PIECE, unitPrice: 2, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  const tannoraRI: RI[] = [
+    { name: 'قماش عباية (متر)', unit: Unit.PIECE, unitPrice: 35, quantityUsed: 1.5, type: RecipeItemType.RAW },
+    { name: 'خيط بوليستر', unit: Unit.PIECE, unitPrice: 5, quantityUsed: 0.15, type: RecipeItemType.RAW },
+    { name: 'كيس تغليف عباية', unit: Unit.PIECE, unitPrice: 2, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  for (const [ri, name, cat, margin, overhead] of [
+    [abayaRI, 'عباية تفصيل', 'خياطة', 45, 25],
+    [tannoraRI, 'تنورة تفصيل', 'خياطة', 45, 15],
+  ] as [RI[], string, string, number, number][]) {
+    const costs = computeCosts(ri, overhead, margin);
+    await prisma.product.create({
+      data: {
+        businessId: b5.id, name, category: cat, overheadCost: overhead, profitMargin: margin, ...costs,
+        recipeItems: { create: ri.map((i) => ({ name: i.name, unit: i.unit, unitPrice: i.unitPrice, quantityUsed: i.quantityUsed, lineCost: r2(i.unitPrice * i.quantityUsed), type: i.type })) },
+      },
+    });
+  }
+  const [c5a, c5b, c5c] = await Promise.all([
+    prisma.customer.create({ data: { businessId: b5.id, name: 'نورة السبيعي', phone: '0502345678' } }),
+    prisma.customer.create({ data: { businessId: b5.id, name: 'هيا الدوسري', phone: '0512345678' } }),
+    prisma.customer.create({ data: { businessId: b5.id, name: 'ريم القرني', phone: '0532345678' } }),
+  ]);
+  await mkPurchases(b5.id, [
+    { num: 1, supplierId: s5a.id, date: new Date('2026-07-05'), items: [{ name: 'قماش عباية (متر)', unit: Unit.PIECE, quantity: 6, unitPrice: 18 }, { name: 'خيط بوليستر', unit: Unit.PIECE, quantity: 10, unitPrice: 2 }] },
+    { num: 2, supplierId: s5a.id, date: new Date('2026-06-06'), items: [{ name: 'قماش عباية (متر)', unit: Unit.PIECE, quantity: 4, unitPrice: 18 }] },
+  ]);
+  await mkInvoices(b5.id, [
+    // July — مدفوع 480 · مشتريات 128 · مصاريف 125 → ربح +227
+    { num: 1, custId: c5a.id, date: new Date('2026-07-08'), status: InvoiceStatus.PAID, paid: 360, items: [{ name: 'عباية تفصيل', unitPrice: 180, quantity: 2 }] },
+    { num: 2, custId: c5b.id, date: new Date('2026-07-16'), status: InvoiceStatus.PAID, paid: 120, items: [{ name: 'تنورة تفصيل', unitPrice: 120, quantity: 1 }] },
+    { num: 3, custId: c5c.id, date: new Date('2026-07-22'), dueDate: new Date('2026-08-05'), status: InvoiceStatus.UNPAID, items: [{ name: 'عباية تفصيل', unitPrice: 180, quantity: 1 }] },
+    // June — مدفوع 360
+    { num: 4, custId: c5a.id, date: new Date('2026-06-12'), status: InvoiceStatus.PAID, paid: 360, items: [{ name: 'عباية تفصيل', unitPrice: 180, quantity: 2 }] },
+  ]);
+  await mkExpenses(b5.id, [
+    { date: new Date('2026-07-03'), category: ExpenseCategory.MARKETING, amount: 60, note: 'إعلان انستقرام' },
+    { date: new Date('2026-07-12'), category: ExpenseCategory.DELIVERY, amount: 40, note: 'توصيل الطلبات' },
+    { date: new Date('2026-07-20'), category: ExpenseCategory.PACKAGING, amount: 25, note: 'أكياس تغليف' },
+    { date: new Date('2026-06-05'), category: ExpenseCategory.MARKETING, amount: 50 },
+  ]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Business 6 — صابون الطبيعة (صناعة صابون منزلية) — بريدة — +966500000006
+  // مبيعات صغيرة · النتيجة: تقريبًا تعادل
+  // ═══════════════════════════════════════════════════════════════════════════
+  const phone6 = '+966500000006';
+  const b6 = await prisma.business.upsert({
+    where: { ownerPhone: phone6 },
+    update: {},
+    create: { name: 'صابون الطبيعة', ownerPhone: phone6, vatEnabled: false, city: 'بريدة' },
+  });
+  await prisma.user.upsert({
+    where: { phone: phone6 },
+    update: { businessId: b6.id },
+    create: { phone: phone6, name: 'أم لؤي', businessId: b6.id },
+  });
+  await clearBusiness(b6.id);
+  const [s6a] = await Promise.all([
+    prisma.supplier.create({ data: { businessId: b6.id, name: 'مورد الزيوت الطبيعية', phone: '0553456789' } }),
+  ]);
+  await prisma.material.createMany({
+    data: [
+      { businessId: b6.id, name: 'زيت زيتون', unit: Unit.LITER, purchasePrice: 22, purchaseQty: 3, unitPrice: 40, vatRate: 0, stockQty: 2, reorderLevel: 1 },
+      { businessId: b6.id, name: 'صودا كاوية', unit: Unit.KG, purchasePrice: 12, purchaseQty: 2, unitPrice: 24, vatRate: 0, stockQty: 1 },
+      { businessId: b6.id, name: 'زيت لافندر عطري', unit: Unit.ML, purchasePrice: 0.4, purchaseQty: 100, unitPrice: 1, vatRate: 0, stockQty: 55 },
+      { businessId: b6.id, name: 'علبة كرتون للصابون', unit: Unit.PIECE, purchasePrice: 0.8, purchaseQty: 60, unitPrice: 2, vatRate: 0, stockQty: 30 },
+    ],
+  });
+  const soapRI: RI[] = [
+    { name: 'زيت زيتون', unit: Unit.LITER, unitPrice: 40, quantityUsed: 0.1, type: RecipeItemType.RAW },
+    { name: 'صودا كاوية', unit: Unit.KG, unitPrice: 24, quantityUsed: 0.02, type: RecipeItemType.RAW },
+    { name: 'زيت لافندر عطري', unit: Unit.ML, unitPrice: 1, quantityUsed: 3, type: RecipeItemType.RAW },
+    { name: 'علبة كرتون للصابون', unit: Unit.PIECE, unitPrice: 2, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  const scrubRI: RI[] = [
+    { name: 'زيت زيتون', unit: Unit.LITER, unitPrice: 40, quantityUsed: 0.06, type: RecipeItemType.RAW },
+    { name: 'صودا كاوية', unit: Unit.KG, unitPrice: 24, quantityUsed: 0.015, type: RecipeItemType.RAW },
+    { name: 'علبة كرتون للصابون', unit: Unit.PIECE, unitPrice: 2, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  for (const [ri, name, cat, margin, overhead] of [
+    [soapRI, 'صابونة اللافندر', 'عناية', 55, 1],
+    [scrubRI, 'مقشّر القهوة', 'عناية', 60, 1.5],
+  ] as [RI[], string, string, number, number][]) {
+    const costs = computeCosts(ri, overhead, margin);
+    await prisma.product.create({
+      data: {
+        businessId: b6.id, name, category: cat, overheadCost: overhead, profitMargin: margin, ...costs,
+        recipeItems: { create: ri.map((i) => ({ name: i.name, unit: i.unit, unitPrice: i.unitPrice, quantityUsed: i.quantityUsed, lineCost: r2(i.unitPrice * i.quantityUsed), type: i.type })) },
+      },
+    });
+  }
+  const [c6a, c6b, c6c] = await Promise.all([
+    prisma.customer.create({ data: { businessId: b6.id, name: 'ريم القحطاني', phone: '0503456780' } }),
+    prisma.customer.create({ data: { businessId: b6.id, name: 'هند العلي', phone: '0513456780' } }),
+    prisma.customer.create({ data: { businessId: b6.id, name: 'ركن عافية (بازار)', phone: '0523456780' } }),
+  ]);
+  await mkPurchases(b6.id, [
+    { num: 1, supplierId: s6a.id, date: new Date('2026-07-06'), items: [{ name: 'زيت زيتون', unit: Unit.LITER, quantity: 3, unitPrice: 22 }, { name: 'صودا كاوية', unit: Unit.KG, quantity: 2, unitPrice: 12 }, { name: 'علبة كرتون للصابون', unit: Unit.PIECE, quantity: 40, unitPrice: 0.8 }] },
+    { num: 2, supplierId: s6a.id, date: new Date('2026-06-08'), items: [{ name: 'زيت زيتون', unit: Unit.LITER, quantity: 2, unitPrice: 22 }] },
+  ]);
+  await mkInvoices(b6.id, [
+    // July — مدفوع 336 · مشتريات 122 · مصاريف 220 → تعادل (−6)
+    { num: 1, custId: c6a.id, date: new Date('2026-07-09'), status: InvoiceStatus.PAID, paid: 270, items: [{ name: 'صابونة اللافندر', unitPrice: 15, quantity: 18 }] },
+    { num: 2, custId: c6b.id, date: new Date('2026-07-17'), status: InvoiceStatus.PAID, paid: 66, items: [{ name: 'مقشّر القهوة', unitPrice: 22, quantity: 3 }] },
+    { num: 3, custId: c6c.id, date: new Date('2026-07-24'), dueDate: new Date('2026-08-08'), status: InvoiceStatus.UNPAID, items: [{ name: 'صابونة اللافندر', unitPrice: 15, quantity: 15 }] },
+    // June — مدفوع 300
+    { num: 4, custId: c6a.id, date: new Date('2026-06-14'), status: InvoiceStatus.PAID, paid: 300, items: [{ name: 'صابونة اللافندر', unitPrice: 15, quantity: 20 }] },
+  ]);
+  await mkExpenses(b6.id, [
+    { date: new Date('2026-07-02'), category: ExpenseCategory.MARKETING, amount: 90, note: 'إعلان سناب' },
+    { date: new Date('2026-07-14'), category: ExpenseCategory.DELIVERY, amount: 50, note: 'شحن للعملاء' },
+    { date: new Date('2026-07-19'), category: ExpenseCategory.PACKAGING, amount: 40, note: 'ستيكرات وتغليف' },
+    { date: new Date('2026-07-25'), category: ExpenseCategory.OTHER, amount: 40, note: 'مستلزمات متنوعة' },
+    { date: new Date('2026-06-04'), category: ExpenseCategory.MARKETING, amount: 70 },
+  ]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Business 7 — شموع ولمسات (صناعة شموع منزلية) — الخبر — +966500000007
+  // مبيعات صغيرة · النتيجة: خسارة بسيطة (شراء مواد مقدّمًا)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const phone7 = '+966500000007';
+  const b7 = await prisma.business.upsert({
+    where: { ownerPhone: phone7 },
+    update: {},
+    create: { name: 'شموع ولمسات', ownerPhone: phone7, vatEnabled: false, city: 'الخبر' },
+  });
+  await prisma.user.upsert({
+    where: { phone: phone7 },
+    update: { businessId: b7.id },
+    create: { phone: phone7, name: 'أم تالا', businessId: b7.id },
+  });
+  await clearBusiness(b7.id);
+  const [s7a] = await Promise.all([
+    prisma.supplier.create({ data: { businessId: b7.id, name: 'محل الشمع والعطور', phone: '0554567890' } }),
+  ]);
+  await prisma.material.createMany({
+    data: [
+      { businessId: b7.id, name: 'شمع صويا', unit: Unit.KG, purchasePrice: 18, purchaseQty: 5, unitPrice: 34, vatRate: 0, stockQty: 3, reorderLevel: 1 },
+      { businessId: b7.id, name: 'عطر شمع فانيلا', unit: Unit.ML, purchasePrice: 0.5, purchaseQty: 100, unitPrice: 1.2, vatRate: 0, stockQty: 60 },
+      { businessId: b7.id, name: 'فتائل قطنية', unit: Unit.PIECE, purchasePrice: 0.3, purchaseQty: 100, unitPrice: 1, vatRate: 0, stockQty: 70 },
+      { businessId: b7.id, name: 'كوب زجاج للشمعة', unit: Unit.PIECE, purchasePrice: 3.5, purchaseQty: 30, unitPrice: 8, vatRate: 0, stockQty: 14, reorderLevel: 6 },
+    ],
+  });
+  const bigCandleRI: RI[] = [
+    { name: 'شمع صويا', unit: Unit.KG, unitPrice: 34, quantityUsed: 0.25, type: RecipeItemType.RAW },
+    { name: 'عطر شمع فانيلا', unit: Unit.ML, unitPrice: 1.2, quantityUsed: 20, type: RecipeItemType.RAW },
+    { name: 'فتائل قطنية', unit: Unit.PIECE, unitPrice: 1, quantityUsed: 1, type: RecipeItemType.RAW },
+    { name: 'كوب زجاج للشمعة', unit: Unit.PIECE, unitPrice: 8, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  const smallCandleRI: RI[] = [
+    { name: 'شمع صويا', unit: Unit.KG, unitPrice: 34, quantityUsed: 0.12, type: RecipeItemType.RAW },
+    { name: 'عطر شمع فانيلا', unit: Unit.ML, unitPrice: 1.2, quantityUsed: 10, type: RecipeItemType.RAW },
+    { name: 'فتائل قطنية', unit: Unit.PIECE, unitPrice: 1, quantityUsed: 1, type: RecipeItemType.RAW },
+    { name: 'كوب زجاج للشمعة', unit: Unit.PIECE, unitPrice: 8, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  for (const [ri, name, cat, margin, overhead] of [
+    [bigCandleRI, 'شمعة الفانيلا الكبيرة', 'شموع', 50, 2],
+    [smallCandleRI, 'شمعة العنبر الصغيرة', 'شموع', 45, 1.5],
+  ] as [RI[], string, string, number, number][]) {
+    const costs = computeCosts(ri, overhead, margin);
+    await prisma.product.create({
+      data: {
+        businessId: b7.id, name, category: cat, overheadCost: overhead, profitMargin: margin, ...costs,
+        recipeItems: { create: ri.map((i) => ({ name: i.name, unit: i.unit, unitPrice: i.unitPrice, quantityUsed: i.quantityUsed, lineCost: r2(i.unitPrice * i.quantityUsed), type: i.type })) },
+      },
+    });
+  }
+  const [c7a, c7b, c7c] = await Promise.all([
+    prisma.customer.create({ data: { businessId: b7.id, name: 'أفنان العتيبي', phone: '0504567800' } }),
+    prisma.customer.create({ data: { businessId: b7.id, name: 'ركن ديكوري (بازار)', phone: '0514567800' } }),
+    prisma.customer.create({ data: { businessId: b7.id, name: 'سارة المطيري', phone: '0524567800' } }),
+  ]);
+  await mkPurchases(b7.id, [
+    { num: 1, supplierId: s7a.id, date: new Date('2026-07-07'), items: [{ name: 'شمع صويا', unit: Unit.KG, quantity: 5, unitPrice: 18 }, { name: 'عطر شمع فانيلا', unit: Unit.ML, quantity: 100, unitPrice: 0.5 }, { name: 'كوب زجاج للشمعة', unit: Unit.PIECE, quantity: 30, unitPrice: 3.5 }] },
+    { num: 2, supplierId: s7a.id, date: new Date('2026-06-10'), items: [{ name: 'شمع صويا', unit: Unit.KG, quantity: 3, unitPrice: 18 }] },
+  ]);
+  await mkInvoices(b7.id, [
+    // July — مدفوع 264 · مشتريات 245 · مصاريف 130 → خسارة −111
+    { num: 1, custId: c7a.id, date: new Date('2026-07-11'), status: InvoiceStatus.PAID, paid: 180, items: [{ name: 'شمعة الفانيلا الكبيرة', unitPrice: 45, quantity: 4 }] },
+    { num: 2, custId: c7b.id, date: new Date('2026-07-18'), status: InvoiceStatus.PAID, paid: 84, items: [{ name: 'شمعة العنبر الصغيرة', unitPrice: 28, quantity: 3 }] },
+    { num: 3, custId: c7c.id, date: new Date('2026-07-25'), dueDate: new Date('2026-08-09'), status: InvoiceStatus.UNPAID, items: [{ name: 'شمعة الفانيلا الكبيرة', unitPrice: 45, quantity: 3 }] },
+    // June — مدفوع 225
+    { num: 4, custId: c7a.id, date: new Date('2026-06-13'), status: InvoiceStatus.PAID, paid: 225, items: [{ name: 'شمعة الفانيلا الكبيرة', unitPrice: 45, quantity: 5 }] },
+  ]);
+  await mkExpenses(b7.id, [
+    { date: new Date('2026-07-04'), category: ExpenseCategory.MARKETING, amount: 80, note: 'تصوير وإعلان' },
+    { date: new Date('2026-07-15'), category: ExpenseCategory.PACKAGING, amount: 30, note: 'علب هدايا' },
+    { date: new Date('2026-07-21'), category: ExpenseCategory.DELIVERY, amount: 20 },
+    { date: new Date('2026-06-06'), category: ExpenseCategory.MARKETING, amount: 90 },
+  ]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Business 8 — بُنّ الديار (تحميص قهوة منزلي فردي) — الرياض — +966500000008
+  // مبيعات صغيرة · النتيجة: ربح بسيط
+  // ═══════════════════════════════════════════════════════════════════════════
+  const phone8 = '+966500000008';
+  const b8 = await prisma.business.upsert({
+    where: { ownerPhone: phone8 },
+    update: {},
+    create: { name: 'بُنّ الديار', ownerPhone: phone8, vatEnabled: false, city: 'الرياض' },
+  });
+  await prisma.user.upsert({
+    where: { phone: phone8 },
+    update: { businessId: b8.id },
+    create: { phone: phone8, name: 'أبو سعد', businessId: b8.id },
+  });
+  await clearBusiness(b8.id);
+  const [s8a] = await Promise.all([
+    prisma.supplier.create({ data: { businessId: b8.id, name: 'مورد البن الأخضر', phone: '0555678901' } }),
+  ]);
+  await prisma.material.createMany({
+    data: [
+      { businessId: b8.id, name: 'بن أخضر إثيوبي', unit: Unit.KG, purchasePrice: 45, purchaseQty: 3, unitPrice: 85, vatRate: 0, stockQty: 2, reorderLevel: 1 },
+      { businessId: b8.id, name: 'بن أخضر كولومبي', unit: Unit.KG, purchasePrice: 40, purchaseQty: 3, unitPrice: 78, vatRate: 0, stockQty: 1.5, reorderLevel: 1 },
+      { businessId: b8.id, name: 'كيس تغليف بصمّام 250غ', unit: Unit.PIECE, purchasePrice: 1.2, purchaseQty: 50, unitPrice: 3, vatRate: 0, stockQty: 30 },
+    ],
+  });
+  const ethRI: RI[] = [
+    { name: 'بن أخضر إثيوبي', unit: Unit.KG, unitPrice: 85, quantityUsed: 0.3, type: RecipeItemType.RAW },
+    { name: 'كيس تغليف بصمّام 250غ', unit: Unit.PIECE, unitPrice: 3, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  const colRI: RI[] = [
+    { name: 'بن أخضر كولومبي', unit: Unit.KG, unitPrice: 78, quantityUsed: 0.3, type: RecipeItemType.RAW },
+    { name: 'كيس تغليف بصمّام 250غ', unit: Unit.PIECE, unitPrice: 3, quantityUsed: 1, type: RecipeItemType.PACKAGING },
+  ];
+  for (const [ri, name, cat, margin, overhead] of [
+    [ethRI, 'بن إثيوبي محمّص 250غ', 'قهوة', 45, 3],
+    [colRI, 'بن كولومبي محمّص 250غ', 'قهوة', 45, 3],
+  ] as [RI[], string, string, number, number][]) {
+    const costs = computeCosts(ri, overhead, margin);
+    await prisma.product.create({
+      data: {
+        businessId: b8.id, name, category: cat, overheadCost: overhead, profitMargin: margin, ...costs,
+        recipeItems: { create: ri.map((i) => ({ name: i.name, unit: i.unit, unitPrice: i.unitPrice, quantityUsed: i.quantityUsed, lineCost: r2(i.unitPrice * i.quantityUsed), type: i.type })) },
+      },
+    });
+  }
+  const [c8a, c8b, c8c] = await Promise.all([
+    prisma.customer.create({ data: { businessId: b8.id, name: 'سعود المطيري', phone: '0505678901' } }),
+    prisma.customer.create({ data: { businessId: b8.id, name: 'ركن قهوة (سوق)', phone: '0515678901' } }),
+    prisma.customer.create({ data: { businessId: b8.id, name: 'فيصل الحربي', phone: '0525678901' } }),
+  ]);
+  await mkPurchases(b8.id, [
+    { num: 1, supplierId: s8a.id, date: new Date('2026-07-04'), items: [{ name: 'بن أخضر إثيوبي', unit: Unit.KG, quantity: 3, unitPrice: 45 }, { name: 'كيس تغليف بصمّام 250غ', unit: Unit.PIECE, quantity: 50, unitPrice: 1.2 }] },
+    { num: 2, supplierId: s8a.id, date: new Date('2026-06-07'), items: [{ name: 'بن أخضر كولومبي', unit: Unit.KG, quantity: 3, unitPrice: 40 }] },
+  ]);
+  await mkInvoices(b8.id, [
+    // July — مدفوع 430 · مشتريات 195 · مصاريف 115 → ربح +120
+    { num: 1, custId: c8a.id, date: new Date('2026-07-08'), status: InvoiceStatus.PAID, paid: 330, items: [{ name: 'بن إثيوبي محمّص 250غ', unitPrice: 55, quantity: 6 }] },
+    { num: 2, custId: c8b.id, date: new Date('2026-07-16'), status: InvoiceStatus.PAID, paid: 100, items: [{ name: 'بن كولومبي محمّص 250غ', unitPrice: 50, quantity: 2 }] },
+    { num: 3, custId: c8c.id, date: new Date('2026-07-23'), dueDate: new Date('2026-08-07'), status: InvoiceStatus.UNPAID, items: [{ name: 'بن إثيوبي محمّص 250غ', unitPrice: 55, quantity: 4 }] },
+    // June — مدفوع 385
+    { num: 4, custId: c8a.id, date: new Date('2026-06-11'), status: InvoiceStatus.PAID, paid: 385, items: [{ name: 'بن إثيوبي محمّص 250غ', unitPrice: 55, quantity: 7 }] },
+  ]);
+  await mkExpenses(b8.id, [
+    { date: new Date('2026-07-03'), category: ExpenseCategory.MARKETING, amount: 60, note: 'إعلان انستقرام' },
+    { date: new Date('2026-07-14'), category: ExpenseCategory.DELIVERY, amount: 30, note: 'توصيل' },
+    { date: new Date('2026-07-20'), category: ExpenseCategory.PACKAGING, amount: 25, note: 'ملصقات' },
+    { date: new Date('2026-06-05'), category: ExpenseCategory.MARKETING, amount: 55 },
+  ]);
+
   console.log('✓ Business 1 — مطبخ أم سلطان (+966500000001)');
   console.log('✓ Business 2 — مخبزة بيت الخبز (+966500000002)');
   console.log('✓ Business 3 — حلويات أم يوسف (+966500000003)');
   console.log('✓ Business 4 — ورشة العود والبخور (+966500000004)');
+  console.log('✓ Business 5 — خياطة الأناقة (+966500000005)');
+  console.log('✓ Business 6 — صابون الطبيعة (+966500000006)');
+  console.log('✓ Business 7 — شموع ولمسات (+966500000007)');
+  console.log('✓ Business 8 — بُنّ الديار (+966500000008)');
   console.log('\nتسجيل الدخول عبر POST /api/auth/otp/request بأي رقم أعلاه. رمز OTP يظهر في الاستجابة (وضع تجريبي).');
 }
 

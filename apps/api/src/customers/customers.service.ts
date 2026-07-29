@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationParams } from '../common/dto/pagination.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
@@ -13,10 +14,12 @@ export class CustomersService {
     });
   }
 
-  findAll(businessId: string) {
+  findAll(businessId: string, pagination: PaginationParams) {
     return this.prisma.customer.findMany({
       where: { businessId },
       orderBy: { createdAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.skip,
     });
   }
 

@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { PurchasesController } from './purchases.controller';
 import { PurchasesService } from './purchases.service';
-import { ProductsModule } from '../products/products.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { OCR_PROVIDER } from './ocr/ocr.provider';
 import { MockOcrProvider } from './ocr/mock-ocr.provider';
 
 @Module({
-  imports: [ProductsModule],
+  imports: [InventoryModule],
   controllers: [PurchasesController],
   providers: [
     PurchasesService,

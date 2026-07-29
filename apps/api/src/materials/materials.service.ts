@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProductsService } from '../products/products.service';
+import { InventoryService } from '../inventory/inventory.service';
+import { PaginationParams } from '../common/dto/pagination.dto';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 
@@ -8,7 +9,7 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 export class MaterialsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly productsService: ProductsService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   create(businessId: string, dto: CreateMaterialDto) {
@@ -28,27 +29,17 @@ export class MaterialsService {
           stockQty: initialQty,
         },
       });
-      // Journal the opening balance so the ledger explains every quantity.
-      if (initialQty > 0) {
-        await tx.stockMovement.create({
-          data: {
-            businessId,
-            materialId: material.id,
-            type: 'ADJUSTMENT',
-            qty: initialQty,
-            balanceAfter: initialQty,
-            note: 'رصيد افتتاحي',
-          },
-        });
-      }
+      await this.inventoryService.recordOpeningBalance(tx, businessId, material.id, initialQty);
       return material;
     });
   }
 
-  findAll(businessId: string) {
+  findAll(businessId: string, pagination: PaginationParams) {
     return this.prisma.material.findMany({
       where: { businessId },
       orderBy: { createdAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.skip,
     });
   }
 
@@ -83,7 +74,7 @@ export class MaterialsService {
         },
       });
       if (priceChanged) {
-        await this.productsService.recostProductsUsingMaterials(tx, businessId, [id]);
+        await this.inventoryService.recostMaterials(tx, businessId, [id]);
       }
       return updated;
     });

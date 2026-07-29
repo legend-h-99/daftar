@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryService } from '../inventory/inventory.service';
 
 // NOTE: InvoicesService only injects PrismaService — no ConfigService or other deps.
 // create() and generatePdf() are excluded: they require $transaction and PDFKit mocking.
@@ -9,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('InvoicesService', () => {
   let service: InvoicesService;
   let prisma: any;
+  let inventory: any;
 
   const mockInvoice = {
     id: 'inv-1',
@@ -28,6 +30,9 @@ describe('InvoicesService', () => {
   };
 
   beforeEach(async () => {
+    inventory = {
+      consumeStockForSale: jest.fn(),
+    };
     const module = await Test.createTestingModule({
       providers: [
         InvoicesService,
@@ -44,6 +49,10 @@ describe('InvoicesService', () => {
               aggregate: jest.fn().mockResolvedValue({ _max: { number: 1 } }),
             },
           },
+        },
+        {
+          provide: InventoryService,
+          useValue: inventory,
         },
       ],
     }).compile();

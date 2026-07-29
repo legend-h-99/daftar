@@ -1,12 +1,12 @@
 "use client";
 
-import { ReactNode, useEffect, useId, useRef } from "react";
+import * as React from "react";
 import { X } from "lucide-react";
 
 interface BottomSheetProps {
   title: string;
   onClose: () => void;
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 /**
@@ -18,10 +18,10 @@ interface BottomSheetProps {
  *  - closes on Escape and on overlay click
  */
 export default function BottomSheet({ title, onClose, children }: BottomSheetProps) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
 
-  useEffect(() => {
+  React.useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const sheet = sheetRef.current;
 

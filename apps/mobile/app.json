@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "دفتر",
+    "slug": "daftar",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "daftar",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f7353"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.daftar.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "يُستخدم Face ID لتسريع تسجيل الدخول إلى دفتر"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f7353"
+      },
+      "package": "com.daftar.app",
+      "permissions": []
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f7353",
+          "image": "./assets/splash.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

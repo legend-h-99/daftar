@@ -1,34 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Camera, ChevronLeft, ChevronRight, Plus, ShoppingCart } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth } from "@/lib/format";
+import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
+import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+interface PurchasesPageData {
+  purchases: Purchase[];
+  summary: PurchasesSummary | null;
+}
+
 export default function PurchasesPage() {
-  const [month, setMonth] = useState(currentMonthStr());
-  const [purchases, setPurchases] = useState<Purchase[] | null>(null);
-  const [summary, setSummary] = useState<PurchasesSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    month,
+    data,
+    error,
+    isCurrentMonth,
+    previousMonth,
+    nextMonth,
+  } = useMonthResource<PurchasesPageData>({
+    load: async (targetMonth) => {
+      const [purchases, summary] = await Promise.all([
+        apiGet<Purchase[]>(`/purchases?month=${targetMonth}`),
+        apiGet<PurchasesSummary>("/purchases/summary").catch(() => null),
+      ]);
+      return { purchases, summary };
+    },
+    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل المشتريات",
+  });
 
-  const isCurrentMonth = month === currentMonthStr();
-
-  useEffect(() => {
-    setPurchases(null);
-    apiGet<Purchase[]>(`/purchases?month=${month}`)
-      .then(setPurchases)
-      .catch((err) =>
-        setError(err instanceof ApiError ? err.message : "تعذر تحميل المشتريات"),
-      );
-    apiGet<PurchasesSummary>("/purchases/summary").then(setSummary).catch(() => {});
-  }, [month]);
-
-  const filtered = purchases;
+  const filtered = data?.purchases ?? null;
+  const summary = data?.summary ?? null;
 
   const monthTotal = useMemo(
     () => (filtered ?? []).reduce((s, p) => s + p.total, 0),
@@ -57,41 +65,40 @@ export default function PurchasesPage() {
         </div>
       </div>
 
-      {/* Month navigation */}
-      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, -1))}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-          aria-label="الشهر السابق"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-        <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
-        <button
-          type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, 1))}
-          disabled={isCurrentMonth}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
-          aria-label="الشهر التالي"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      </div>
+      {/* Summary: month stepper + total in one card (matches invoices) */}
+      <section className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={previousMonth}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
+            aria-label="الشهر السابق"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
+          <button
+            type="button"
+            onClick={nextMonth}
+            disabled={isCurrentMonth}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
+            aria-label="الشهر التالي"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        </div>
 
-      {/* Month total */}
-      {filtered && filtered.length > 0 && (
-        <div className="rounded-2xl bg-amber-50 px-4 py-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-amber-800">
-              إجمالي {formatMonthLabel(month)}
+        {filtered && filtered.length > 0 && (
+          <div className="mt-1 flex items-baseline justify-between border-t border-gray-100 px-1 pt-3">
+            <span className="text-sm font-medium text-gray-500">
+              إجمالي {filtered.length} عملية شراء
             </span>
-            <span className="text-lg font-extrabold text-amber-900">
+            <span className="text-2xl font-extrabold tracking-tight text-amber-700">
               {formatSAR(monthTotal)}
             </span>
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
       {error && (
         <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-2xl">
@@ -119,7 +126,7 @@ export default function PurchasesPage() {
         </div>
       )}
 
-      {!purchases && !error && (
+      {!filtered && !error && (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-20 rounded-2xl" />

@@ -1,0 +1,39 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" font-family="Tajawal, Tahoma, Arial, sans-serif">
+  <defs>
+    <filter id="cardShadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#101914" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+
+  <!-- App surface -->
+  <rect width="1200" height="630" fill="#f7f8f7"/>
+
+  <!-- White card -->
+  <rect x="80" y="70" width="1040" height="490" rx="28" fill="#ffffff" stroke="#f3f4f6" stroke-width="1" filter="url(#cardShadow)"/>
+
+  <!-- Logo -->
+  <rect x="551" y="120" width="98" height="98" rx="24" fill="#0f7353"/>
+  <text x="600" y="188" text-anchor="middle" fill="#ffffff" font-size="56" font-weight="800">د</text>
+
+  <!-- Wordmark -->
+  <text x="600" y="288" text-anchor="middle" fill="#101914" font-size="64" font-weight="800" style="direction:rtl">دفتر — حساباتك، بلغتك</text>
+
+  <!-- Subtitle -->
+  <text x="600" y="342" text-anchor="middle" fill="#6b7280" font-size="26" font-weight="500" style="direction:rtl">تطبيق محاسبة عربي مبسّط للأسر المنتجة والمشاريع الصغيرة</text>
+
+  <!-- Feature chips -->
+  <g style="direction:rtl">
+    <!-- chip 1 -->
+    <rect x="694" y="392" width="200" height="52" rx="26" fill="#eefdf6"/>
+    <text x="794" y="426" text-anchor="middle" fill="#0f7353" font-size="22" font-weight="700">فواتير ومصاريف</text>
+    <!-- chip 2 -->
+    <rect x="500" y="392" width="176" height="52" rx="26" fill="#eefdf6"/>
+    <text x="588" y="426" text-anchor="middle" fill="#0f7353" font-size="22" font-weight="700">مخزون ووصفات</text>
+    <!-- chip 3 -->
+    <rect x="306" y="392" width="176" height="52" rx="26" fill="#eefdf6"/>
+    <text x="394" y="426" text-anchor="middle" fill="#0f7353" font-size="22" font-weight="700">ربح شهري واضح</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="600" y="512" text-anchor="middle" fill="#9ca3af" font-size="20" font-weight="500" style="direction:rtl">عربي كامل RTL · خط Tajawal · صنع في السعودية، للسعودية</text>
+</svg>

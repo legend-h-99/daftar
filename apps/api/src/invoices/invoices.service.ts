@@ -4,6 +4,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { FindInvoicesQueryDto } from './dto/find-invoices-query.dto';
@@ -14,7 +15,10 @@ const MAX_NUMBER_ASSIGN_RETRIES = 5;
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryService: InventoryService,
+  ) {}
 
   async create(businessId: string, dto: CreateInvoiceDto) {
     const business = await this.prisma.business.findUnique({ where: { id: businessId } });
@@ -66,7 +70,7 @@ export class InvoicesService {
               include: { items: true, customer: true },
             });
 
-            await this.consumeStockForSale(tx, businessId, invoice.id, items);
+            await this.inventoryService.consumeStockForSale(tx, businessId, invoice.id, items);
 
             return invoice;
           },
@@ -81,68 +85,6 @@ export class InvoicesService {
       }
     }
     throw lastError;
-  }
-
-  /**
-   * Sales ↔ inventory integration: selling a product consumes the materials
-   * in its recipe (raw + packaging). Runs inside the invoice-creation
-   * transaction so the invoice, the stock levels, and the movement ledger
-   * can never drift apart. Stock may go negative (we warn, not block —
-   * the seller at a bazaar shouldn't be stopped by a data-entry backlog).
-   */
-  private async consumeStockForSale(
-    tx: Prisma.TransactionClient,
-    businessId: string,
-    invoiceId: string,
-    items: { productId?: string | null; quantity: number }[],
-  ) {
-    const productIds = [
-      ...new Set(items.filter((i) => i.productId).map((i) => i.productId as string)),
-    ];
-    if (productIds.length === 0) return;
-
-    const recipeLines = await tx.recipeItem.findMany({
-      where: {
-        productId: { in: productIds },
-        materialId: { not: null },
-        product: { businessId },
-      },
-      select: { productId: true, materialId: true, quantityUsed: true },
-    });
-    if (recipeLines.length === 0) return;
-
-    // Aggregate total consumption per material across all invoice lines.
-    const consumedByMaterial = new Map<string, number>();
-    for (const item of items) {
-      if (!item.productId) continue;
-      for (const line of recipeLines) {
-        if (line.productId !== item.productId || !line.materialId) continue;
-        const used = line.quantityUsed * item.quantity;
-        consumedByMaterial.set(
-          line.materialId,
-          (consumedByMaterial.get(line.materialId) ?? 0) + used,
-        );
-      }
-    }
-
-    for (const [materialId, qty] of consumedByMaterial) {
-      if (qty <= 0) continue;
-      const updated = await tx.material.update({
-        where: { id: materialId },
-        data: { stockQty: { decrement: qty } },
-      });
-      await tx.stockMovement.create({
-        data: {
-          businessId,
-          materialId,
-          type: 'SALE',
-          qty: -qty,
-          balanceAfter: updated.stockQty,
-          refType: 'invoice',
-          refId: invoiceId,
-        },
-      });
-    }
   }
 
   findAll(businessId: string, query: FindInvoicesQueryDto) {

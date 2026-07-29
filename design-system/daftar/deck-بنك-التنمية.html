@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دفتر × بنك التنمية الاجتماعية — عرض الشراكة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --brand-700:#0f7353; --brand-500:#1cb27c; --brand-50:#eefdf6;
+    --surface:#f7f8f7; --card:#ffffff; --ink:#101914; --ink-2:#6b7280; --ink-3:#9ca3af;
+    --border:#f3f4f6; --border-md:#e5e7eb;
+    --danger:#dc2626; --success:#15803d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Tajawal',Tahoma,Arial,sans-serif;background:#e7eae8;color:var(--ink);
+    -webkit-font-smoothing:antialiased}
+  .deck{height:100vh;overflow:hidden}
+  .slide{
+    height:100vh;width:100%;display:none;flex-direction:column;justify-content:center;
+    padding:6vh 8vw;background:var(--surface);position:relative;
+  }
+  .slide.active{display:flex;animation:fade .4s ease-out both}
+  @keyframes fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.slide.active{animation:none}}
+
+  .logo{display:inline-flex;align-items:center;gap:.55rem}
+  .logo .mark{width:2.6rem;height:2.6rem;border-radius:.9rem;background:var(--brand-700);
+    color:#fff;font-weight:800;font-size:1.35rem;display:flex;align-items:center;justify-content:center}
+  .logo .word{font-weight:800;font-size:1.5rem}
+
+  .kicker{display:inline-flex;align-items:center;gap:.5rem;background:var(--brand-50);
+    color:var(--brand-700);font-weight:700;font-size:.9rem;padding:.4rem 1rem;border-radius:999px}
+  h1{font-size:clamp(2.4rem,6vw,4rem);font-weight:800;line-height:1.15;letter-spacing:-.01em}
+  h2{font-size:clamp(1.8rem,4vw,2.7rem);font-weight:800;line-height:1.2;margin-bottom:.4em}
+  .lead{font-size:clamp(1.05rem,2vw,1.4rem);color:var(--ink-2);line-height:1.7;font-weight:500;max-width:60ch}
+  .big{font-size:clamp(1.3rem,2.6vw,1.9rem);font-weight:800;line-height:1.5;max-width:24ch}
+  .accent{color:var(--brand-700)}
+
+  .cards{display:grid;gap:1rem;margin-top:2rem}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .cols-4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:1rem;
+    box-shadow:0 1px 2px rgb(0 0 0 / .05);padding:1.4rem}
+  .card h3{font-size:1.15rem;font-weight:800;margin-bottom:.4rem}
+  .card p{font-size:.98rem;color:var(--ink-2);line-height:1.6;font-weight:500}
+  .chip{width:2.6rem;height:2.6rem;border-radius:.8rem;background:var(--brand-50);color:var(--brand-700);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;margin-bottom:.9rem}
+
+  .stats{display:flex;gap:2.5rem;flex-wrap:wrap;margin-top:2rem}
+  .stat .n{font-size:clamp(1.8rem,3.4vw,2.6rem);font-weight:800;color:var(--brand-700);line-height:1}
+  .stat .l{font-size:.95rem;color:var(--ink-2);font-weight:500;margin-top:.5rem;max-width:22ch}
+
+  table{width:100%;border-collapse:separate;border-spacing:0;margin-top:1.8rem;background:var(--card);
+    border:1px solid var(--border);border-radius:1rem;overflow:hidden;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
+  th,td{text-align:right;padding:1rem 1.3rem;font-size:1.02rem;border-bottom:1px solid var(--border)}
+  th{background:var(--brand-50);color:var(--brand-700);font-weight:800}
+  tr:last-child td{border-bottom:0}
+  td{color:var(--ink);font-weight:500}
+
+  ul.clean{list-style:none;margin-top:1.6rem;display:grid;gap:.9rem}
+  ul.clean li{font-size:1.1rem;font-weight:500;line-height:1.6;display:flex;gap:.7rem;align-items:flex-start}
+  ul.clean li::before{content:"";flex:none;width:1.4rem;height:1.4rem;margin-top:.15rem;border-radius:999px;
+    background:var(--brand-50);color:var(--brand-700);display:grid;place-items:center;
+    font-weight:800;font-size:.85rem}
+  ul.check li::before{content:"✓"}
+  ul.num{counter-reset:s}
+  ul.num li{counter-increment:s}
+  ul.num li::before{content:counter(s)}
+  ul.no li::before{content:"–";background:#fef2f2;color:var(--danger)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;margin-top:1.5rem}
+  .two h3{font-size:1.15rem;font-weight:800;margin-bottom:.5rem;color:var(--ink)}
+
+  .foot{position:absolute;bottom:3vh;inset-inline:8vw;display:flex;justify-content:space-between;
+    align-items:center;color:var(--ink-3);font-size:.85rem;font-weight:500}
+  .contact{font-size:1.15rem;font-weight:700;color:var(--brand-700);margin-top:1.5rem}
+
+  .nav{position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);z-index:50;
+    display:flex;align-items:center;gap:.8rem;background:var(--card);border:1px solid var(--border-md);
+    border-radius:999px;padding:.4rem .5rem;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
+  .nav button{border:0;background:var(--brand-700);color:#fff;width:2.1rem;height:2.1rem;border-radius:999px;
+    font-size:1.1rem;cursor:pointer;font-family:inherit;display:grid;place-items:center}
+  .nav button:disabled{opacity:.35;cursor:default}
+  .nav .count{font-size:.9rem;font-weight:700;color:var(--ink-2);min-width:3.2rem;text-align:center}
+  @media print{
+    .nav{display:none}
+    .slide{display:flex!important;height:100vh;page-break-after:always;break-after:page}
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 · Cover -->
+  <section class="slide active">
+    <div class="logo"><span class="mark">د</span><span class="word">دفتر</span></div>
+    <h1 style="margin-top:2rem">حساباتك، بلغتك.</h1>
+    <p class="lead" style="margin-top:1.2rem">تطبيق محاسبة عربي مبسّط للأسر المنتجة والمشاريع الصغيرة السعودية.</p>
+    <div class="kicker" style="margin-top:2rem">عرض شراكة · دفتر × بنك التنمية الاجتماعية</div>
+    <div class="foot"><span>صنع في السعودية، للسعودية</span><span>مسودة عرض تجاري</span></div>
+  </section>
+
+  <!-- 2 · Problem -->
+  <section class="slide">
+    <div class="kicker">المشكلة</div>
+    <p class="big" style="margin-top:1.6rem">أكثر من <span class="accent">17,000 أسرة منتجة</span> تتلقى تمويلاً من البنك — ومعظمها لا يعرف بدقة تكلفة منتجه ولا ربحه الفعلي هذا الشهر.</p>
+    <p class="lead" style="margin-top:1.6rem">السبب ليس الإهمال. السبب أن الأدوات المتاحة صُمِّمت لمحاسبين، لا لأمٍّ تبيع المعمول من المنزل.</p>
+  </section>
+
+  <!-- 3 · What is Daftar -->
+  <section class="slide">
+    <h2>ما هو دفتر؟</h2>
+    <p class="lead">تطبيق محاسبة عربي مبسّط، مبني خصيصاً للأسر المنتجة والمشاريع الصغيرة. بضع نقرات تكفي:</p>
+    <div class="cards cols-4">
+      <div class="card"><div class="chip">ف</div><h3>الفواتير</h3><p>فاتورة باسمها، PDF عربي، وإرسال فوري للعميل.</p></div>
+      <div class="card"><div class="chip">م</div><h3>المصاريف</h3><p>تسجيل المشتريات والتشغيل في ثوانٍ وتصنيفها.</p></div>
+      <div class="card"><div class="chip">خ</div><h3>المخزون</h3><p>منتجات بوصفات دقيقة تحتسب تكلفة الإنتاج تلقائياً.</p></div>
+      <div class="card"><div class="chip">ت</div><h3>التقارير</h3><p>تقرير شهري: دخل، مصاريف، صافي ربح.</p></div>
+    </div>
+    <p class="lead" style="margin-top:1.6rem"><strong class="accent">عربي كامل RTL — بدون مصطلحات محاسبية.</strong></p>
+  </section>
+
+  <!-- 4 · Shared opportunity -->
+  <section class="slide">
+    <h2>الفرصة المشتركة</h2>
+    <div class="cards cols-3">
+      <div class="card"><h3>الأسرة المنتجة</h3><p>تنظيم حسابات وقرارات أذكى بناءً على أرقام حقيقية.</p></div>
+      <div class="card"><h3>دفتر</h3><p>قاعدة مستخدمين ذات جودة ومصداقية.</p></div>
+      <div class="card"><h3>بنك التنمية</h3><p>أداة قيمة لمستفيديه وقصة نجاح رقمية.</p></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n">2.25 مليون</div><div class="l">مستقل مسجل في منصة العمل الحر (سبتمبر 2024)</div></div>
+      <div class="stat"><div class="n">82%</div><div class="l">من المشاريع السعودية فيها 1–5 موظفين</div></div>
+      <div class="stat"><div class="n">72.5 مليار ﷼</div><div class="l">إسهام قطاع العمل الحر في الناتج المحلي 2023</div></div>
+    </div>
+    <p class="lead" style="margin-top:1.8rem"><strong>البنك لديه القاعدة. دفتر لديه الأداة.</strong></p>
+  </section>
+
+  <!-- 5 · Proposal -->
+  <section class="slide">
+    <div class="kicker">ما نقترحه — Pilot بـ 50–100 أسرة</div>
+    <ul class="clean num">
+      <li><strong>وصول:</strong>&nbsp;البنك يعرّف دفتر لأسر منتجة مختارة ضمن برامجه القائمة.</li>
+      <li><strong>توصية:</strong>&nbsp;ذكر دفتر في المواد التثقيفية للمستفيدين.</li>
+      <li><strong>قياس مشترك:</strong>&nbsp;3 أشهر نقيس فيها الالتزام والرضا والأثر.</li>
+      <li><strong>بيانات مجمّعة مجهولة الهوية:</strong>&nbsp;رؤية حقيقية عن صحة المشاريع الممولة.</li>
+    </ul>
+  </section>
+
+  <!-- 6 · Why now -->
+  <section class="slide">
+    <h2>لماذا الآن؟</h2>
+    <p class="big" style="margin-top:.5rem">رؤية <span class="accent">2030</span> تضع تمكين الأسر المنتجة في صلب أهدافها.</p>
+    <p class="lead" style="margin-top:1.6rem">الأدوات الرقمية العربية التي تخدم هذه الفئة فعلاً لا تزال شحيحة. الفرصة للبنك أن يكون أول جهة تموّل تقدّم لمستفيديها أداة محاسبية تستحق الاستخدام.</p>
+  </section>
+
+  <!-- 7 · Partnership model -->
+  <section class="slide">
+    <h2>نموذج الشراكة — 3 أشهر</h2>
+    <table>
+      <thead><tr><th>البنك يقدّم</th><th>دفتر يقدّم</th></tr></thead>
+      <tbody>
+        <tr><td>وصولاً لـ 50–100 أسرة مختارة</td><td>التطبيق مجاناً طوال الـ Pilot</td></tr>
+        <tr><td>قناة تواصل (واتساب / لقاءات)</td><td>دعماً مباشراً للمستخدمين</td></tr>
+        <tr><td>ذكر دفتر في مواد البنك</td><td>تقريراً شهرياً للبنك</td></tr>
+        <tr><td>—</td><td>بيانات مجمّعة مجهولة عن أنماط الأعمال</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 8 · Measures & honesty -->
+  <section class="slide">
+    <div class="two">
+      <div>
+        <h3 class="accent">ما يقيسه الـ Pilot</h3>
+        <ul class="clean check">
+          <li>نسبة الاستخدام الأسبوعي</li>
+          <li>رضا المستخدمات (استبيان بسيط)</li>
+          <li>هل عرفن تكاليفهن بدقة أكبر؟</li>
+          <li>هل صدّرن فواتير أكثر من قبل؟</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="color:var(--danger)">ما لا نعده</h3>
+        <ul class="clean no">
+          <li>لسنا برنامجاً للشركات الكبيرة</li>
+          <li>لا ندّعي توافقاً تنظيمياً قبل التحقق الرسمي</li>
+          <li>ميزات الذكاء الاصطناعي في وضع تجريبي معلَّم بوضوح</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · Next step -->
+  <section class="slide">
+    <div class="logo"><span class="mark">د</span><span class="word">دفتر</span></div>
+    <h2 style="margin-top:1.8rem">الخطوة التالية</h2>
+    <p class="lead">نطلب <strong class="accent">30 دقيقة</strong> للتعريف بدفتر، عرض نموذج عملي، وسماع رأي البنك.</p>
+    <p class="contact">📧 hossam.a.m22@gmail.com</p>
+    <div class="foot"><span>دفتر — حساباتك، بلغتك</span><span>صنع في السعودية، للسعودية</span></div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prev" aria-label="السابق">›</button>
+  <span class="count"><span id="cur">1</span> / <span id="total">9</span></span>
+  <button id="next" aria-label="التالي">‹</button>
+</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0; const cur=document.getElementById('cur');
+  const prev=document.getElementById('prev'), next=document.getElementById('next');
+  document.getElementById('total').textContent=slides.length;
+  function go(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    cur.textContent=i+1; prev.disabled=i===0; next.disabled=i===slides.length-1;
+  }
+  prev.onclick=()=>go(i-1); next.onclick=()=>go(i+1);
+  // RTL: Right arrow = previous, Left arrow = next
+  addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'||e.key==='PageDown'||e.key===' ')go(i+1);
+    if(e.key==='ArrowRight'||e.key==='PageUp')go(i-1);
+    if(e.key==='Home')go(0); if(e.key==='End')go(slides.length-1);
+  });
+  go(0);
+</script>
+</body>
+</html>

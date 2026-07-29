@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationParams } from '../common/dto/pagination.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
@@ -13,10 +14,12 @@ export class SuppliersService {
     });
   }
 
-  findAll(businessId: string) {
+  findAll(businessId: string, pagination: PaginationParams) {
     return this.prisma.supplier.findMany({
       where: { businessId },
       orderBy: { createdAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.skip,
     });
   }
 

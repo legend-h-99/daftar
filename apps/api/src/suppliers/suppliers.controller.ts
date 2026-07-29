@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { BusinessGuard } from '../common/guards/business.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
+import { PaginationDto, toPaginationParams } from '../common/dto/pagination.dto';
 
 @UseGuards(JwtAuthGuard, BusinessGuard)
 @Controller('suppliers')
@@ -18,8 +19,11 @@ export class SuppliersController {
   }
 
   @Get()
-  findAll(@CurrentUser() user: CurrentUserData) {
-    return this.suppliersService.findAll(user.businessId as string);
+  findAll(
+    @CurrentUser() user: CurrentUserData,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.suppliersService.findAll(user.businessId as string, toPaginationParams(pagination));
   }
 
   @Patch(':id')

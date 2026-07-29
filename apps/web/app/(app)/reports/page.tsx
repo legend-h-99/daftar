@@ -1,61 +1,50 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
 import {
   formatSAR,
-  currentMonthStr,
   formatMonthLabel,
   percentOf,
 } from "@/lib/format";
 import { DashboardSummary, Expense, EXPENSE_CATEGORY_LABELS } from "@/lib/types";
+import { useMonthResource } from "@/lib/use-month-resource";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import CostBar from "@/components/reports/CostBar";
 import ProfitLossStatement from "@/components/reports/ProfitLossStatement";
 import ReportQuickLinks from "@/components/reports/ReportQuickLinks";
 
-function shiftMonth(month: string, delta: number): string {
-  const [year, m] = month.split("-").map(Number);
-  const d = new Date(year, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+interface ReportsPageData {
+  summary: DashboardSummary;
+  expenses: Expense[];
 }
 
 export default function ReportsPage() {
-  const [month, setMonth] = useState(currentMonthStr());
-  const [retryKey, setRetryKey] = useState(0);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    month,
+    data,
+    error,
+    loading,
+    isCurrentMonth,
+    previousMonth,
+    nextMonth,
+    reload,
+  } = useMonthResource<ReportsPageData>({
+    load: async (targetMonth) => {
+      const [summary, expenses] = await Promise.all([
+        apiGet<DashboardSummary>(`/dashboard/summary?month=${targetMonth}`),
+        apiGet<Expense[]>(`/expenses?month=${targetMonth}`),
+      ]);
+      return { summary, expenses };
+    },
+    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل البيانات",
+  });
 
-  const isCurrentMonth = month === currentMonthStr();
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setSummary(null);
-    setExpenses([]);
-    Promise.all([
-      apiGet<DashboardSummary>(`/dashboard/summary?month=${month}`),
-      apiGet<Expense[]>(`/expenses?month=${month}`),
-    ])
-      .then(([s, e]) => {
-        if (!cancelled) {
-          setSummary(s);
-          setExpenses(e);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof ApiError ? err.message : "تعذر تحميل البيانات");
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [month, retryKey]);
+  const summary = data?.summary ?? null;
+  const expenses = data?.expenses ?? [];
 
   const expenseByCategory = useMemo(() => {
     if (!expenses.length) return [];
@@ -88,7 +77,7 @@ export default function ReportsPage() {
           <h1 className="text-xl font-extrabold text-gray-900">التقارير</h1>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+              onClick={previousMonth}
               className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
               aria-label="الشهر السابق"
             >
@@ -98,7 +87,7 @@ export default function ReportsPage() {
               {formatMonthLabel(month)}
             </span>
             <button
-              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+              onClick={nextMonth}
               disabled={isCurrentMonth}
               className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
               aria-label="الشهر التالي"
@@ -122,7 +111,7 @@ export default function ReportsPage() {
           <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-xl gap-2">
             <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
             <button
-              onClick={() => setRetryKey((k) => k + 1)}
+              onClick={reload}
               className="text-xs font-semibold text-red-700 underline underline-offset-2"
             >
               حاول مرة ثانية
@@ -136,19 +125,32 @@ export default function ReportsPage() {
 
           return (
             <div className="flex flex-col gap-3">
-              {/* Net profit hero */}
+              {/* Net profit hero — same language as the dashboard hero (white/wash, never solid brand) */}
               <div
-                className={`flex flex-col gap-1 rounded-2xl px-5 py-5 ${
-                  isProfit ? "bg-brand-700 text-white" : "bg-red-600 text-white"
+                className={`flex flex-col gap-1 rounded-2xl border p-5 shadow-sm ${
+                  isProfit ? "border-brand-100 bg-brand-50" : "border-red-100 bg-red-50"
                 }`}
               >
-                <span className="text-xs font-semibold uppercase tracking-widest opacity-70">
-                  صافي الربح
-                </span>
-                <span className="text-4xl font-extrabold tracking-tight">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-500">
+                    صافي الربح · {formatMonthLabel(month)}
+                  </span>
+                  <span
+                    className={`rounded-xl p-2 ${
+                      isProfit ? "bg-brand-100 text-brand-700" : "bg-red-100 text-red-600"
+                    }`}
+                  >
+                    <PiggyBank className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                  </span>
+                </div>
+                <span
+                  className={`mt-1 text-4xl font-extrabold tracking-tight ${
+                    isProfit ? "text-brand-700" : "text-red-600"
+                  }`}
+                >
                   {formatSAR(summary.netProfit)}
                 </span>
-                <span className="text-sm opacity-80">
+                <span className="text-sm text-gray-500">
                   {isProfit
                     ? `هامش الربح ${marginPct}% من المبيعات`
                     : `التكاليف تتجاوز المبيعات بـ ${formatSAR(Math.abs(summary.netProfit))}`}
@@ -157,7 +159,7 @@ export default function ReportsPage() {
 
               {/* Bar chart */}
               <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <h2 className="mb-4 text-sm font-bold text-gray-900">
                   مقارنة بصرية
                 </h2>
                 <CostBar
@@ -172,7 +174,7 @@ export default function ReportsPage() {
               {/* Expense breakdown by category */}
               {expenseByCategory.length > 0 && (
                 <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
-                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <h2 className="mb-3 text-sm font-bold text-gray-900">
                     تفصيل المصاريف
                   </h2>
                   <div className="flex flex-col gap-2.5">

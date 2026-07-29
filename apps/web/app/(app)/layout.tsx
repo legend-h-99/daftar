@@ -7,7 +7,7 @@ import BottomNav from "@/components/BottomNav";
 import { getToken } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
 import { Business, User } from "@/lib/types";
-import { BusinessContext } from "@/lib/business-context";
+import { BusinessProvider } from "@/lib/business-context";
 
 export default function AppLayout({
   children,
@@ -56,12 +56,12 @@ export default function AppLayout({
   }
 
   return (
-    <BusinessContext.Provider value={{ user, business, refresh }}>
+    <BusinessProvider value={{ user, business, refresh }}>
       <div className="min-h-screen bg-[#f7f8f7]">
         <TopBar businessName={business?.name} />
         <div className="mx-auto max-w-md px-4 pb-24 pt-4">{children}</div>
         <BottomNav />
       </div>
-    </BusinessContext.Provider>
+    </BusinessProvider>
   );
 }

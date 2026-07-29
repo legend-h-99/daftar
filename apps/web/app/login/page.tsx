@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
+import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
+import { setToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
@@ -14,6 +16,10 @@ const DEMO_STORES = [
   { phone: "0500000002", name: "مخبزة بيت الخبز",     city: "جدة"    },
   { phone: "0500000003", name: "حلويات أم يوسف",       city: "مكة"    },
   { phone: "0500000004", name: "ورشة العود والبخور",   city: "الدمام"  },
+  { phone: "0500000005", name: "خياطة الأناقة",        city: "الرياض" },
+  { phone: "0500000006", name: "صابون الطبيعة",        city: "بريدة"  },
+  { phone: "0500000007", name: "شموع ولمسات",          city: "الخبر"  },
+  { phone: "0500000008", name: "بُنّ الديار",           city: "الرياض" },
 ];
 
 export default function LoginPage() {
@@ -23,6 +29,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const isValid = PHONE_REGEX.test(phone);
+
+  function enterDemo(phoneNumber: string) {
+    if (!DEMO_MODE) {
+      setPhone(phoneNumber);
+      return;
+    }
+    setToken(DEMO_TOKEN);
+    router.replace("/dashboard");
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -136,7 +151,7 @@ export default function LoginPage() {
 
           {/* Demo accounts */}
           <div className="mt-8">
-            <p className="mb-3 text-center text-xs font-semibold text-gray-400">
+            <p className="mb-3 text-center text-xs font-semibold text-gray-600">
               حسابات تجريبية
             </p>
             <div className="flex flex-col gap-2">
@@ -144,7 +159,7 @@ export default function LoginPage() {
                 <button
                   key={store.phone}
                   type="button"
-                  onClick={() => setPhone(store.phone)}
+                  onClick={() => enterDemo(store.phone)}
                   style={{ animationDelay: `${200 + i * 60}ms` }}
                   className="animate-fade-up flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-right transition-all active:scale-[0.98] active:bg-gray-100"
                 >
@@ -160,8 +175,10 @@ export default function LoginPage() {
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-center text-xs text-gray-400">
-              رمز التحقق يظهر تلقائياً في الوضع التجريبي
+            <p className="mt-3 text-center text-xs text-gray-600">
+              {DEMO_MODE
+                ? "اضغط على أي حساب للدخول مباشرة"
+                : "رمز التحقق يظهر تلقائياً في الوضع التجريبي"}
             </p>
           </div>
         </div>

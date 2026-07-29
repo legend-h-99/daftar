@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InvoiceStatus } from "@/lib/types";
 
@@ -11,8 +10,13 @@ const STATUS_CONFIG: Record<InvoiceStatus, { label: string; className: string }>
 export default function StatusBadge({ status }: { status: InvoiceStatus }) {
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.UNPAID;
   return (
-    <Badge variant="outline" className={cn(config.className)}>
+    <span
+      className={cn(
+        "inline-flex h-5 w-fit shrink-0 items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium",
+        config.className,
+      )}
+    >
       {config.label}
-    </Badge>
+    </span>
   );
 }

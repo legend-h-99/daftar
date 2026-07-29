@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { BusinessGuard } from '../common/guards/business.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
+import { PaginationDto, toPaginationParams } from '../common/dto/pagination.dto';
 
 @UseGuards(JwtAuthGuard, BusinessGuard)
 @Controller('materials')
@@ -18,8 +19,11 @@ export class MaterialsController {
   }
 
   @Get()
-  findAll(@CurrentUser() user: CurrentUserData) {
-    return this.materialsService.findAll(user.businessId as string);
+  findAll(
+    @CurrentUser() user: CurrentUserData,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.materialsService.findAll(user.businessId as string, toPaginationParams(pagination));
   }
 
   @Patch(':id')

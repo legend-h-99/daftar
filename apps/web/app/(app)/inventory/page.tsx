@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   Boxes,
@@ -10,7 +11,6 @@ import {
   ClipboardList,
   Package,
   Plus,
-  ShoppingCart,
   Trash2,
 } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
@@ -90,8 +90,11 @@ export default function InventoryPage() {
       </div>
 
       {lowCount > 0 && (
-        <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-          ⚠️ {lowCount} صنف وصل حد إعادة الطلب — راجع الكميات وأنشئ فاتورة شراء
+        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" strokeWidth={2.25} aria-hidden="true" />
+          <span className="text-sm font-semibold text-amber-800">
+            {lowCount} صنف وصل حد إعادة الطلب — راجع الكميات وأنشئ فاتورة شراء
+          </span>
         </div>
       )}
 

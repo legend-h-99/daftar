@@ -19,7 +19,7 @@ export default function ProfitLossStatement({
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="border-b border-gray-50 px-4 py-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <h2 className="text-sm font-bold text-gray-900">
           قائمة الأرباح والخسائر
         </h2>
       </div>
@@ -38,7 +38,7 @@ export default function ProfitLossStatement({
       </div>
 
       <div className="px-4 pt-3 pb-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        <span className="text-xs font-semibold text-gray-500">
           التكاليف
         </span>
       </div>

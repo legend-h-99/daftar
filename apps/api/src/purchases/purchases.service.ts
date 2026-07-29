@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProductsService } from '../products/products.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { OCR_PROVIDER, OcrProvider } from './ocr/ocr.provider';
 import { getMonthRange } from '../common/utils/month-range';
@@ -15,7 +15,7 @@ type Tx = Prisma.TransactionClient;
 export class PurchasesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly productsService: ProductsService,
+    private readonly inventoryService: InventoryService,
     @Inject(OCR_PROVIDER) private readonly ocr: OcrProvider,
   ) {}
 
@@ -75,77 +75,12 @@ export class PurchasesService {
 
             for (const item of dto.items) {
               const lineTotal = item.quantity * item.unitPrice;
-              let materialId = item.materialId;
-
-              if (materialId) {
-                const material = await tx.material.findFirst({
-                  where: { id: materialId, businessId },
-                });
-                if (!material) {
-                  throw new NotFoundException(`Material ${materialId} not found`);
-                }
-                const updated = await tx.material.update({
-                  where: { id: materialId },
-                  data: {
-                    stockQty: { increment: item.quantity },
-                    // Latest-cost refresh so the recipe calculator stays honest.
-                    purchasePrice: lineTotal,
-                    purchaseQty: item.quantity,
-                    unitPrice: item.unitPrice,
-                  },
-                });
-                await tx.stockMovement.create({
-                  data: {
-                    businessId,
-                    materialId,
-                    type: 'PURCHASE',
-                    qty: item.quantity,
-                    balanceAfter: updated.stockQty,
-                    refType: 'purchase',
-                    refId: purchase.id,
-                  },
-                });
-              } else {
-                // OCR/manual line without an id: match an existing material by
-                // name+unit first (prevents duplicate "طحين" rows), otherwise
-                // create it.
-                const existing = await tx.material.findFirst({
-                  where: { businessId, name: item.name.trim(), unit: item.unit },
-                });
-                const saved = existing
-                  ? await tx.material.update({
-                      where: { id: existing.id },
-                      data: {
-                        stockQty: { increment: item.quantity },
-                        purchasePrice: lineTotal,
-                        purchaseQty: item.quantity,
-                        unitPrice: item.unitPrice,
-                      },
-                    })
-                  : await tx.material.create({
-                      data: {
-                        businessId,
-                        name: item.name.trim(),
-                        unit: item.unit,
-                        purchasePrice: lineTotal,
-                        purchaseQty: item.quantity,
-                        unitPrice: item.unitPrice,
-                        stockQty: item.quantity,
-                      },
-                    });
-                materialId = saved.id;
-                await tx.stockMovement.create({
-                  data: {
-                    businessId,
-                    materialId,
-                    type: 'PURCHASE',
-                    qty: item.quantity,
-                    balanceAfter: saved.stockQty,
-                    refType: 'purchase',
-                    refId: purchase.id,
-                  },
-                });
-              }
+              const materialId = await this.inventoryService.applyPurchaseLine(
+                tx,
+                businessId,
+                purchase.id,
+                item,
+              );
 
               touchedMaterialIds.push(materialId);
               await tx.purchaseItem.create({
@@ -161,7 +96,7 @@ export class PurchasesService {
               });
             }
 
-            await this.productsService.recostProductsUsingMaterials(tx, businessId, touchedMaterialIds);
+            await this.inventoryService.recostMaterials(tx, businessId, touchedMaterialIds);
 
             return tx.purchase.findUniqueOrThrow({
               where: { id: purchase.id },
@@ -205,31 +140,54 @@ export class PurchasesService {
 
   /** Purchase totals grouped by supplier and by month, for the reports view. */
   async summary(businessId: string) {
-    const purchases = await this.prisma.purchase.findMany({
-      where: { businessId },
-      include: { supplier: { select: { name: true } } },
+    // bySupplier: delegate to DB via groupBy — supplierId groups correctly.
+    // byMonth: Prisma groupBy on DateTime groups by exact timestamp, not month.
+    //   Fallback: cap findMany at 500 rows and aggregate in JS (plan 013 note).
+    const [bySupplierRaw, purchases] = await Promise.all([
+      this.prisma.purchase.groupBy({
+        by: ['supplierId'],
+        where: { businessId },
+        _sum: { total: true },
+        _count: { id: true },
+        orderBy: { _sum: { total: 'desc' } },
+        take: 50,
+      }),
+      this.prisma.purchase.findMany({
+        where: { businessId },
+        select: { date: true, total: true },
+        orderBy: { date: 'desc' },
+        take: 500,
+      }),
+    ]);
+
+    // Resolve supplier names in a single follow-up query
+    const supplierIds = bySupplierRaw
+      .map((r) => r.supplierId)
+      .filter((id): id is string => id !== null);
+
+    const suppliers = await this.prisma.supplier.findMany({
+      where: { id: { in: supplierIds } },
+      select: { id: true, name: true },
     });
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s.name]));
 
-    const bySupplier = new Map<string, { name: string; count: number; total: number }>();
-    const byMonth = new Map<string, { month: string; count: number; total: number }>();
-
+    // Aggregate by month in JS (last 500 purchases, capped for memory safety)
+    const byMonthMap = new Map<string, { month: string; count: number; total: number }>();
     for (const p of purchases) {
-      const supplierName = p.supplier?.name ?? 'بدون مورد';
-      const s = bySupplier.get(supplierName) ?? { name: supplierName, count: 0, total: 0 };
-      s.count += 1;
-      s.total += p.total;
-      bySupplier.set(supplierName, s);
-
       const month = p.date.toISOString().slice(0, 7);
-      const m = byMonth.get(month) ?? { month, count: 0, total: 0 };
+      const m = byMonthMap.get(month) ?? { month, count: 0, total: 0 };
       m.count += 1;
       m.total += p.total;
-      byMonth.set(month, m);
+      byMonthMap.set(month, m);
     }
 
     return {
-      bySupplier: [...bySupplier.values()].sort((a, b) => b.total - a.total),
-      byMonth: [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month)),
+      bySupplier: bySupplierRaw.map((r) => ({
+        name: r.supplierId ? (supplierMap.get(r.supplierId) ?? 'بدون مورد') : 'بدون مورد',
+        count: r._count.id,
+        total: r._sum.total ?? 0,
+      })),
+      byMonth: [...byMonthMap.values()].sort((a, b) => b.month.localeCompare(a.month)),
     };
   }
 
@@ -247,30 +205,15 @@ export class PurchasesService {
         throw new NotFoundException('Purchase not found');
       }
 
-      const touched: string[] = [];
-      for (const item of purchase.items) {
-        if (!item.materialId) continue;
-        const updated = await tx.material.update({
-          where: { id: item.materialId },
-          data: { stockQty: { decrement: item.quantity } },
-        });
-        await tx.stockMovement.create({
-          data: {
-            businessId,
-            materialId: item.materialId,
-            type: 'PURCHASE',
-            qty: -item.quantity,
-            balanceAfter: updated.stockQty,
-            refType: 'purchase',
-            refId: purchase.id,
-            note: `عكس حذف فاتورة شراء رقم ${purchase.number}`,
-          },
-        });
-        touched.push(item.materialId);
-      }
+      const touched = await this.inventoryService.reversePurchaseItems(
+        tx,
+        businessId,
+        purchase,
+        purchase.items,
+      );
 
       await tx.purchase.delete({ where: { id } });
-      await this.productsService.recostProductsUsingMaterials(tx, businessId, touched);
+      await this.inventoryService.recostMaterials(tx, businessId, touched);
     });
     return { deleted: true };
   }

@@ -15,6 +15,13 @@ export function AnimatedCounter({ to, duration = 700, format, className }: Props
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Skip animation for users who prefer reduced motion
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setCurrent(to);
+      fromRef.current = to;
+      return;
+    }
+
     const from = fromRef.current;
     let startTime: number | null = null;
 

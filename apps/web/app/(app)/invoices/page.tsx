@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileText, Plus } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { currentMonthStr, formatDate, formatMonthLabel, formatSAR, shiftMonth } from "@/lib/format";
+import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Invoice } from "@/lib/types";
+import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,23 +22,17 @@ const TABS: { key: FilterTab; label: string }[] = [
 
 export default function InvoicesPage() {
   const [tab, setTab] = useState<FilterTab>("ALL");
-  const [month, setMonth] = useState(currentMonthStr());
-  const [invoices, setInvoices] = useState<Invoice[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const isCurrentMonth = month === currentMonthStr();
-
-  useEffect(() => {
-    let cancelled = false;
-    setInvoices(null);
-    apiGet<Invoice[]>(`/invoices?month=${month}`)
-      .then((data) => { if (!cancelled) setInvoices(data); })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof ApiError ? err.message : "تعذر تحميل الفواتير");
-      });
-    return () => { cancelled = true; };
-  }, [month]);
+  const {
+    month,
+    data: invoices,
+    error,
+    isCurrentMonth,
+    previousMonth,
+    nextMonth,
+  } = useMonthResource<Invoice[]>({
+    load: (targetMonth) => apiGet<Invoice[]>(`/invoices?month=${targetMonth}`),
+    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل الفواتير",
+  });
 
   const filtered = useMemo(() => {
     if (!invoices) return null;
@@ -49,6 +44,17 @@ export default function InvoicesPage() {
 
   const monthTotal = useMemo(
     () => (filtered ?? []).reduce((s, inv) => s + inv.total, 0),
+    [filtered],
+  );
+
+  // Amount still owed by customers within the current filter — the "لي عند الزباين" echo.
+  const outstanding = useMemo(
+    () =>
+      (filtered ?? []).reduce((s, inv) => {
+        if (inv.status === "UNPAID") return s + inv.total;
+        if (inv.status === "PARTIAL") return s + (inv.total - (inv.paidAmount ?? 0));
+        return s;
+      }, 0),
     [filtered],
   );
 
@@ -80,41 +86,48 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* Month navigation */}
-      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, -1))}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-          aria-label="الشهر السابق"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-        <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
-        <button
-          type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, 1))}
-          disabled={isCurrentMonth}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
-          aria-label="الشهر التالي"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      </div>
-
-      {/* Month total */}
-      {filtered && filtered.length > 0 && (
-        <div className="rounded-2xl bg-brand-50 px-4 py-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-brand-800">
-              إجمالي {formatMonthLabel(month)}
-            </span>
-            <span className="text-lg font-extrabold text-brand-700">
-              {formatSAR(monthTotal)}
-            </span>
-          </div>
+      {/* Summary: month stepper + totals in one card */}
+      <section className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={previousMonth}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
+            aria-label="الشهر السابق"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
+          <button
+            type="button"
+            onClick={nextMonth}
+            disabled={isCurrentMonth}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
+            aria-label="الشهر التالي"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
         </div>
-      )}
+
+        {filtered && filtered.length > 0 && (
+          <div className="mt-1 border-t border-gray-100 pt-3">
+            <div className="flex items-baseline justify-between px-1">
+              <span className="text-sm font-medium text-gray-500">
+                إجمالي {filtered.length} فاتورة
+              </span>
+              <span className="text-2xl font-extrabold tracking-tight text-brand-700">
+                {formatSAR(monthTotal)}
+              </span>
+            </div>
+            {outstanding > 0 && (
+              <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 px-3 py-2">
+                <span className="text-xs font-semibold text-red-600">غير محصّل من الزباين</span>
+                <span className="text-sm font-bold text-red-600">{formatSAR(outstanding)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {error && (
         <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-2xl">

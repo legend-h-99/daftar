@@ -1,43 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
-import { currentMonthStr, formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
+import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { EXPENSE_CATEGORY_LABELS, Expense } from "@/lib/types";
+import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import AddExpenseSheet from "@/components/expenses/AddExpenseSheet";
 
-function shiftMonth(month: string, delta: number): string {
-  const [year, m] = month.split("-").map(Number);
-  const d = new Date(year, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 export default function ExpensesPage() {
-  const [month, setMonth] = useState(currentMonthStr());
-  const [expenses, setExpenses] = useState<Expense[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const isCurrentMonth = month === currentMonthStr();
-
-  function loadExpenses() {
-    setExpenses(null);
-    apiGet<Expense[]>(`/expenses?month=${month}`)
-      .then(setExpenses)
-      .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "تعذر تحميل المصاريف");
-      });
-  }
-
-  useEffect(() => {
-    loadExpenses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const {
+    month,
+    data: expenses,
+    error: loadError,
+    isCurrentMonth,
+    previousMonth,
+    nextMonth,
+    reload,
+  } = useMonthResource<Expense[]>({
+    load: (targetMonth) => apiGet<Expense[]>(`/expenses?month=${targetMonth}`),
+    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل المصاريف",
+  });
 
   const total = useMemo(
     () => (expenses || []).reduce((sum, e) => sum + e.amount, 0),
@@ -66,9 +55,10 @@ export default function ExpensesPage() {
       try {
         await apiDelete(`/expenses/${id}`);
         setDeletingId(null);
-        loadExpenses();
+        setActionError(null);
+        reload();
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : "تعذر حذف المصروف");
+        setActionError(err instanceof ApiError ? err.message : "تعذر حذف المصروف");
         setDeletingId(null);
       }
     } else {
@@ -93,7 +83,7 @@ export default function ExpensesPage() {
       <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
         <button
           type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          onClick={previousMonth}
           className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
           aria-label="الشهر السابق"
         >
@@ -104,7 +94,7 @@ export default function ExpensesPage() {
         </span>
         <button
           type="button"
-          onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          onClick={nextMonth}
           disabled={isCurrentMonth}
           className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
           aria-label="الشهر التالي"
@@ -114,29 +104,34 @@ export default function ExpensesPage() {
       </div>
 
       {expenses && expenses.length > 0 && (
-        <div className="rounded-2xl bg-brand-900 px-4 py-3.5 text-white">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-brand-100">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-medium text-gray-500">
               إجمالي مصاريف {formatMonthLabel(month)}
             </span>
-            <span className="text-lg font-extrabold">{formatSAR(total)}</span>
+            <span className="text-2xl font-extrabold tracking-tight text-red-600">
+              {formatSAR(total)}
+            </span>
           </div>
           {byCategory.length > 1 && (
-            <div className="mt-3 flex flex-col gap-1.5">
+            <div className="mt-4 flex flex-col gap-2.5 border-t border-gray-100 pt-4">
               {byCategory.map(({ category, amount, pct }) => (
-                <div key={category} className="flex items-center gap-2">
-                  <div className="h-1.5 rounded-full bg-white/20 flex-1 overflow-hidden">
+                <div key={category}>
+                  <div className="mb-1 flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-700">
+                      {EXPENSE_CATEGORY_LABELS[category]}
+                    </span>
+                    <span className="font-semibold text-gray-900">
+                      {formatSAR(amount)}
+                      <span className="mr-1.5 text-xs font-normal text-gray-400">{pct}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
                     <div
-                      className="h-full rounded-full bg-white/70"
+                      className="h-full rounded-full bg-red-500"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <span className="w-[110px] shrink-0 text-right text-xs text-brand-100">
-                    {EXPENSE_CATEGORY_LABELS[category]}
-                  </span>
-                  <span className="w-[70px] shrink-0 text-right text-xs font-semibold text-white">
-                    {formatSAR(amount)}
-                  </span>
                 </div>
               ))}
             </div>
@@ -144,13 +139,15 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {error && (
+      {(loadError || actionError) && (
         <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-2xl">
-          <AlertDescription className="text-red-600 font-medium">{error}</AlertDescription>
+          <AlertDescription className="text-red-600 font-medium">
+            {loadError || actionError}
+          </AlertDescription>
         </Alert>
       )}
 
-      {!expenses && !error && (
+      {!expenses && !loadError && (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-16 rounded-2xl" />
@@ -214,7 +211,7 @@ export default function ExpensesPage() {
       {showForm && (
         <AddExpenseSheet
           onClose={() => setShowForm(false)}
-          onSaved={loadExpenses}
+          onSaved={reload}
         />
       )}
     </div>

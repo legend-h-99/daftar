@@ -1,4 +1,5 @@
 import { clearToken, getToken } from "./auth";
+import { DEMO_MODE, demoApiFetch } from "./demo-api";
 
 // In the browser, derive the API host from the page hostname so the app works
 // from any device on the local network (not just localhost).
@@ -10,8 +11,10 @@ function resolveApiUrl(): string {
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||
       /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+    // Local dev: hit the API server directly (no tunnel needed)
     if (isLocal) return `${protocol}//${hostname}:3001/api`;
-    return process.env.NEXT_PUBLIC_API_URL || `${protocol}//${hostname}:3001/api`;
+    // Tunnel / production: proxy through the web server → no CORS, no second tunnel
+    return "/api-proxy";
   }
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 }
@@ -60,11 +63,14 @@ export async function apiFetch<T = unknown>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    const request = {
       ...rest,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    };
+    response = DEMO_MODE
+      ? await demoApiFetch(path, request)
+      : await fetch(`${API_URL}${path}`, request);
   } catch {
     throw new ApiError("تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت", 0);
   }
@@ -122,9 +128,12 @@ export async function apiGetBlob(path: string): Promise<Blob> {
   const token = getToken();
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    const request = {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
+    };
+    response = DEMO_MODE
+      ? await demoApiFetch(path, request)
+      : await fetch(`${API_URL}${path}`, request);
   } catch {
     throw new ApiError("تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت", 0);
   }

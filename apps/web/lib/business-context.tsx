@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Business, User } from "./types";
 
 export interface BusinessContextValue {
@@ -14,6 +14,22 @@ export const BusinessContext = createContext<BusinessContextValue>({
   business: null,
   refresh: async () => {},
 });
+
+const Provider = BusinessContext.Provider as any;
+
+export function BusinessProvider({
+  value,
+  children,
+}: {
+  value: BusinessContextValue;
+  children: ReactNode;
+}) {
+  return (
+    <Provider value={value}>
+      {children}
+    </Provider>
+  );
+}
 
 export function useBusiness() {
   return useContext(BusinessContext);

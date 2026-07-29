@@ -37,15 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)} suppressHydrationWarning>
-      {/* Inline script: reads saved theme from localStorage before first paint to avoid flash */}
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('daftar_theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}`,
-          }}
-        />
-      </head>
+    <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)}>
       <body className="font-sans antialiased">
         <ThemeProvider>
           <ServiceWorkerRegistration />

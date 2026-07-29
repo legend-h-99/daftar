@@ -138,7 +138,7 @@ export default function OtpPage() {
       hasError
         ? "border-red-300 bg-red-50 text-red-600"
         : filled
-        ? "border-brand-400 bg-brand-50 text-brand-800"
+        ? "border-brand-400 bg-white text-brand-800"
         : "border-gray-200 bg-gray-50 text-gray-900 focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-200/60",
     );
   }
@@ -265,7 +265,7 @@ export default function OtpPage() {
           style={{ animationDelay: "260ms" }}
         >
           {resendCountdown > 0 ? (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-600">
               لم يصلك الرمز؟ أعد المحاولة بعد{" "}
               <span className="font-bold tabular-nums text-gray-600">
                 {resendCountdown}

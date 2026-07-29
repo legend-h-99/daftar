@@ -3,6 +3,14 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    return [
+      {
+        source: "/api-proxy/:path*",
+        destination: "http://localhost:3001/api/:path*",
+      },
+    ];
+  },
   // Pin the workspace root explicitly: this repo has sibling lockfiles
   // outside the daftar workspace which would otherwise make Next.js guess
   // (and warn about) the wrong root directory.

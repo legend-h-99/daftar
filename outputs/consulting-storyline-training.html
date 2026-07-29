@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storylining Like McKinsey, BCG, and Bain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --brand:#0f7353; --brand-50:#eefdf6; --surface:#f7f8f7; --card:#fff;
+    --ink:#101914; --muted:#6b7280; --tertiary:#9ca3af; --border:#e5e7eb;
+    --danger:#dc2626; --warning:#b45309;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:Tajawal,Arial,sans-serif;background:#e7eae8;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .deck{height:100vh;overflow:hidden}
+  .slide{height:100vh;width:100%;display:none;flex-direction:column;justify-content:center;padding:6vh 7vw;background:var(--surface);position:relative}
+  .slide.active{display:flex;animation:fade .35s ease-out both}
+  @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.slide.active{animation:none}}
+  .mark{position:absolute;top:4vh;right:7vw;width:2.5rem;height:2.5rem;border-radius:.8rem;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:1.35rem;font-weight:800}
+  .kicker{display:inline-flex;width:max-content;align-items:center;background:var(--brand-50);color:var(--brand);border-radius:999px;padding:.38rem .9rem;font-size:.9rem;font-weight:800}
+  h1{font-size:clamp(2.6rem,6vw,4.4rem);line-height:1.08;font-weight:800;max-width:14ch;letter-spacing:0}
+  h2{font-size:clamp(1.75rem,4vw,2.75rem);line-height:1.16;font-weight:800;max-width:24ch;letter-spacing:0}
+  .lead{font-size:clamp(1.05rem,2vw,1.36rem);line-height:1.65;color:var(--muted);font-weight:500;max-width:58ch;margin-top:1rem}
+  .accent{color:var(--brand)}
+  .cards{display:grid;gap:1rem;margin-top:2rem}
+  .cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .card{background:var(--card);border:1px solid #f3f4f6;border-radius:1rem;box-shadow:0 1px 2px rgb(0 0 0 / .05);padding:1.25rem;min-height:9rem}
+  .card.strong{border-color:var(--brand)}
+  .card.warn{border-color:#f59e0b}
+  .card.bad{border-color:#fee2e2}
+  .num{width:2.35rem;height:2.35rem;border-radius:.75rem;background:var(--brand-50);color:var(--brand);display:grid;place-items:center;font-size:1rem;font-weight:800;margin-bottom:.85rem}
+  .card h3{font-size:1.15rem;line-height:1.25;font-weight:800;margin-bottom:.45rem}
+  .card p{font-size:.98rem;line-height:1.55;color:var(--muted);font-weight:500}
+  .flow{display:flex;align-items:stretch;gap:.65rem;margin-top:2rem}
+  .flow .card{flex:1}
+  .arrow{align-self:center;color:var(--brand);font-weight:800;font-size:1.45rem}
+  .dotdash{margin-top:2rem;display:grid;gap:.82rem;max-width:66rem}
+  .row{display:grid;grid-template-columns:1.9rem 17rem minmax(0,1fr);align-items:start;gap:.4rem}
+  .dot{color:var(--brand);font-size:1.65rem;line-height:1}
+  .row strong{font-size:1.15rem;line-height:1.35}
+  .row span{color:var(--muted);font-size:1.02rem;line-height:1.45}
+  .frame{background:var(--card);border:1px solid #f3f4f6;border-radius:1rem;box-shadow:0 1px 2px rgb(0 0 0 / .05);padding:1.4rem;margin-top:1.7rem}
+  .skeleton-title{font-size:1.45rem;font-weight:800;line-height:1.25;margin-bottom:1rem}
+  .foot{position:absolute;bottom:3vh;left:7vw;right:7vw;display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:.7rem;color:var(--tertiary);font-size:.82rem;font-weight:500}
+  .nav{position:fixed;bottom:1.1rem;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:.8rem;background:#fff;border:1px solid var(--border);border-radius:999px;padding:.4rem .5rem;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
+  .nav button{border:0;background:var(--brand);color:#fff;width:2.1rem;height:2.1rem;border-radius:999px;font-size:1.05rem;cursor:pointer;font-family:inherit;display:grid;place-items:center}
+  .nav button:disabled{opacity:.35;cursor:default}
+  .count{font-size:.9rem;font-weight:800;color:var(--muted);min-width:3.5rem;text-align:center}
+  @media (max-width:780px){
+    .slide{padding:5vh 6vw;justify-content:flex-start;overflow:auto}
+    .mark{right:6vw}
+    h1{margin-top:5rem}
+    h2{margin-top:4rem}
+    .cols-2,.cols-3,.cols-4{grid-template-columns:1fr}
+    .flow{flex-direction:column}
+    .arrow{transform:rotate(90deg)}
+    .row{grid-template-columns:1.5rem 1fr}
+    .row span{grid-column:2}
+    .foot{position:static;margin-top:2rem}
+  }
+  @media print{
+    .nav{display:none}
+    .slide{display:flex!important;height:100vh;page-break-after:always;break-after:page}
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+  <section class="slide active">
+    <div class="mark">د</div>
+    <span class="kicker">Consulting storytelling</span>
+    <h1 style="margin-top:1.35rem">Storylining like McKinsey, BCG, and Bain</h1>
+    <p class="lead">A practical deck on SCR/SCQA, dot-dash writing, and slide skeletons.</p>
+    <div class="frame" style="max-width:28rem;margin-top:2rem"><h3>The core idea</h3><p style="color:var(--muted);line-height:1.6;margin-top:.5rem">A good consulting deck is not a collection of slides. It is a chain of answers that makes the recommendation feel inevitable.</p></div>
+    <div class="foot"><span>Training deck</span><span>01</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Start with the answer, then earn it</h2>
+    <p class="lead">The reader should understand the recommendation before studying the analysis.</p>
+    <div class="flow">
+      <div class="card"><div class="num">1</div><h3>Typical report</h3><p>Context first, analysis second, answer near the end. Useful for exploration, slow for executives.</p></div>
+      <div class="arrow">→</div>
+      <div class="card strong"><div class="num">2</div><h3>Consulting storyline</h3><p>Answer first, then supporting logic, then evidence. Built for decision-making.</p></div>
+      <div class="arrow">→</div>
+      <div class="card"><div class="num">3</div><h3>Slide skeleton</h3><p>Each slide proves one step in the logic using an action title and structured support.</p></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>02</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Use SCR when the story is a change journey</h2>
+    <p class="lead">Situation, Complication, Resolution gives the audience a reason to move.</p>
+    <div class="flow">
+      <div class="card"><div class="num">S</div><h3>Situation</h3><p>What is true today? Set shared context without arguing.</p></div>
+      <div class="arrow">→</div>
+      <div class="card warn"><div class="num">C</div><h3>Complication</h3><p>What changed or broke? Introduce tension that requires action.</p></div>
+      <div class="arrow">→</div>
+      <div class="card strong"><div class="num">R</div><h3>Resolution</h3><p>What should we do? State the answer as a decision.</p></div>
+    </div>
+    <div class="dotdash">
+      <div class="row"><div class="dot">•</div><strong>Situation</strong><span>– Current growth is strong, but concentrated in two channels.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Complication</strong><span>– CAC rose 38%, making the old channel mix uneconomic.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Resolution</strong><span>– Shift spend to partner-led acquisition and pause low-LTV search campaigns.</span></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>03</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Use SCQA when the audience needs a sharper question</h2>
+    <p class="lead">Situation, Complication, Question, Answer turns ambiguity into a decision frame.</p>
+    <div class="flow">
+      <div class="card"><div class="num">S</div><h3>Situation</h3><p>The business has launched successfully.</p></div>
+      <div class="arrow">→</div>
+      <div class="card"><div class="num">C</div><h3>Complication</h3><p>Growth is slowing despite higher spend.</p></div>
+      <div class="arrow">→</div>
+      <div class="card"><div class="num">Q</div><h3>Question</h3><p>Where should leadership focus next?</p></div>
+      <div class="arrow">→</div>
+      <div class="card strong"><div class="num">A</div><h3>Answer</h3><p>Prioritize retention before more acquisition.</p></div>
+    </div>
+    <div class="frame"><strong>Rule of thumb:</strong> If the answer is obvious once the complication is clear, use SCR. If the complication creates several possible choices, use SCQA.</div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>04</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Write the storyline as dot-dash before making slides</h2>
+    <p class="lead">Dots are governing thoughts; dashes are the evidence each thought needs.</p>
+    <div class="dotdash">
+      <div class="row"><div class="dot">•</div><strong>Recommendation</strong><span>– Launch the pilot in one city before scaling nationally.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Why it matters</strong><span>– The target segment has urgent pain, but onboarding risk is high.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Why this route</strong><span>– A city pilot validates adoption, support load, and unit economics quickly.</span></div>
+      <div class="row"><div class="dot">•</div><strong>What to do next</strong><span>– Select users, define measures, and decide scale criteria before launch.</span></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>05</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Action titles turn slides into arguments</h2>
+    <p class="lead">A slide title should say the conclusion, not the topic.</p>
+    <div class="cards cols-2">
+      <div class="card bad"><h3 style="color:var(--danger)">Topic title</h3><p><strong>Market overview</strong><br><br>This tells the reader what the slide is about, but not what they should conclude.</p></div>
+      <div class="card strong"><h3 class="accent">Action title</h3><p><strong>The market is large enough to support a focused premium entry</strong><br><br>This tells the reader the claim the slide will prove.</p></div>
+    </div>
+    <div class="frame"><strong>Rewrite test:</strong> If the title can sit in a table of contents and still tell the whole story, it is probably an action title.</div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>06</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Horizontal flow is the story across slides</h2>
+    <p class="lead">The sequence should read like a memo even before charts are added.</p>
+    <div class="flow">
+      <div class="card"><div class="num">1</div><h3>Problem</h3><p>Growth is slowing for structural reasons.</p></div>
+      <div class="arrow">→</div>
+      <div class="card"><div class="num">2</div><h3>Root cause</h3><p>Retention, not acquisition, is the bottleneck.</p></div>
+      <div class="arrow">→</div>
+      <div class="card"><div class="num">3</div><h3>Options</h3><p>Three moves exist, but only one fits constraints.</p></div>
+      <div class="arrow">→</div>
+      <div class="card strong"><div class="num">4</div><h3>Recommendation</h3><p>Invest in retention now, then resume growth spend.</p></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>07</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Vertical flow is the logic inside one slide</h2>
+    <p class="lead">The title makes the claim; the body proves it without making the reader hunt.</p>
+    <div class="frame">
+      <div class="skeleton-title">Retention is the binding constraint because churn absorbs most new acquisition</div>
+      <div class="cards cols-3" style="margin-top:1rem">
+        <div class="card"><h3>Evidence 1</h3><p>Cohort retention drops below target by month 3.</p></div>
+        <div class="card"><h3>Evidence 2</h3><p>Payback period extends beyond 14 months.</p></div>
+        <div class="card strong"><h3>Implication</h3><p>Fix retention before scaling spend.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>08</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Build the slide skeleton before designing the slide</h2>
+    <p class="lead">Skeletons reduce rework because logic and layout are decided together.</p>
+    <div class="cards cols-2">
+      <div class="dotdash" style="margin-top:0">
+        <div class="row"><div class="dot">•</div><strong>Action title</strong><span>– The conclusion the slide must prove.</span></div>
+        <div class="row"><div class="dot">•</div><strong>Exhibit</strong><span>– The chart, table, process, or comparison that carries the proof.</span></div>
+        <div class="row"><div class="dot">•</div><strong>Support notes</strong><span>– Definitions, assumptions, or caveats needed for trust.</span></div>
+        <div class="row"><div class="dot">•</div><strong>Implication</strong><span>– The so-what that connects this slide to the next one.</span></div>
+      </div>
+      <div class="card strong"><h3>Skeleton output</h3><p>1. Title claim<br>2. Main visual<br>3. Three proof points<br>4. Footnote or source<br>5. Transition to next slide</p></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>09</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Use this 6-step workflow for any consulting deck</h2>
+    <p class="lead">The workflow keeps thinking separate from formatting until the story is stable.</p>
+    <div class="cards cols-3">
+      <div class="card"><div class="num">1</div><h3>Frame</h3><p>Define audience, decision, and constraints.</p></div>
+      <div class="card"><div class="num">2</div><h3>Choose</h3><p>Pick SCR or SCQA.</p></div>
+      <div class="card"><div class="num">3</div><h3>Draft</h3><p>Write dot-dash storyline.</p></div>
+      <div class="card"><div class="num">4</div><h3>Map</h3><p>Create horizontal slide flow.</p></div>
+      <div class="card"><div class="num">5</div><h3>Skeleton</h3><p>Draft action titles and exhibits.</p></div>
+      <div class="card strong"><div class="num">6</div><h3>Build</h3><p>Design slides only after logic holds.</p></div>
+    </div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>10</span></div>
+  </section>
+
+  <section class="slide">
+    <div class="mark">د</div>
+    <h2>Final checklist: a strong storyline passes five tests</h2>
+    <p class="lead">Use this before sharing a draft with leadership.</p>
+    <div class="dotdash">
+      <div class="row"><div class="dot">•</div><strong>Answer first</strong><span>– The recommendation is visible by slide 2.</span></div>
+      <div class="row"><div class="dot">•</div><strong>One idea</strong><span>– Each slide proves only one governing thought.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Logical order</strong><span>– Each slide makes the next one feel necessary.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Specific titles</strong><span>– Titles are conclusions with verbs, numbers, or direction.</span></div>
+      <div class="row"><div class="dot">•</div><strong>Evidence fit</strong><span>– Every exhibit directly proves the action title.</span></div>
+    </div>
+    <div class="frame"><strong>Best final question:</strong> If a busy executive read only the titles, would they understand the full recommendation and why it is right?</div>
+    <div class="foot"><span>Storylining · SCR/SCQA · Dot-dash · Slide skeleton</span><span>11</span></div>
+  </section>
+</div>
+
+<div class="nav">
+  <button id="prev" aria-label="Previous">‹</button>
+  <span class="count"><span id="cur">1</span> / <span id="total">11</span></span>
+  <button id="next" aria-label="Next">›</button>
+</div>
+<script>
+  const slides=[...document.querySelectorAll(".slide")];
+  let i=0;
+  const cur=document.getElementById("cur"), prev=document.getElementById("prev"), next=document.getElementById("next");
+  document.getElementById("total").textContent=slides.length;
+  function go(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle("active",k===i));
+    cur.textContent=i+1; prev.disabled=i===0; next.disabled=i===slides.length-1;
+  }
+  prev.onclick=()=>go(i-1); next.onclick=()=>go(i+1);
+  addEventListener("keydown",e=>{
+    if(e.key==="ArrowRight"||e.key==="PageDown"||e.key===" ")go(i+1);
+    if(e.key==="ArrowLeft"||e.key==="PageUp")go(i-1);
+    if(e.key==="Home")go(0); if(e.key==="End")go(slides.length-1);
+  });
+  go(0);
+</script>
+</body>
+</html>
