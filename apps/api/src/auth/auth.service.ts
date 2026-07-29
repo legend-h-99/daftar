@@ -8,6 +8,17 @@ import { JwtPayload } from '../common/types/auth.types';
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
 
+const DEMO_BUSINESSES: Record<string, { name: string; city: string }> = {
+  '+966500000001': { name: 'مطبخ أم سلطان', city: 'الرياض' },
+  '+966500000002': { name: 'مخبزة بيت الخبز', city: 'جدة' },
+  '+966500000003': { name: 'حلويات أم يوسف', city: 'مكة' },
+  '+966500000004': { name: 'ورشة العود والبخور', city: 'الدمام' },
+  '+966500000005': { name: 'خياطة الأناقة', city: 'الرياض' },
+  '+966500000006': { name: 'صابون الطبيعة', city: 'بريدة' },
+  '+966500000007': { name: 'شموع ولمسات', city: 'الخبر' },
+  '+966500000008': { name: 'بُنّ الديار', city: 'الرياض' },
+};
+
 /**
  * MOCK AUTH FLOW — there is no real SMS provider wired up for this MVP.
  * The generated code is exposed as `devCode` in the API response ONLY when
@@ -19,6 +30,7 @@ const OTP_MAX_ATTEMPTS = 5;
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly devOtpEnabled: boolean;
+  private readonly demoAuthEnabled: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -26,6 +38,7 @@ export class AuthService {
     configService: ConfigService,
   ) {
     this.devOtpEnabled = configService.get<string>('AUTH_DEV_OTP') === 'true';
+    this.demoAuthEnabled = configService.get<string>('DEMO_AUTH_ENABLED') === 'true';
 
     const allowedEnvs = new Set(['development', 'test']);
     if (this.devOtpEnabled && !allowedEnvs.has(configService.get<string>('NODE_ENV') ?? '')) {
@@ -128,6 +141,49 @@ export class AuthService {
     };
   }
 
+  async demoLogin(phoneInput: string) {
+    if (!this.demoAuthEnabled) {
+      throw new BadRequestException('Demo login is not enabled');
+    }
+
+    const phone = this.normalizePhone(phoneInput);
+    const demo = DEMO_BUSINESSES[phone];
+    if (!demo) {
+      throw new BadRequestException('Unknown demo account');
+    }
+
+    const business = await this.prisma.business.upsert({
+      where: { ownerPhone: phone },
+      update: { name: demo.name, city: demo.city },
+      create: {
+        ownerPhone: phone,
+        name: demo.name,
+        city: demo.city,
+        vatEnabled: true,
+        vatNumber: '300000000000003',
+      },
+    });
+
+    const user = await this.prisma.user.upsert({
+      where: { phone },
+      update: { businessId: business.id },
+      create: { phone, businessId: business.id },
+    });
+
+    const accessToken = this.signToken({
+      sub: user.id,
+      phone: user.phone,
+      businessId: business.id,
+    });
+
+    return {
+      accessToken,
+      user: { id: user.id, phone: user.phone, name: user.name, businessId: business.id },
+      hasBusiness: true,
+      business,
+    };
+  }
+
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -138,12 +194,17 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
 
-    return {
+    const userPayload = {
       id: user.id,
       phone: user.phone,
       name: user.name,
       businessId: user.businessId,
+    };
+
+    return {
+      ...userPayload,
       business: user.business,
+      user: userPayload,
     };
   }
 

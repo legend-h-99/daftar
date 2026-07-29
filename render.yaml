@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: daftar-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: DEMO_AUTH_ENABLED
+        value: "true"
+
+  - type: web
+    name: daftar-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    plan: starter
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_DEMO_LOGIN
+        value: "true"

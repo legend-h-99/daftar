@@ -16,6 +16,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchasesModule } from './purchases/purchases.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     PurchasesModule,
     CleanupModule,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

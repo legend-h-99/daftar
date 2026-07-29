@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
 const PHONE_REGEX = /^05\d{8}$/;
+const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
 
 const DEMO_STORES = [
   { phone: "0500000001", name: "مطبخ أم سلطان",       city: "الرياض" },
@@ -30,9 +31,26 @@ export default function LoginPage() {
 
   const isValid = PHONE_REGEX.test(phone);
 
-  function enterDemo(phoneNumber: string) {
+  async function enterDemo(phoneNumber: string) {
     if (!DEMO_MODE) {
-      setPhone(phoneNumber);
+      if (!SERVER_DEMO_LOGIN) {
+        setPhone(phoneNumber);
+        return;
+      }
+      setError(null);
+      setLoading(true);
+      try {
+        const res = await apiPost<{ accessToken: string; hasBusiness: boolean }>(
+          "/auth/demo",
+          { phone: phoneNumber },
+        );
+        setToken(res.accessToken);
+        router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "تعذر دخول الحساب التجريبي");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     setToken(DEMO_TOKEN);
@@ -178,6 +196,8 @@ export default function LoginPage() {
             <p className="mt-3 text-center text-xs text-gray-600">
               {DEMO_MODE
                 ? "اضغط على أي حساب للدخول مباشرة"
+                : SERVER_DEMO_LOGIN
+                ? "اضغط على أي حساب للدخول عبر السيرفر"
                 : "رمز التحقق يظهر تلقائياً في الوضع التجريبي"}
             </p>
           </div>

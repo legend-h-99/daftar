@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.*
+outputs
+red-team-report.pdf
+*.log
+.DS_Store

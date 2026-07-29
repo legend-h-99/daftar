@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { DemoLoginDto } from './dto/demo-login.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
@@ -24,6 +25,12 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto.phone, dto.code);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Post('demo')
+  demoLogin(@Body() dto: DemoLoginDto) {
+    return this.authService.demoLogin(dto.phone);
   }
 
   @UseGuards(JwtAuthGuard)
