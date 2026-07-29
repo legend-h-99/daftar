@@ -101,6 +101,8 @@ model Material {
   stockMovements StockMovement[]
 
   @@index([businessId])
+  @@index([businessId, name])
+  @@index([businessId, stockQty])
 }
 
 enum PurchaseSource {
@@ -125,6 +127,8 @@ model Supplier {
   purchases Purchase[]
 
   @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([businessId, name])
 }
 
 model Purchase {
@@ -144,6 +148,9 @@ model Purchase {
 
   @@unique([businessId, number])
   @@index([businessId])
+  @@index([businessId, date])
+  @@index([businessId, number])
+  @@index([businessId, supplierId])
 }
 
 model PurchaseItem {
@@ -177,6 +184,7 @@ model StockMovement {
   createdAt    DateTime          @default(now())
 
   @@index([businessId, createdAt])
+  @@index([businessId, materialId, createdAt])
   @@index([materialId])
 }
 
@@ -199,6 +207,7 @@ model Product {
   invoiceItems InvoiceItem[]
 
   @@index([businessId])
+  @@index([businessId, createdAt])
 }
 
 model RecipeItem {
@@ -214,6 +223,9 @@ model RecipeItem {
   lineCost     Float
   type         RecipeItemType @default(RAW)
   createdAt    DateTime       @default(now())
+
+  @@index([materialId])
+  @@index([productId, materialId])
 }
 
 model Customer {
@@ -227,6 +239,8 @@ model Customer {
   invoices Invoice[]
 
   @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([businessId, name])
 }
 
 model Invoice {
@@ -248,8 +262,12 @@ model Invoice {
 
   items InvoiceItem[]
 
-  @@index([businessId])
   @@unique([businessId, number])
+  @@index([businessId])
+  @@index([businessId, issueDate])
+  @@index([businessId, status, issueDate])
+  @@index([businessId, status, dueDate])
+  @@index([businessId, number])
 }
 
 model InvoiceItem {
@@ -262,6 +280,8 @@ model InvoiceItem {
   unitPrice Float
   quantity  Float
   lineTotal Float
+
+  @@index([productId])
 }
 
 model Expense {
@@ -275,6 +295,8 @@ model Expense {
   createdAt  DateTime        @default(now())
 
   @@index([businessId])
+  @@index([businessId, date])
+  @@index([businessId, category])
 }
 
 model TokenBlacklist {
