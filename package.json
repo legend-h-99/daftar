@@ -13,11 +13,6 @@
   "engines": {
     "node": ">=20"
   },
-  "pnpm": {
-    "overrides": {
-      "multer": ">=2.2.0"
-    }
-  },
   "devDependencies": {
     "shadcn": "^4.13.0"
   }
