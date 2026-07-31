@@ -3,7 +3,7 @@ services:
     name: daftar-api
     runtime: docker
     dockerfilePath: ./apps/api/Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -17,15 +17,6 @@ services:
       - key: CORS_ORIGIN
         sync: false
       - key: DEMO_AUTH_ENABLED
-        value: "true"
-
-  - type: web
-    name: daftar-web
-    runtime: docker
-    dockerfilePath: ./apps/web/Dockerfile
-    plan: starter
-    envVars:
-      - key: NEXT_PUBLIC_API_URL
+        value: "false"
+      - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: NEXT_PUBLIC_DEMO_LOGIN
-        value: "true"
