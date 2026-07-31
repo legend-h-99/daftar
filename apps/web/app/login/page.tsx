@@ -8,6 +8,7 @@ import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 const PHONE_REGEX = /^05\d{8}$/;
 const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
@@ -123,6 +124,15 @@ export default function LoginPage() {
           className="animate-slide-up rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
           style={{ animationDelay: "120ms" }}
         >
+          <div className="mb-6">
+            <GoogleSignInButton />
+            <div className="mt-5 flex items-center gap-3">
+              <span className="h-px flex-1 bg-gray-100" />
+              <span className="text-xs font-semibold text-gray-400">أو</span>
+              <span className="h-px flex-1 bg-gray-100" />
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
               <label

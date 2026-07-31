@@ -60,7 +60,10 @@ model Business {
 
 model User {
   id         String    @id @default(uuid())
-  phone      String    @unique
+  phone      String?   @unique
+  email      String?   @unique
+  googleSub  String?   @unique
+  avatarUrl  String?
   name       String?
   businessId String?
   business   Business? @relation(fields: [businessId], references: [id])

@@ -21,6 +21,7 @@ Variables:
 - `JWT_SECRET` — secret used to sign auth JWTs (30-day expiry).
 - `CORS_ORIGIN` — comma-separated list of allowed frontend origins (e.g. `http://localhost:3000`).
 - `PORT` — port the API listens on (default `3001`).
+- `GOOGLE_CLIENT_ID` — Google OAuth web client ID used to verify Sign in with Google ID tokens.
 
 ## 2. Install dependencies
 
@@ -93,6 +94,23 @@ curl -X POST http://localhost:3001/api/auth/otp/verify \
 Before going to production, wire `AuthService.requestOtp` in
 `src/auth/auth.service.ts` up to a real SMS gateway (e.g. Unifonic, Taqnyat)
 and stop returning `devCode`.
+
+## Google Sign-In
+
+The web app can render the official Google Identity Services button when
+`NEXT_PUBLIC_GOOGLE_CLIENT_ID` is set. The button sends Google's ID token to
+`POST /api/auth/google`; the API verifies it against `GOOGLE_CLIENT_ID` and
+then issues the same Daftar JWT used by the OTP flow.
+
+Use the same Google OAuth web client ID in both places:
+
+```bash
+# apps/api/.env
+GOOGLE_CLIENT_ID="1234567890-example.apps.googleusercontent.com"
+
+# apps/web/.env.local
+NEXT_PUBLIC_GOOGLE_CLIENT_ID="1234567890-example.apps.googleusercontent.com"
+```
 
 ## Notes on the invoice PDF
 

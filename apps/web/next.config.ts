@@ -36,13 +36,13 @@ const nextConfig: NextConfig = {
   async headers() {
     const isDev = process.env.NODE_ENV !== "production";
     const scriptSrc = isDev
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-      : "script-src 'self' 'unsafe-inline'";
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com"
+      : "script-src 'self' 'unsafe-inline' https://accounts.google.com";
     // In dev, allow the API on any local IP or HTTPS origin (for mobile testing via tunnel).
     // In production, restrict to the known API origin.
     const connectSrc = isDev
       ? "connect-src 'self' http://*:3001 https://* https://wa.me"
-      : `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL ?? ""} https://wa.me`;
+      : `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL ?? ""} https://accounts.google.com https://wa.me`;
 
     return [
       {
@@ -61,6 +61,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self'",
               connectSrc,
+              "frame-src https://accounts.google.com",
               "frame-ancestors 'none'",
             ].join("; "),
           },

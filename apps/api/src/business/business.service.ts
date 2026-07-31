@@ -17,17 +17,18 @@ export class BusinessService {
       throw new BadRequestException('This account is already linked to a business');
     }
 
+    const ownerKey = user.phone ?? user.email ?? `user:${user.userId}`;
     const existing = await this.prisma.business.findUnique({
-      where: { ownerPhone: user.phone },
+      where: { ownerPhone: ownerKey },
     });
     if (existing) {
-      throw new ConflictException('A business already exists for this phone number');
+      throw new ConflictException('A business already exists for this account');
     }
 
     const business = await this.prisma.business.create({
       data: {
         name: dto.name,
-        ownerPhone: user.phone,
+        ownerPhone: ownerKey,
         vatEnabled: dto.vatEnabled,
         vatNumber: dto.vatNumber,
         city: dto.city,
@@ -42,6 +43,7 @@ export class BusinessService {
     const accessToken = this.authService.signToken({
       sub: user.userId,
       phone: user.phone,
+      email: user.email,
       businessId: business.id,
     });
 

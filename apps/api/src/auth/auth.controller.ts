@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { DemoLoginDto } from './dto/demo-login.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
@@ -31,6 +32,12 @@ export class AuthController {
   @Post('demo')
   demoLogin(@Body() dto: DemoLoginDto) {
     return this.authService.demoLogin(dto.phone);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Post('google')
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.googleLogin(dto.credential);
   }
 
   @UseGuards(JwtAuthGuard)

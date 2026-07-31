@@ -1,7 +1,8 @@
 import { randomInt, randomUUID } from 'crypto';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../common/types/auth.types';
 
@@ -31,6 +32,8 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly devOtpEnabled: boolean;
   private readonly demoAuthEnabled: boolean;
+  private readonly googleClientId?: string;
+  private readonly googleClient = new OAuth2Client();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -39,6 +42,7 @@ export class AuthService {
   ) {
     this.devOtpEnabled = configService.get<string>('AUTH_DEV_OTP') === 'true';
     this.demoAuthEnabled = configService.get<string>('DEMO_AUTH_ENABLED') === 'true';
+    this.googleClientId = configService.get<string>('GOOGLE_CLIENT_ID');
 
     const allowedEnvs = new Set(['development', 'test']);
     if (this.devOtpEnabled && !allowedEnvs.has(configService.get<string>('NODE_ENV') ?? '')) {
@@ -131,12 +135,19 @@ export class AuthService {
     const accessToken = this.signToken({
       sub: user.id,
       phone: user.phone,
+      email: user.email,
       businessId: user.businessId,
     });
 
     return {
       accessToken,
-      user: { id: user.id, phone: user.phone, name: user.name, businessId: user.businessId },
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        businessId: user.businessId,
+      },
       hasBusiness: !!user.businessId,
     };
   }
@@ -173,14 +184,84 @@ export class AuthService {
     const accessToken = this.signToken({
       sub: user.id,
       phone: user.phone,
+      email: user.email,
       businessId: business.id,
     });
 
     return {
       accessToken,
-      user: { id: user.id, phone: user.phone, name: user.name, businessId: business.id },
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        businessId: business.id,
+      },
       hasBusiness: true,
       business,
+    };
+  }
+
+  async googleLogin(credential: string) {
+    if (!this.googleClientId) {
+      throw new BadRequestException('Google login is not configured');
+    }
+
+    let payload;
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: credential,
+        audience: this.googleClientId,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new UnauthorizedException('Invalid Google credential');
+    }
+
+    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      throw new UnauthorizedException('Google account email is not verified');
+    }
+
+    const existing =
+      (await this.prisma.user.findUnique({ where: { googleSub: payload.sub } })) ??
+      (await this.prisma.user.findUnique({ where: { email: payload.email } }));
+
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            googleSub: payload.sub,
+            email: payload.email,
+            name: payload.name ?? existing.name,
+            avatarUrl: payload.picture,
+          },
+        })
+      : await this.prisma.user.create({
+          data: {
+            googleSub: payload.sub,
+            email: payload.email,
+            name: payload.name,
+            avatarUrl: payload.picture,
+          },
+        });
+
+    const accessToken = this.signToken({
+      sub: user.id,
+      phone: user.phone,
+      email: user.email,
+      businessId: user.businessId,
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        businessId: user.businessId,
+      },
+      hasBusiness: !!user.businessId,
     };
   }
 
@@ -197,6 +278,7 @@ export class AuthService {
     const userPayload = {
       id: user.id,
       phone: user.phone,
+      email: user.email,
       name: user.name,
       businessId: user.businessId,
     };

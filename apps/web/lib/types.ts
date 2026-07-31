@@ -12,7 +12,9 @@ export const UNIT_LABELS: Record<MaterialUnit, string> = {
 
 export interface User {
   id: string;
-  phone: string;
+  phone?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
   name?: string | null;
 }
 
