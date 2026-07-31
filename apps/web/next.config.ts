@@ -1,9 +1,23 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
+const basePath = process.env.NEXT_BASE_PATH || "";
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  ...(isStaticExport
+    ? {
+        output: "export" as const,
+        basePath,
+        assetPrefix: `${basePath}/`,
+        trailingSlash: true,
+        images: { unoptimized: true },
+      }
+    : {}),
   async rewrites() {
+    if (isStaticExport) return [];
+
     return [
       {
         source: "/api-proxy/:path*",
