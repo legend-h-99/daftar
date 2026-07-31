@@ -3,6 +3,11 @@ import path from "path";
 
 const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
 const basePath = process.env.NEXT_BASE_PATH || "";
+const apiProxyTarget = (
+  process.env.API_PROXY_TARGET ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3001/api"
+).replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -21,7 +26,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api-proxy/:path*",
-        destination: "http://localhost:3001/api/:path*",
+        destination: `${apiProxyTarget}/:path*`,
       },
     ];
   },
