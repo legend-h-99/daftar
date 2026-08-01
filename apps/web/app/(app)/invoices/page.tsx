@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileText, Plus } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
+import { DEMO_MODE } from "@/lib/demo-api";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
@@ -22,6 +23,7 @@ const TABS: { key: FilterTab; label: string }[] = [
 
 export default function InvoicesPage() {
   const [tab, setTab] = useState<FilterTab>("ALL");
+  const [created, setCreated] = useState(false);
   const {
     month,
     data: invoices,
@@ -46,6 +48,10 @@ export default function InvoicesPage() {
     () => (filtered ?? []).reduce((s, inv) => s + inv.total, 0),
     [filtered],
   );
+
+  useEffect(() => {
+    setCreated(new URLSearchParams(window.location.search).get("created") === "1");
+  }, []);
 
   // Amount still owed by customers within the current filter — the "لي عند الزباين" echo.
   const outstanding = useMemo(
@@ -135,6 +141,14 @@ export default function InvoicesPage() {
         </Alert>
       )}
 
+      {created && (
+        <Alert className="rounded-2xl border-green-200 bg-green-50">
+          <AlertDescription className="font-medium text-green-700">
+            تم حفظ الفاتورة وتحديث المخزون مباشرة
+          </AlertDescription>
+        </Alert>
+      )}
+
       {!invoices && !error && (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -163,7 +177,7 @@ export default function InvoicesPage() {
             return (
               <li key={inv.id}>
                 <Link
-                  href={`/invoices/${inv.id}`}
+                  href={DEMO_MODE ? "/invoices/demo" : `/invoices/${inv.id}`}
                   aria-label={`فاتورة ${inv.number}، ${inv.customer?.name || "بدون زبون"}، ${formatSAR(inv.total)}`}
                   className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >

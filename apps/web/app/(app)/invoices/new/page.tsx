@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { DEMO_MODE } from "@/lib/demo-api";
 import { Customer, Invoice, InvoiceItem, Product } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import { cn } from "@/lib/utils";
@@ -104,7 +105,7 @@ export default function NewInvoicePage() {
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
       });
-      router.push(`/invoices/${invoice.id}`);
+      router.push(DEMO_MODE ? "/invoices?created=1" : `/invoices/${invoice.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "تعذر إنشاء الفاتورة");
     } finally {

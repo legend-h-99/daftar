@@ -321,6 +321,16 @@ export async function demoApiFetch(path: string, options: RequestInit = {}): Pro
     return jsonResponse(products.find((product) => product.id === pathname.split("/")[2]) ?? products[0]);
   }
   if (method === "GET" && pathname === "/customers") return jsonResponse(customers);
+  if (method === "POST" && pathname === "/customers") {
+    const body = await readJsonBody<{ name?: string; phone?: string }>(options);
+    const customer: Customer = {
+      id: `cust-${Date.now()}`,
+      name: body?.name?.trim() || "عميل جديد",
+      phone: body?.phone,
+    };
+    customers.unshift(customer);
+    return created(customer);
+  }
   if (method === "GET" && pathname === "/invoices") return jsonResponse(invoices);
   if (method === "GET" && pathname.startsWith("/invoices/") && pathname.endsWith("/pdf")) {
     return new Response("فاتورة تجريبية من دفتر", {
@@ -330,6 +340,78 @@ export async function demoApiFetch(path: string, options: RequestInit = {}): Pro
   }
   if (method === "GET" && pathname.startsWith("/invoices/")) {
     return jsonResponse(invoices.find((invoice) => invoice.id === pathname.split("/")[2]) ?? invoices[0]);
+  }
+  if (method === "POST" && pathname === "/invoices") {
+    const body = await readJsonBody<{
+      customerId?: string;
+      items?: {
+        productId?: string;
+        name: string;
+        unitPrice: number;
+        quantity: number;
+      }[];
+      status?: Invoice["status"];
+      dueDate?: string;
+      notes?: string;
+    }>(options);
+    const invoiceItems = (body?.items ?? []).filter(
+      (item) => item.name?.trim() && Number(item.quantity) > 0,
+    );
+    const subtotal = invoiceItems.reduce(
+      (sum, item) => sum + Number(item.unitPrice) * Number(item.quantity),
+      0,
+    );
+    const vatAmount = business.vatEnabled ? subtotal * 0.15 : 0;
+    const nextNumber =
+      Math.max(...invoices.map((invoice) => Number(invoice.number) || 0), 0) + 1;
+    const invoice: Invoice = {
+      id: `inv-${Date.now()}`,
+      number: String(nextNumber),
+      customerId: body?.customerId,
+      customer: customers.find((customer) => customer.id === body?.customerId) ?? null,
+      items: invoiceItems.map((item, index) => ({
+        id: `ii-${Date.now()}-${index + 1}`,
+        productId: item.productId,
+        name: item.name,
+        unitPrice: Number(item.unitPrice),
+        quantity: Number(item.quantity),
+      })),
+      subtotal,
+      vatAmount,
+      total: subtotal + vatAmount,
+      status: body?.status ?? "UNPAID",
+      paidAmount: body?.status === "PAID" ? subtotal + vatAmount : undefined,
+      issueDate: today,
+      dueDate: body?.dueDate,
+      notes: body?.notes,
+      createdAt: today,
+    };
+
+    for (const item of invoice.items) {
+      if (!item.productId) continue;
+      const product = products.find((existing) => existing.id === item.productId);
+      if (!product) continue;
+      for (const recipeItem of product.recipeItems) {
+        if (!recipeItem.materialId) continue;
+        const material = materials.find((existing) => existing.id === recipeItem.materialId);
+        if (!material) continue;
+        const consumedQty = recipeItem.quantityUsed * item.quantity;
+        material.stockQty -= consumedQty;
+        refreshLowStock(material);
+        movements.unshift({
+          id: `mov-${Date.now()}-${movements.length + 1}`,
+          type: "SALE",
+          qty: -consumedQty,
+          balanceAfter: material.stockQty,
+          createdAt: today,
+          note: `بيع ${product.name}`,
+          material: { name: material.name, unit: material.unit },
+        });
+      }
+    }
+
+    invoices.unshift(invoice);
+    return created(invoice);
   }
   if (method === "GET" && pathname === "/purchases") return jsonResponse(purchases);
   if (method === "GET" && pathname === "/purchases/summary") {
