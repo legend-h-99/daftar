@@ -1,6 +1,6 @@
 import { formatSAR } from "@/lib/format";
 
-/** مقارنة بصرية بأعمدة أفقية: مبيعات مقابل مشتريات ومصاريف. */
+/** مقارنة بصرية بأعمدة أفقية: مبيعات مقابل تكلفة البيع ومصاريف التشغيل. */
 export default function CostBar({
   sales,
   purchases,
@@ -35,9 +35,9 @@ export default function CostBar({
         </div>
       </div>
 
-      {/* Purchases bar */}
+      {/* Cost of goods sold bar */}
       <div className="flex items-center gap-2">
-        <span className="w-16 shrink-0 text-right text-xs text-gray-400">مشتريات</span>
+        <span className="w-16 shrink-0 text-right text-xs text-gray-400">تكلفة البيع</span>
         <div className="flex h-7 flex-1 overflow-hidden rounded-lg bg-gray-100">
           <div
             className="flex items-center justify-end rounded-lg bg-amber-400 px-2 transition-all"
@@ -50,7 +50,7 @@ export default function CostBar({
         </div>
       </div>
 
-      {/* Expenses bar */}
+      {/* Operating expenses bar */}
       <div className="flex items-center gap-2">
         <span className="w-16 shrink-0 text-right text-xs text-gray-400">مصاريف</span>
         <div className="flex h-7 flex-1 overflow-hidden rounded-lg bg-gray-100">

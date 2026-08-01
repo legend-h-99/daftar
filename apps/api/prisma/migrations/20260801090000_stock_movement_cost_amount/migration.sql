@@ -1,0 +1,1 @@
+ALTER TABLE "StockMovement" ADD COLUMN "costAmount" DOUBLE PRECISION;

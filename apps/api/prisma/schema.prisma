@@ -181,6 +181,7 @@ model StockMovement {
   type         StockMovementType
   qty          Float // signed: positive = in, negative = out
   balanceAfter Float
+  costAmount   Float?
   refType      String? // 'purchase' | 'invoice' | null for manual adjustments
   refId        String?
   note         String?

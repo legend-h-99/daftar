@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
-import { EXPENSE_CATEGORY_LABELS, Expense } from "@/lib/types";
+import { DashboardSummary, EXPENSE_CATEGORY_LABELS, Expense } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,37 +17,56 @@ export default function ExpensesPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const {
     month,
-    data: expenses,
+    data,
     error: loadError,
     isCurrentMonth,
     previousMonth,
     nextMonth,
     reload,
-  } = useMonthResource<Expense[]>({
-    load: (targetMonth) => apiGet<Expense[]>(`/expenses?month=${targetMonth}`),
+  } = useMonthResource<{ expenses: Expense[]; summary: DashboardSummary | null }>({
+    load: async (targetMonth) => {
+      const [expenses, summary] = await Promise.all([
+        apiGet<Expense[]>(`/expenses?month=${targetMonth}`),
+        apiGet<DashboardSummary>(`/dashboard/summary?month=${targetMonth}`).catch(() => null),
+      ]);
+      return { expenses, summary };
+    },
     errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل المصاريف",
   });
 
+  const expenses = data?.expenses ?? null;
+  const summary = data?.summary ?? null;
+  const costOfGoodsSold = summary?.costOfGoodsSold ?? 0;
+
   const total = useMemo(
-    () => (expenses || []).reduce((sum, e) => sum + e.amount, 0),
-    [expenses],
+    () => (expenses || []).reduce((sum, e) => sum + e.amount, 0) + costOfGoodsSold,
+    [expenses, costOfGoodsSold],
   );
 
   // Group expenses by category for the breakdown
   const byCategory = useMemo(() => {
-    if (!expenses || expenses.length === 0) return [];
+    if (!expenses) return [];
     const map = new Map<string, number>();
     for (const e of expenses) {
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
     }
+    if (costOfGoodsSold > 0) {
+      map.set("COGS", costOfGoodsSold);
+    }
     return [...map.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([cat, amount]) => ({
-        category: cat as keyof typeof EXPENSE_CATEGORY_LABELS,
+        category: cat as keyof typeof EXPENSE_CATEGORY_LABELS | "COGS",
         amount,
         pct: total > 0 ? Math.round((amount / total) * 100) : 0,
       }));
-  }, [expenses, total]);
+  }, [expenses, costOfGoodsSold, total]);
+
+  function expenseLabel(category: keyof typeof EXPENSE_CATEGORY_LABELS | "COGS") {
+    return category === "COGS"
+      ? "تكلفة المخزون المباع"
+      : EXPENSE_CATEGORY_LABELS[category];
+  }
 
   async function handleDelete(id: string) {
     if (deletingId === id) {
@@ -103,7 +122,7 @@ export default function ExpensesPage() {
         </button>
       </div>
 
-      {expenses && expenses.length > 0 && (
+      {expenses && total > 0 && (
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-medium text-gray-500">
@@ -119,7 +138,7 @@ export default function ExpensesPage() {
                 <div key={category}>
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="font-medium text-gray-700">
-                      {EXPENSE_CATEGORY_LABELS[category]}
+                      {expenseLabel(category)}
                     </span>
                     <span className="font-semibold text-gray-900">
                       {formatSAR(amount)}
@@ -155,7 +174,7 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {expenses && expenses.length === 0 && (
+      {expenses && total === 0 && (
         <EmptyState
           icon={Wallet}
           title="لا توجد مصاريف مسجلة"
@@ -165,8 +184,23 @@ export default function ExpensesPage() {
         />
       )}
 
-      {expenses && expenses.length > 0 && (
+      {expenses && (expenses.length > 0 || costOfGoodsSold > 0) && (
         <ul className="flex flex-col gap-2">
+          {costOfGoodsSold > 0 && (
+            <li className="flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3.5 shadow-sm">
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-amber-900">
+                  تكلفة المخزون المباع
+                </span>
+                <span className="text-xs text-amber-700">
+                  تُحسب تلقائيًا عند بيع منتجات مرتبطة بوصفة
+                </span>
+              </div>
+              <span className="font-bold text-amber-900">
+                {formatSAR(costOfGoodsSold)}
+              </span>
+            </li>
+          )}
           {expenses.map((exp) => (
             <li
               key={exp.id}

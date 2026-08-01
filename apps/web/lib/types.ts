@@ -228,6 +228,8 @@ export interface UnpaidInvoiceSummary {
 export interface DashboardSummary {
   totalSales: number;
   totalPurchases: number;
+  costOfGoodsSold: number;
+  operatingExpenses: number;
   totalExpenses: number;
   netProfit: number;
   unpaidInvoices: UnpaidInvoiceSummary[];

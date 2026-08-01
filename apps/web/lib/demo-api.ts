@@ -231,13 +231,17 @@ const movements: StockMovement[] = [
 function dashboardSummary(): DashboardSummary {
   const totalSales = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
   const totalPurchases = purchases.reduce((sum, purchase) => sum + purchase.total, 0);
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const costOfGoodsSold = 115.8;
+  const operatingExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = costOfGoodsSold + operatingExpenses;
   const unpaidInvoices = invoices.filter((invoice) => invoice.status !== "PAID");
   return {
     totalSales,
     totalPurchases,
+    costOfGoodsSold,
+    operatingExpenses,
     totalExpenses,
-    netProfit: totalSales - totalPurchases - totalExpenses,
+    netProfit: totalSales - totalExpenses,
     unpaidInvoices,
     unpaidInvoicesCount: unpaidInvoices.length,
     unpaidInvoicesTotal: unpaidInvoices.reduce(

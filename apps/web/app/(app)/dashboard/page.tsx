@@ -120,8 +120,8 @@ export default function DashboardPage() {
               const positive = summary.netProfit >= 0;
               const ledger = [
                 { label: "المبيعات", value: summary.totalSales, dot: "bg-brand-500", text: "text-brand-700" },
-                { label: "المشتريات", value: summary.totalPurchases, dot: "bg-amber-500", text: "text-amber-700" },
-                { label: "المصاريف", value: summary.totalExpenses, dot: "bg-red-500", text: "text-red-600" },
+                { label: "تكلفة البيع", value: summary.costOfGoodsSold, dot: "bg-amber-500", text: "text-amber-700" },
+                { label: "مصاريف", value: summary.operatingExpenses, dot: "bg-red-500", text: "text-red-600" },
               ];
               return (
                 <section

@@ -174,6 +174,7 @@ export class InventoryService {
         type: 'PURCHASE',
         qty: item.quantity,
         balanceAfter: stockQtyAfter,
+        costAmount: lineTotal,
         refType: 'purchase',
         refId: purchaseId,
       },
@@ -202,6 +203,7 @@ export class InventoryService {
           type: 'PURCHASE',
           qty: -item.quantity,
           balanceAfter: updated.stockQty,
+          costAmount: null,
           refType: 'purchase',
           refId: purchase.id,
           note: `عكس حذف فاتورة شراء رقم ${purchase.number}`,
@@ -229,24 +231,33 @@ export class InventoryService {
         materialId: { not: null },
         product: { businessId },
       },
-      select: { productId: true, materialId: true, quantityUsed: true },
+      select: {
+        productId: true,
+        materialId: true,
+        quantityUsed: true,
+        material: { select: { unitPrice: true } },
+      },
     });
     if (recipeLines.length === 0) return;
 
-    const consumedByMaterial = new Map<string, number>();
+    const consumedByMaterial = new Map<string, { qty: number; unitPrice: number }>();
     for (const item of items) {
       if (!item.productId) continue;
       for (const line of recipeLines) {
         if (line.productId !== item.productId || !line.materialId) continue;
         const used = line.quantityUsed * item.quantity;
-        consumedByMaterial.set(
-          line.materialId,
-          (consumedByMaterial.get(line.materialId) ?? 0) + used,
-        );
+        const current = consumedByMaterial.get(line.materialId) ?? {
+          qty: 0,
+          unitPrice: line.material?.unitPrice ?? 0,
+        };
+        current.qty += used;
+        current.unitPrice = line.material?.unitPrice ?? current.unitPrice;
+        consumedByMaterial.set(line.materialId, current);
       }
     }
 
-    for (const [materialId, qty] of consumedByMaterial) {
+    for (const [materialId, consumed] of consumedByMaterial) {
+      const { qty, unitPrice } = consumed;
       if (qty <= 0) continue;
       const updated = await tx.material.update({
         where: { id: materialId },
@@ -259,6 +270,7 @@ export class InventoryService {
           type: 'SALE',
           qty: -qty,
           balanceAfter: updated.stockQty,
+          costAmount: qty * unitPrice,
           refType: 'invoice',
           refId: invoiceId,
         },

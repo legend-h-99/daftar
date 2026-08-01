@@ -13,7 +13,7 @@ export default function ProfitLossStatement({
 }: {
   summary: DashboardSummary;
 }) {
-  const totalCosts = summary.totalPurchases + summary.totalExpenses;
+  const totalCosts = summary.costOfGoodsSold + summary.operatingExpenses;
   const isProfit = summary.netProfit >= 0;
 
   return (
@@ -43,19 +43,19 @@ export default function ProfitLossStatement({
         </span>
       </div>
 
-      {/* Purchases row */}
+      {/* Cost of goods sold row */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="flex items-center gap-2 text-sm text-gray-600">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100">
             <ShoppingCart className="h-3.5 w-3.5 text-amber-700" aria-hidden="true" />
           </span>
-          المشتريات
+          تكلفة المخزون المباع
           <span className="text-xs text-amber-600">
-            {percentOf(summary.totalPurchases, summary.totalSales)}%
+            {percentOf(summary.costOfGoodsSold, summary.totalSales)}%
           </span>
         </span>
         <span className="font-semibold text-amber-700">
-          ({formatSAR(summary.totalPurchases)})
+          ({formatSAR(summary.costOfGoodsSold)})
         </span>
       </div>
 
@@ -67,11 +67,11 @@ export default function ProfitLossStatement({
           </span>
           المصاريف التشغيلية
           <span className="text-xs text-red-500">
-            {percentOf(summary.totalExpenses, summary.totalSales)}%
+            {percentOf(summary.operatingExpenses, summary.totalSales)}%
           </span>
         </span>
         <span className="font-semibold text-red-600">
-          ({formatSAR(summary.totalExpenses)})
+          ({formatSAR(summary.operatingExpenses)})
         </span>
       </div>
 

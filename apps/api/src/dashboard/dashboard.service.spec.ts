@@ -8,12 +8,14 @@ function buildPrismaMock(overrides: Partial<{
   paidInvoices: any[];
   purchases: any[];
   expenses: any[];
+  saleCost: number;
   unpaidInvoices: any[];
   lowStock: any[];
 }> = {}) {
   const paidInvoices = overrides.paidInvoices ?? [];
   const purchases = overrides.purchases ?? [];
   const expenses = overrides.expenses ?? [];
+  const saleCost = overrides.saleCost ?? 0;
   const unpaidInvoices = overrides.unpaidInvoices ?? [];
   const lowStock = overrides.lowStock ?? [];
 
@@ -46,6 +48,13 @@ function buildPrismaMock(overrides: Partial<{
     expense: {
       findMany: jest.fn().mockResolvedValue(expenses),
     },
+    stockMovement: {
+      findMany: jest.fn().mockResolvedValue(
+        saleCost > 0
+          ? [{ qty: -1, costAmount: saleCost, material: { unitPrice: saleCost } }]
+          : [],
+      ),
+    },
     $queryRaw: jest.fn().mockResolvedValue(lowStock),
   };
 }
@@ -71,6 +80,8 @@ describe('DashboardService', () => {
     const result = await service.summary('biz-1', '2026-01');
     expect(result.totalSales).toBe(0);
     expect(result.totalPurchases).toBe(0);
+    expect(result.costOfGoodsSold).toBe(0);
+    expect(result.operatingExpenses).toBe(0);
     expect(result.totalExpenses).toBe(0);
     expect(result.netProfit).toBe(0);
     expect(result.unpaidInvoices).toHaveLength(0);
@@ -85,13 +96,22 @@ describe('DashboardService', () => {
     expect(result.totalSales).toBe(350);
   });
 
-  it('netProfit = sales − purchases − expenses', async () => {
+  it('netProfit = sales − cost of goods sold − operating expenses', async () => {
     const paidInvoices = [{ total: 500 }];
     const purchases = [{ total: 150 }];
     const expenses = [{ amount: 75 }];
-    service = await buildService(buildPrismaMock({ paidInvoices, purchases, expenses }));
+    service = await buildService(buildPrismaMock({
+      paidInvoices,
+      purchases,
+      expenses,
+      saleCost: 120,
+    }));
     const result = await service.summary('biz-1', '2026-01');
-    expect(result.netProfit).toBe(500 - 150 - 75); // 275
+    expect(result.totalPurchases).toBe(150);
+    expect(result.costOfGoodsSold).toBe(120);
+    expect(result.operatingExpenses).toBe(75);
+    expect(result.totalExpenses).toBe(120 + 75);
+    expect(result.netProfit).toBe(500 - 120 - 75); // 305
   });
 
   it('unpaid invoice appears in unpaidInvoices', async () => {

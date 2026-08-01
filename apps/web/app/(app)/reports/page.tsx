@@ -164,8 +164,8 @@ export default function ReportsPage() {
                 </h2>
                 <CostBar
                   sales={summary.totalSales}
-                  purchases={summary.totalPurchases}
-                  expenses={summary.totalExpenses}
+                  purchases={summary.costOfGoodsSold}
+                  expenses={summary.operatingExpenses}
                 />
               </div>
 

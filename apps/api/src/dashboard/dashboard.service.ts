@@ -17,7 +17,7 @@ export class DashboardService {
 
     const UNPAID_CAP = 50;
 
-    const [paidInvoices, purchases, expenses, unpaidInvoices, unpaidAggregate, lowStockMaterials] =
+    const [paidInvoices, purchases, expenses, saleMovements, unpaidInvoices, unpaidAggregate, lowStockMaterials] =
       await Promise.all([
         this.prisma.invoice.findMany({
           where: {
@@ -34,6 +34,18 @@ export class DashboardService {
         this.prisma.expense.findMany({
           where: { businessId, date: { gte: range.start, lt: range.end } },
           select: { amount: true },
+        }),
+        this.prisma.stockMovement.findMany({
+          where: {
+            businessId,
+            type: 'SALE',
+            createdAt: { gte: range.start, lt: range.end },
+          },
+          select: {
+            qty: true,
+            costAmount: true,
+            material: { select: { unitPrice: true } },
+          },
         }),
         // Capped list for display
         this.prisma.invoice.findMany({
@@ -68,8 +80,14 @@ export class DashboardService {
 
     const totalSales = paidInvoices.reduce((sum, inv) => sum + inv.total, 0);
     const totalPurchases = purchases.reduce((sum, p) => sum + p.total, 0);
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const netProfit = totalSales - totalPurchases - totalExpenses;
+    const operatingExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const costOfGoodsSold = saleMovements.reduce(
+      (sum, movement) =>
+        sum + (movement.costAmount ?? Math.abs(movement.qty) * movement.material.unitPrice),
+      0,
+    );
+    const totalExpenses = operatingExpenses + costOfGoodsSold;
+    const netProfit = totalSales - totalExpenses;
 
     const unpaidInvoicesFormatted = unpaidInvoices.map((inv) => ({
       id: inv.id,
@@ -87,6 +105,8 @@ export class DashboardService {
       month: range.month,
       totalSales,
       totalPurchases,
+      costOfGoodsSold,
+      operatingExpenses,
       totalExpenses,
       netProfit,
       unpaidInvoices: unpaidInvoicesFormatted,
