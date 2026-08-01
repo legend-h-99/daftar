@@ -107,7 +107,7 @@ export default function PurchaseForm({
         source,
         items,
       });
-      router.push("/purchases");
+      router.push("/inventory?purchaseUpdated=1");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "تعذر حفظ فاتورة الشراء");
       setSaving(false);

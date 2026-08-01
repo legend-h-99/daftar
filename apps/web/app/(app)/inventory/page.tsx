@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryMaterial[] | null>(null);
   const [movements, setMovements] = useState<StockMovement[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [purchaseUpdated, setPurchaseUpdated] = useState(false);
 
   const [adjusting, setAdjusting] = useState<InventoryMaterial | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -50,7 +51,10 @@ export default function InventoryPage() {
       .catch(() => {});
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    setPurchaseUpdated(new URLSearchParams(window.location.search).get("purchaseUpdated") === "1");
+  }, []);
 
   function handleDelete(material: InventoryMaterial) {
     if (deletingId !== material.id) {
@@ -94,6 +98,15 @@ export default function InventoryPage() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" strokeWidth={2.25} aria-hidden="true" />
           <span className="text-sm font-semibold text-amber-800">
             {lowCount} صنف وصل حد إعادة الطلب — راجع الكميات وأنشئ فاتورة شراء
+          </span>
+        </div>
+      )}
+
+      {purchaseUpdated && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-green-50 px-4 py-3">
+          <ArrowDownLeft className="mt-0.5 h-4 w-4 shrink-0 text-green-700" strokeWidth={2.25} aria-hidden="true" />
+          <span className="text-sm font-semibold text-green-800">
+            تم حفظ فاتورة الشراء وتحديث كميات المخزون مباشرة
           </span>
         </div>
       )}
