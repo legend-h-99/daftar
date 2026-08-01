@@ -275,6 +275,22 @@ function created<T>(data: T): Response {
   });
 }
 
+async function readJsonBody<T>(options: RequestInit): Promise<T | null> {
+  if (!options.body || typeof options.body !== "string") return null;
+  try {
+    return JSON.parse(options.body) as T;
+  } catch {
+    return null;
+  }
+}
+
+function refreshLowStock(material: InventoryMaterial) {
+  material.lowStock =
+    material.reorderLevel !== null &&
+    material.reorderLevel !== undefined &&
+    material.stockQty <= material.reorderLevel;
+}
+
 export async function demoApiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const method = (options.method ?? "GET").toUpperCase();
   const pathname = path.split("?")[0];
@@ -317,11 +333,102 @@ export async function demoApiFetch(path: string, options: RequestInit = {}): Pro
   }
   if (method === "GET" && pathname === "/purchases") return jsonResponse(purchases);
   if (method === "GET" && pathname === "/purchases/summary") {
+    const total = purchases.reduce((sum, purchase) => sum + purchase.total, 0);
     const summary: PurchasesSummary = {
-      bySupplier: [{ name: "تموينات الخير", count: purchases.length, total: purchases[0].total }],
-      byMonth: [{ month: new Date().toISOString().slice(0, 7), count: purchases.length, total: purchases[0].total }],
+      bySupplier: [{ name: "كل الموردين", count: purchases.length, total }],
+      byMonth: [{ month: new Date().toISOString().slice(0, 7), count: purchases.length, total }],
     };
     return jsonResponse(summary);
+  }
+
+  if (method === "POST" && pathname === "/purchases") {
+    const body = await readJsonBody<{
+      supplierName?: string;
+      date?: string;
+      source?: Purchase["source"];
+      notes?: string;
+      items?: {
+        materialId?: string;
+        name: string;
+        unit: Material["unit"];
+        quantity: number;
+        unitPrice: number;
+      }[];
+    }>(options);
+    const purchaseItems = (body?.items ?? []).filter(
+      (item) => item.name?.trim() && Number(item.quantity) > 0,
+    );
+    const nextNumber = Math.max(...purchases.map((purchase) => purchase.number), 0) + 1;
+    const purchaseDate = body?.date ?? today;
+    const purchase: Purchase = {
+      id: `pur-${Date.now()}`,
+      number: nextNumber,
+      supplier: body?.supplierName
+        ? { id: `sup-${Date.now()}`, name: body.supplierName }
+        : null,
+      date: purchaseDate,
+      total: purchaseItems.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
+        0,
+      ),
+      source: body?.source ?? "MANUAL",
+      notes: body?.notes,
+      items: [],
+    };
+
+    for (const item of purchaseItems) {
+      const lineTotal = Number(item.quantity) * Number(item.unitPrice);
+      let material =
+        materials.find((existing) => existing.id === item.materialId) ??
+        materials.find(
+          (existing) =>
+            existing.name.trim() === item.name.trim() && existing.unit === item.unit,
+        );
+
+      if (material) {
+        material.stockQty += Number(item.quantity);
+        material.purchasePrice = lineTotal;
+        material.purchaseQty = Number(item.quantity);
+        material.unitPrice = Number(item.unitPrice);
+        refreshLowStock(material);
+      } else {
+        material = {
+          id: `mat-${Date.now()}-${materials.length + 1}`,
+          name: item.name.trim(),
+          unit: item.unit,
+          purchasePrice: lineTotal,
+          purchaseQty: Number(item.quantity),
+          unitPrice: Number(item.unitPrice),
+          vatRate: 0,
+          stockQty: Number(item.quantity),
+          reorderLevel: null,
+          lowStock: false,
+        };
+        materials.unshift(material);
+      }
+
+      purchase.items.push({
+        id: `pi-${Date.now()}-${purchase.items.length + 1}`,
+        materialId: material.id,
+        name: item.name.trim(),
+        unit: item.unit,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        lineTotal,
+      });
+
+      movements.unshift({
+        id: `mov-${Date.now()}-${movements.length + 1}`,
+        type: "PURCHASE",
+        qty: Number(item.quantity),
+        balanceAfter: material.stockQty,
+        createdAt: purchaseDate,
+        material: { name: material.name, unit: material.unit },
+      });
+    }
+
+    purchases.unshift(purchase);
+    return created(purchase);
   }
 
   if (method === "POST" && pathname === "/purchases/scan") {
