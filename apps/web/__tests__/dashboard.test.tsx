@@ -23,6 +23,11 @@ vi.mock("@/lib/auth", () => ({
   clearToken: vi.fn(),
 }));
 
+vi.mock("@/lib/language", () => ({
+  useLanguage: () => ({ language: "ar", toggleLanguage: vi.fn() }),
+  LanguageProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Render the final value immediately — skips RAF animation in jsdom
 vi.mock("@/components/ui/animated-counter", () => ({
   AnimatedCounter: ({
@@ -85,6 +90,8 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
   return {
     totalSales: 5_000,
     totalPurchases: 2_000,
+    costOfGoodsSold: 1_500,
+    operatingExpenses: 500,
     totalExpenses: 500,
     netProfit: 2_500,
     unpaidInvoices: [],
@@ -139,8 +146,8 @@ describe("صفحة الرئيسية (Dashboard)", () => {
       await waitFor(() =>
         expect(screen.getByText("المبيعات")).toBeInTheDocument(),
       );
-      expect(screen.getByText("المشتريات")).toBeInTheDocument();
-      expect(screen.getByText("المصاريف")).toBeInTheDocument();
+      expect(screen.getByText("تكلفة البيع")).toBeInTheDocument();
+      expect(screen.getByText("مصاريف")).toBeInTheDocument();
       expect(screen.getByText(/صافي الربح/)).toBeInTheDocument();
     });
 
