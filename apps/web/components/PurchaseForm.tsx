@@ -47,7 +47,9 @@ export default function PurchaseForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGet<Material[]>("/materials").then(setMaterials).catch(() => {});
+    apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
+      setError(err instanceof ApiError ? err.message : "تعذر تحميل المواد الخام");
+    });
   }, []);
 
   const total = useMemo(

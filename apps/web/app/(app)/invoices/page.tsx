@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, FileText, Plus } from "lucide-react";
+import { ChevronRight, FileText, Plus } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
 import { DEMO_MODE } from "@/lib/demo-api";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
@@ -10,18 +10,21 @@ import { Invoice } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import StatusBadge from "@/components/StatusBadge";
+import { MonthNav } from "@/components/ui/month-nav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useLanguage } from "@/lib/language";
 
 type FilterTab = "ALL" | "UNPAID" | "PARTIAL";
 
-const TABS: { key: FilterTab; label: string }[] = [
-  { key: "ALL", label: "الكل" },
-  { key: "UNPAID", label: "غير مدفوعة" },
-  { key: "PARTIAL", label: "جزئي" },
+const TABS: { key: FilterTab; label: { ar: string; en: string } }[] = [
+  { key: "ALL", label: { ar: "الكل", en: "All" } },
+  { key: "UNPAID", label: { ar: "غير مدفوعة", en: "Unpaid" } },
+  { key: "PARTIAL", label: { ar: "جزئي", en: "Partial" } },
 ];
 
 export default function InvoicesPage() {
+  const { language } = useLanguage();
   const [tab, setTab] = useState<FilterTab>("ALL");
   const [created, setCreated] = useState(false);
   const {
@@ -33,7 +36,7 @@ export default function InvoicesPage() {
     nextMonth,
   } = useMonthResource<Invoice[]>({
     load: (targetMonth) => apiGet<Invoice[]>(`/invoices?month=${targetMonth}`),
-    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل الفواتير",
+    errorMessage: (err) => err instanceof ApiError ? err.message : language === "ar" ? "تعذر تحميل الفواتير" : "Could not load invoices",
   });
 
   const filtered = useMemo(() => {
@@ -67,11 +70,13 @@ export default function InvoicesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">الفواتير</h1>
+        <h1 className="text-xl font-extrabold text-gray-900">
+          {language === "ar" ? "الفواتير" : "Invoices"}
+        </h1>
         <Link
           href="/invoices/new"
           className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-700 text-white shadow-sm active:bg-brand-800"
-          aria-label="إضافة فاتورة"
+          aria-label={language === "ar" ? "إضافة فاتورة" : "Add invoice"}
         >
           <Plus className="h-5 w-5" />
         </Link>
@@ -87,48 +92,31 @@ export default function InvoicesPage() {
               tab === t.key ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"
             }`}
           >
-            {t.label}
+            {t.label[language]}
           </button>
         ))}
       </div>
 
       {/* Summary: month stepper + totals in one card */}
       <section className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={previousMonth}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-            aria-label="الشهر السابق"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <span className="text-sm font-bold text-gray-800">{formatMonthLabel(month)}</span>
-          <button
-            type="button"
-            onClick={nextMonth}
-            disabled={isCurrentMonth}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
-            aria-label="الشهر التالي"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-        </div>
+        <MonthNav month={month} isCurrentMonth={isCurrentMonth} onPrev={previousMonth} onNext={nextMonth} className="border-0 shadow-none bg-transparent px-0 py-0" />
 
         {filtered && filtered.length > 0 && (
           <div className="mt-1 border-t border-gray-100 pt-3">
             <div className="flex items-baseline justify-between px-1">
               <span className="text-sm font-medium text-gray-500">
-                إجمالي {filtered.length} فاتورة
+                {language === "ar" ? `إجمالي ${filtered.length} فاتورة` : `${filtered.length} invoices`}
               </span>
               <span className="text-2xl font-extrabold tracking-tight text-brand-700">
-                {formatSAR(monthTotal)}
+                {formatSAR(monthTotal, language)}
               </span>
             </div>
             {outstanding > 0 && (
               <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 px-3 py-2">
-                <span className="text-xs font-semibold text-red-600">غير محصّل من الزباين</span>
-                <span className="text-sm font-bold text-red-600">{formatSAR(outstanding)}</span>
+                <span className="text-xs font-semibold text-red-600">
+                  {language === "ar" ? "غير محصّل من الزباين" : "Outstanding from customers"}
+                </span>
+                <span className="text-sm font-bold text-red-600">{formatSAR(outstanding, language)}</span>
               </div>
             )}
           </div>
@@ -144,7 +132,7 @@ export default function InvoicesPage() {
       {created && (
         <Alert className="rounded-2xl border-green-200 bg-green-50">
           <AlertDescription className="font-medium text-green-700">
-            تم حفظ الفاتورة وتحديث المخزون مباشرة
+            {language === "ar" ? "تم حفظ الفاتورة وتحديث المخزون مباشرة" : "Invoice saved and stock updated."}
           </AlertDescription>
         </Alert>
       )}
@@ -160,9 +148,9 @@ export default function InvoicesPage() {
       {filtered && filtered.length === 0 && (
         <EmptyState
           icon={FileText}
-          title={tab === "ALL" ? `ما في فواتير في ${formatMonthLabel(month)}` : "لا توجد فواتير بهذا الفلتر"}
-          description="أنشئ أول فاتورة لك وابدأ تتابع مبيعاتك"
-          actionLabel="إضافة فاتورة"
+          title={tab === "ALL" ? (language === "ar" ? `ما في فواتير في ${formatMonthLabel(month, language)}` : `No invoices in ${formatMonthLabel(month, language)}`) : (language === "ar" ? "لا توجد فواتير بهذا الفلتر" : "No invoices match this filter")}
+          description={language === "ar" ? "أنشئ أول فاتورة لك وابدأ تتابع مبيعاتك" : "Create your first invoice and start tracking sales."}
+          actionLabel={language === "ar" ? "إضافة فاتورة" : "Add invoice"}
           actionHref="/invoices/new"
         />
       )}
@@ -178,15 +166,15 @@ export default function InvoicesPage() {
               <li key={inv.id}>
                 <Link
                   href={DEMO_MODE ? "/invoices/demo" : `/invoices/${inv.id}`}
-                  aria-label={`فاتورة ${inv.number}، ${inv.customer?.name || "بدون زبون"}، ${formatSAR(inv.total)}`}
+                  aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customer?.name || (language === "ar" ? "بدون زبون" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
                   className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="truncate font-semibold text-gray-900">
-                      {inv.customer?.name || "بدون زبون"}
+                      {inv.customer?.name || (language === "ar" ? "بدون زبون" : "Unnamed customer")}
                     </span>
                     <span className="text-xs text-gray-600">
-                      فاتورة {inv.number}
+                      {language === "ar" ? "فاتورة" : "Invoice"} {inv.number}
                       {(inv.issueDate || inv.createdAt)
                         ? ` · ${formatDate(inv.issueDate || inv.createdAt)}`
                         : ""}
@@ -194,12 +182,12 @@ export default function InvoicesPage() {
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <span className="font-bold text-gray-900">
-                      {formatSAR(inv.total)}
+                      {formatSAR(inv.total, language)}
                     </span>
                     <StatusBadge status={inv.status} />
                     {remaining != null && remaining > 0 && (
                       <span className="text-xs font-semibold text-yellow-700">
-                        متبقي {formatSAR(remaining)}
+                        {language === "ar" ? "متبقي" : "Remaining"} {formatSAR(remaining, language)}
                       </span>
                     )}
                   </div>

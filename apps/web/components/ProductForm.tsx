@@ -35,12 +35,15 @@ export default function ProductForm({ product }: ProductFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingConfirm, setDeletingConfirm] = useState(false);
   const [materials, setMaterials] = useState<Material[]>([]);
 
   // Inventory catalog: recipe rows pull name/unit/cost from here so the
   // product stays linked to stock (and sales can consume it automatically).
   useEffect(() => {
-    apiGet<Material[]>("/materials").then(setMaterials).catch(() => {});
+    apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
+      setError(err instanceof ApiError ? err.message : "تعذر تحميل المواد الخام");
+    });
   }, []);
 
   const allItems = useMemo(
@@ -91,7 +94,11 @@ export default function ProductForm({ product }: ProductFormProps) {
 
   async function handleDelete() {
     if (!product) return;
-    if (!confirm("متأكد إنك تبي تحذف هذا المنتج؟")) return;
+    if (!deletingConfirm) {
+      setDeletingConfirm(true);
+      return;
+    }
+    setDeletingConfirm(false);
     setDeleting(true);
     try {
       await apiDelete(`/products/${product.id}`);
@@ -215,10 +222,15 @@ export default function ProductForm({ product }: ProductFormProps) {
           type="button"
           onClick={handleDelete}
           disabled={deleting}
-          className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-red-200 py-3 text-sm font-semibold text-red-600 active:bg-red-50 disabled:opacity-60"
+          aria-label={deletingConfirm ? "اضغط مرة ثانية لتأكيد الحذف" : "حذف المنتج"}
+          className={`flex w-full items-center justify-center gap-1.5 rounded-2xl border py-3 text-sm font-semibold transition active:bg-red-50 disabled:opacity-60 ${
+            deletingConfirm
+              ? "border-red-500 bg-red-500 text-white"
+              : "border-red-200 text-red-600"
+          }`}
         >
           <Trash2 className="h-4 w-4" />
-          {deleting ? "جاري الحذف..." : "حذف المنتج"}
+          {deleting ? "جاري الحذف..." : deletingConfirm ? "اضغط مرة ثانية للتأكيد" : "حذف المنتج"}
         </button>
       )}
     </form>

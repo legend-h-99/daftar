@@ -19,13 +19,16 @@ export function percentOf(value: number, total: number): number {
 /**
  * Formats a number as Saudi Riyal currency, e.g. formatSAR(1250) => "1,250.00 ر.س"
  */
-export function formatSAR(amount: number | null | undefined): string {
+export function formatSAR(
+  amount: number | null | undefined,
+  locale: "ar" | "en" = "ar",
+): string {
   const value = Number(amount ?? 0);
   const formatted = value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${formatted} ر.س`;
+  return locale === "en" ? `SAR ${formatted}` : `${formatted} ر.س`;
 }
 
 /**
@@ -43,12 +46,15 @@ export function formatDate(date: string | Date | null | undefined): string {
   });
 }
 
-export function formatMonthLabel(monthStr: string): string {
+export function formatMonthLabel(monthStr: string, locale: "ar" | "en" = "ar"): string {
   // monthStr: "YYYY-MM"
   const [year, month] = monthStr.split("-").map(Number);
   if (!year || !month) return monthStr;
   const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString("ar-SA", { year: "numeric", month: "long" });
+  return d.toLocaleDateString(locale === "en" ? "en-US" : "ar-SA", {
+    year: "numeric",
+    month: "long",
+  });
 }
 
 export function currentMonthStr(): string {

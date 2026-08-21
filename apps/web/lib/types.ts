@@ -208,6 +208,31 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   OTHER: "أخرى",
 };
 
+export const UNIT_LABELS_EN: typeof UNIT_LABELS = {
+  KG: "kg",
+  GRAM: "g",
+  LITER: "L",
+  ML: "ml",
+  PIECE: "pcs",
+};
+
+export const MOVEMENT_TYPE_LABELS_EN: typeof MOVEMENT_TYPE_LABELS = {
+  PURCHASE: "Purchase",
+  SALE: "Sale",
+  ADJUSTMENT: "Manual adjustment",
+};
+
+export const EXPENSE_CATEGORY_LABELS_EN: typeof EXPENSE_CATEGORY_LABELS = {
+  RENT: "Rent",
+  SALARIES: "Salaries",
+  INGREDIENTS: "Ingredients",
+  PACKAGING: "Packaging",
+  MARKETING: "Marketing",
+  DELIVERY: "Delivery",
+  UTILITIES: "Utilities",
+  OTHER: "Other",
+};
+
 export interface Expense {
   id: string;
   category: ExpenseCategory;

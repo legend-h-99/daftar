@@ -1,17 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
+import { Plus, Trash2, Wallet } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
-import { DashboardSummary, EXPENSE_CATEGORY_LABELS, Expense } from "@/lib/types";
+import { DashboardSummary, EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_LABELS_EN, Expense } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import AddExpenseSheet from "@/components/expenses/AddExpenseSheet";
+import { MonthNav } from "@/components/ui/month-nav";
+import { useLanguage } from "@/lib/language";
 
 export default function ExpensesPage() {
+  const { language } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -31,7 +34,7 @@ export default function ExpensesPage() {
       ]);
       return { expenses, summary };
     },
-    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل المصاريف",
+    errorMessage: (err) => err instanceof ApiError ? err.message : language === "ar" ? "تعذر تحميل المصاريف" : "Could not load expenses",
   });
 
   const expenses = data?.expenses ?? null;
@@ -64,8 +67,8 @@ export default function ExpensesPage() {
 
   function expenseLabel(category: keyof typeof EXPENSE_CATEGORY_LABELS | "COGS") {
     return category === "COGS"
-      ? "تكلفة المخزون المباع"
-      : EXPENSE_CATEGORY_LABELS[category];
+      ? language === "ar" ? "تكلفة المخزون المباع" : "Cost of goods sold"
+      : (language === "ar" ? EXPENSE_CATEGORY_LABELS : EXPENSE_CATEGORY_LABELS_EN)[category];
   }
 
   async function handleDelete(id: string) {
@@ -77,7 +80,7 @@ export default function ExpensesPage() {
         setActionError(null);
         reload();
       } catch (err) {
-        setActionError(err instanceof ApiError ? err.message : "تعذر حذف المصروف");
+        setActionError(err instanceof ApiError ? err.message : language === "ar" ? "تعذر حذف المصروف" : "Could not delete expense");
         setDeletingId(null);
       }
     } else {
@@ -88,48 +91,29 @@ export default function ExpensesPage() {
   return (
     <div className="flex flex-col gap-4" onClick={() => setDeletingId(null)}>
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">المصاريف</h1>
+        <h1 className="text-xl font-extrabold text-gray-900">
+          {language === "ar" ? "المصاريف" : "Expenses"}
+        </h1>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setShowForm(true); }}
           className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-700 text-white shadow-sm active:bg-brand-800"
-          aria-label="إضافة مصروف"
+          aria-label={language === "ar" ? "إضافة مصروف" : "Add expense"}
         >
           <Plus className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
-        <button
-          type="button"
-          onClick={previousMonth}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-          aria-label="الشهر السابق"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-        <span className="text-sm font-bold text-gray-800">
-          {formatMonthLabel(month)}
-        </span>
-        <button
-          type="button"
-          onClick={nextMonth}
-          disabled={isCurrentMonth}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
-          aria-label="الشهر التالي"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      </div>
+      <MonthNav month={month} isCurrentMonth={isCurrentMonth} onPrev={previousMonth} onNext={nextMonth} />
 
       {expenses && total > 0 && (
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-medium text-gray-500">
-              إجمالي مصاريف {formatMonthLabel(month)}
+              {language === "ar" ? `إجمالي مصاريف ${formatMonthLabel(month, language)}` : `Total expenses in ${formatMonthLabel(month, language)}`}
             </span>
             <span className="text-2xl font-extrabold tracking-tight text-red-600">
-              {formatSAR(total)}
+              {formatSAR(total, language)}
             </span>
           </div>
           {byCategory.length > 1 && (
@@ -141,7 +125,7 @@ export default function ExpensesPage() {
                       {expenseLabel(category)}
                     </span>
                     <span className="font-semibold text-gray-900">
-                      {formatSAR(amount)}
+                      {formatSAR(amount, language)}
                       <span className="mr-1.5 text-xs font-normal text-gray-400">{pct}%</span>
                     </span>
                   </div>
@@ -177,9 +161,9 @@ export default function ExpensesPage() {
       {expenses && total === 0 && (
         <EmptyState
           icon={Wallet}
-          title="لا توجد مصاريف مسجلة"
-          description="سجّل مصاريف محلك عشان تعرف صافي ربحك بدقة"
-          actionLabel="إضافة مصروف"
+          title={language === "ar" ? "لا توجد مصاريف مسجلة" : "No expenses recorded"}
+          description={language === "ar" ? "سجّل مصاريف محلك عشان تعرف صافي ربحك بدقة" : "Record business expenses to calculate net profit accurately."}
+          actionLabel={language === "ar" ? "إضافة مصروف" : "Add expense"}
           onAction={() => setShowForm(true)}
         />
       )}
@@ -190,14 +174,14 @@ export default function ExpensesPage() {
             <li className="flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3.5 shadow-sm">
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-amber-900">
-                  تكلفة المخزون المباع
+                  {language === "ar" ? "تكلفة المخزون المباع" : "Cost of goods sold"}
                 </span>
                 <span className="text-xs text-amber-700">
-                  تُحسب تلقائيًا عند بيع منتجات مرتبطة بوصفة
+                  {language === "ar" ? "تُحسب تلقائيًا عند بيع منتجات مرتبطة بوصفة" : "Calculated automatically from product recipes."}
                 </span>
               </div>
               <span className="font-bold text-amber-900">
-                {formatSAR(costOfGoodsSold)}
+                {formatSAR(costOfGoodsSold, language)}
               </span>
             </li>
           )}
@@ -209,7 +193,7 @@ export default function ExpensesPage() {
             >
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-gray-900">
-                  {EXPENSE_CATEGORY_LABELS[exp.category]}
+                  {(language === "ar" ? EXPENSE_CATEGORY_LABELS : EXPENSE_CATEGORY_LABELS_EN)[exp.category]}
                 </span>
                 <span className="text-xs text-gray-500">
                   {formatDate(exp.date)}
@@ -218,12 +202,12 @@ export default function ExpensesPage() {
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-gray-900">
-                  {formatSAR(exp.amount)}
+                  {formatSAR(exp.amount, language)}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleDelete(exp.id)}
-                  aria-label={deletingId === exp.id ? "تأكيد الحذف" : "حذف"}
+                  aria-label={deletingId === exp.id ? (language === "ar" ? "تأكيد الحذف" : "Confirm delete") : (language === "ar" ? "حذف" : "Delete")}
                   className={`flex h-8 items-center justify-center rounded-lg px-2 text-sm font-semibold transition-all active:scale-95 ${
                     deletingId === exp.id
                       ? "bg-red-600 text-white"
@@ -231,7 +215,7 @@ export default function ExpensesPage() {
                   }`}
                 >
                   {deletingId === exp.id ? (
-                    "تأكيد"
+                    language === "ar" ? "تأكيد" : "Confirm"
                   ) : (
                     <Trash2 className="h-4 w-4" />
                   )}

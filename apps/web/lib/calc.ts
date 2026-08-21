@@ -6,14 +6,6 @@ import { CalculateResult, RecipeItem } from "./types";
  * POST /products/calculate.
  */
 
-export function unitPriceFromPurchase(
-  purchasePrice: number,
-  purchaseQty: number,
-): number {
-  if (!purchaseQty) return 0;
-  return purchasePrice / purchaseQty;
-}
-
 export function lineCost(item: Pick<RecipeItem, "unitPrice" | "quantityUsed">): number {
   return (item.unitPrice || 0) * (item.quantityUsed || 0);
 }

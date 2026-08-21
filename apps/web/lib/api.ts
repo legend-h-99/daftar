@@ -1,6 +1,13 @@
 import { clearToken, getToken } from "./auth";
 import { DEMO_MODE, demoApiFetch } from "./demo-api";
 
+function getLang(): "ar" | "en" {
+  if (typeof window === "undefined") return "ar";
+  try {
+    return (localStorage.getItem("daftar_lang") as "ar" | "en") ?? "ar";
+  } catch { return "ar"; }
+}
+
 // In the browser, derive the API host from the page hostname so the app works
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
@@ -72,15 +79,18 @@ export async function apiFetch<T = unknown>(
       ? await demoApiFetch(path, request)
       : await fetch(`${API_URL}${path}`, request);
   } catch {
-    throw new ApiError("تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت", 0);
+    throw new ApiError(getLang() === "ar" ? "تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت" : "Could not connect to server. Check your internet connection.", 0);
   }
 
   if (response.status === 401 && auth) {
     clearToken();
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
   }
 
   if (!response.ok) {
-    let message = "حدث خطأ غير متوقع، حاول مرة أخرى";
+    let message = getLang() === "ar" ? "حدث خطأ غير متوقع، حاول مرة أخرى" : "An unexpected error occurred. Please try again.";
     try {
       const data = await response.json();
       if (typeof data?.message === "string") {
@@ -135,13 +145,13 @@ export async function apiGetBlob(path: string): Promise<Blob> {
       ? await demoApiFetch(path, request)
       : await fetch(`${API_URL}${path}`, request);
   } catch {
-    throw new ApiError("تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت", 0);
+    throw new ApiError(getLang() === "ar" ? "تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت" : "Could not connect to server. Check your internet connection.", 0);
   }
   if (response.status === 401) {
     clearToken();
   }
   if (!response.ok) {
-    throw new ApiError("تعذر تحميل الملف، حاول مرة أخرى", response.status);
+    throw new ApiError(getLang() === "ar" ? "تعذر تحميل الملف، حاول مرة أخرى" : "Could not download the file. Please try again.", response.status);
   }
   return response.blob();
 }

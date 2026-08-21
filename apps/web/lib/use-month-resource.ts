@@ -13,6 +13,7 @@ interface UseMonthResourceOptions<T> {
   errorMessage: (error: unknown) => string;
   cache?: Map<string, CacheEntry<T>>;
   staleMs?: number;
+  cacheMax?: number;
 }
 
 export function useMonthResource<T>({
@@ -20,6 +21,7 @@ export function useMonthResource<T>({
   errorMessage,
   cache,
   staleMs = 0,
+  cacheMax = 6,
 }: UseMonthResourceOptions<T>) {
   const loadRef = useRef(load);
   const errorMessageRef = useRef(errorMessage);
@@ -58,7 +60,14 @@ export function useMonthResource<T>({
     loadRef.current(month)
       .then((nextData) => {
         if (cancelled) return;
-        cache?.set(month, { data: nextData, ts: Date.now() });
+        if (cache) {
+          cache.set(month, { data: nextData, ts: Date.now() });
+          // Evict oldest entries beyond cacheMax
+          if (cache.size > cacheMax) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+          }
+        }
         setData(nextData);
         setError(null);
       })

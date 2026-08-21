@@ -33,8 +33,12 @@ export default function NewInvoicePage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiGet<Customer[]>("/customers").then(setCustomers).catch(() => {});
-    apiGet<Product[]>("/products").then(setProducts).catch(() => {});
+    apiGet<Customer[]>("/customers").then(setCustomers).catch((err) => {
+      setError(err instanceof ApiError ? err.message : "تعذر تحميل العملاء");
+    });
+    apiGet<Product[]>("/products").then(setProducts).catch((err) => {
+      setError(err instanceof ApiError ? err.message : "تعذر تحميل المنتجات");
+    });
   }, []);
 
   function selectCustomer(c: Customer) {
