@@ -1,0 +1,2 @@
+/invoices/* /invoices/demo/ 200
+/products/*/edit /products/demo/edit/ 200
