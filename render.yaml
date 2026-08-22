@@ -17,6 +17,6 @@ services:
       - key: CORS_ORIGIN
         sync: false
       - key: DEMO_AUTH_ENABLED
-        value: "false"
+        value: "true"
       - key: GOOGLE_CLIENT_ID
         sync: false
