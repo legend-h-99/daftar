@@ -373,7 +373,7 @@ export default function LandingContent() {
         </div>
       </section>
 
-      {/* ── 8. Comparison Table ── */}
+      {/* ── 8. Comparison ── */}
       <section className="mx-auto w-full max-w-5xl px-5 py-20">
         <div className="mx-auto max-w-xl text-center">
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
@@ -383,28 +383,32 @@ export default function LandingContent() {
             مقارنة صادقة — بما فيها نقطة واحدة تفوز فيها البدائل.
           </p>
         </div>
-        <div className="mt-10 overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-5 py-4 text-right font-semibold text-gray-500">الميزة</th>
-                <th className="px-5 py-4 text-center font-bold text-brand-700">دفتر</th>
-                <th className="px-5 py-4 text-center font-semibold text-gray-500">ورقة وقلم</th>
-                <th className="px-5 py-4 text-center font-semibold text-gray-500">QuickBooks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisons.map(({ feature, daftar, paper, quickbooks }, i) => (
-                <tr key={feature} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
-                  <td className="px-5 py-3.5 font-medium text-[#101914]">{feature}</td>
-                  <td className="px-5 py-3.5 text-center"><CellIcon val={daftar} /></td>
-                  <td className="px-5 py-3.5 text-center"><CellIcon val={paper} /></td>
-                  <td className="px-5 py-3.5 text-center"><CellIcon val={quickbooks} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        {/* Header row */}
+        <div className="mt-10 grid grid-cols-4 gap-0 rounded-t-2xl border border-b-0 border-gray-100 bg-white px-4 py-3 text-center text-xs font-semibold">
+          <span className="text-right text-gray-400">الميزة</span>
+          <span className="font-bold text-brand-700">دفتر</span>
+          <span className="text-gray-400">ورقة وقلم</span>
+          <span className="text-gray-400">QuickBooks</span>
         </div>
+
+        {/* Rows */}
+        <div className="rounded-b-2xl border border-gray-100 bg-white shadow-sm">
+          {comparisons.map(({ feature, daftar, paper, quickbooks }, i) => (
+            <div
+              key={feature}
+              className={`grid grid-cols-4 items-center gap-0 px-4 py-3 text-center ${
+                i !== comparisons.length - 1 ? "border-b border-gray-100" : ""
+              } ${i % 2 !== 0 ? "bg-gray-50/50" : ""}`}
+            >
+              <span className="text-right text-xs font-medium leading-tight text-[#101914]">{feature}</span>
+              <span><CellIcon val={daftar} /></span>
+              <span><CellIcon val={paper} /></span>
+              <span><CellIcon val={quickbooks} /></span>
+            </div>
+          ))}
+        </div>
+
         <p className="mt-3 text-center text-xs text-gray-400">
           * QuickBooks يتفوق في المحاسبة المتقدمة للشركات الكبيرة — وهذا ليس جمهورنا.
         </p>
