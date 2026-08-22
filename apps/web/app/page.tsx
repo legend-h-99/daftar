@@ -1,21 +1,18 @@
-"use client";
+import type { Metadata } from "next";
+import LandingContent from "./landing/_content";
+import AuthRedirect from "./_auth-redirect";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth";
+export const metadata: Metadata = {
+  title: "دفتر — تطبيق محاسبة للمشاريع الصغيرة | Daftar",
+  description:
+    "تطبيق محاسبة عربي مبسّط للأسر المنتجة والمشاريع الصغيرة في السعودية. تابع مبيعاتك ومصاريفك وفواتيرك وأرباحك من مكان واحد — بدون مصطلحات محاسبية. جرّب مجانًا.",
+};
 
 export default function RootPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace(isAuthenticated() ? "/dashboard" : "/login");
-  }, [router]);
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-700 text-xl font-extrabold text-white">
-        د
-      </span>
-    </div>
+    <>
+      <AuthRedirect />
+      <LandingContent />
+    </>
   );
 }

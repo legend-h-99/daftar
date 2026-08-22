@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/lib/theme";
+import { LanguageProvider } from "@/lib/language";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -37,11 +38,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)}>
+    <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider>
-          <ServiceWorkerRegistration />
-          {children}
+          <LanguageProvider>
+            <ServiceWorkerRegistration />
+            {children}
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

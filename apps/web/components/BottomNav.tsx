@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ShoppingCart, FileText, Wallet, Boxes } from "lucide-react";
+import { useLanguage } from "@/lib/language";
 
 const TABS = [
-  { href: "/dashboard", label: "الرئيسية", icon: Home },
-  { href: "/invoices", label: "الفواتير", icon: FileText },
-  { href: "/purchases", label: "المشتريات", icon: ShoppingCart },
-  { href: "/expenses", label: "المصاريف", icon: Wallet },
-  { href: "/inventory", label: "المخزون", icon: Boxes },
+  { href: "/dashboard", label: { ar: "الرئيسية", en: "Home" }, icon: Home },
+  { href: "/invoices", label: { ar: "الفواتير", en: "Invoices" }, icon: FileText },
+  { href: "/purchases", label: { ar: "المشتريات", en: "Purchases" }, icon: ShoppingCart },
+  { href: "/expenses", label: { ar: "المصاريف", en: "Expenses" }, icon: Wallet },
+  { href: "/inventory", label: { ar: "المخزون", en: "Stock" }, icon: Boxes },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const { language } = useLanguage();
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
@@ -35,7 +37,7 @@ export default function BottomNav() {
                 strokeWidth={active ? 2.5 : 2}
               />
               <span className={active ? "text-brand-700" : "text-gray-500"}>
-                {label}
+                {label[language]}
               </span>
             </Link>
           );
