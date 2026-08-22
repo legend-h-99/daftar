@@ -20,8 +20,8 @@ function resolveApiUrl(): string {
       /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
     // Local dev: hit the API server directly (no tunnel needed)
     if (isLocal) return `${protocol}//${hostname}:3001/api`;
-    // Tunnel / production: proxy through the web server → no CORS, no second tunnel
-    return "/api-proxy";
+    // Production (static export on Cloudflare Pages): use the configured API URL
+    return process.env.NEXT_PUBLIC_API_URL || "/api-proxy";
   }
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 }
