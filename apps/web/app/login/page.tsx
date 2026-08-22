@@ -1,17 +1,14 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Languages, Phone } from "lucide-react";
+import { Languages } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
-import { cn } from "@/lib/utils";
-import { fieldClass } from "@/components/ui/form-field";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { useLanguage } from "@/lib/language";
 
-const PHONE_REGEX = /^05\d{8}$/;
 const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
 
 const DEMO_STORES = [
@@ -28,11 +25,8 @@ const DEMO_STORES = [
 export default function LoginPage() {
   const router = useRouter();
   const { language, toggleLanguage } = useLanguage();
-  const [phone, setPhone]     = useState("");
   const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const isValid = PHONE_REGEX.test(phone);
 
   async function enterDemo(phoneNumber: string) {
     if (!DEMO_MODE) {
@@ -129,8 +123,8 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-gray-500">
             {language === "ar"
-              ? "سجّل دخولك برقم جوالك وتابع حسابات محلك بكل سهولة"
-              : "Sign in with your phone number and keep your business accounts in one place."}
+              ? "سجّل دخولك بحساب Google وتابع حسابات محلك بكل سهولة"
+              : "Sign in with Google and keep your business accounts in one place."}
           </p>
         </div>
 
@@ -139,62 +133,13 @@ export default function LoginPage() {
           className="animate-slide-up rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
           style={{ animationDelay: "120ms" }}
         >
-          <div className="mb-6">
-            <GoogleSignInButton />
-            <div className="mt-5 flex items-center gap-3">
-              <span className="h-px flex-1 bg-gray-100" />
-              <span className="text-xs font-semibold text-gray-400">
-                {language === "ar" ? "أو" : "or"}
-              </span>
-              <span className="h-px flex-1 bg-gray-100" />
-            </div>
-          </div>
+          <GoogleSignInButton />
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <label
-                htmlFor="phone"
-                className="mb-1.5 block text-sm font-semibold text-gray-700"
-              >
-                {language === "ar" ? "رقم الجوال" : "Mobile number"}
-              </label>
-              <div className="relative">
-                <Phone className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-                <input
-                  id="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  dir="ltr"
-                  placeholder="05xxxxxxxx"
-                  value={phone}
-                  onChange={(e) =>
-                    setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
-                  }
-                  className={cn(
-                    fieldClass,
-                    "py-3.5 pr-11 text-left text-lg font-semibold tracking-wide",
-                  )}
-                />
-              </div>
-            </div>
-
-            {error && (
-              <p className="animate-scale-in rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-600">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-1 w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-60"
-            >
-              {loading
-                ? language === "ar" ? "جاري الإرسال..." : "Sending..."
-                : language === "ar" ? "إرسال رمز التحقق" : "Send verification code"}
-            </button>
-          </form>
+          {error && (
+            <p className="mt-3 animate-scale-in rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-600 text-center">
+              {error}
+            </p>
+          )}
 
           {/* Demo entry */}
           <div className="mt-6">
@@ -207,13 +152,16 @@ export default function LoginPage() {
             </div>
             <button
               type="button"
+              disabled={loading}
               onClick={() => {
                 const store = DEMO_STORES[Math.floor(Math.random() * DEMO_STORES.length)];
                 enterDemo(store.phone);
               }}
-              className="w-full rounded-2xl border border-brand-200 bg-brand-50 py-3 text-sm font-semibold text-brand-700 transition-all active:scale-[0.98] active:bg-brand-100"
+              className="w-full rounded-2xl border border-brand-200 bg-brand-50 py-3 text-sm font-semibold text-brand-700 transition-all active:scale-[0.98] active:bg-brand-100 disabled:opacity-60"
             >
-              {language === "ar" ? "دخول تجريبي" : "Try demo"}
+              {loading
+                ? language === "ar" ? "جاري الدخول..." : "Signing in..."
+                : language === "ar" ? "دخول تجريبي" : "Try demo"}
             </button>
           </div>
         </div>
