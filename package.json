@@ -8,7 +8,8 @@
     "dev:mobile": "pnpm --filter @daftar/mobile start",
     "mobile:android": "pnpm --filter @daftar/mobile android",
     "mobile:ios": "pnpm --filter @daftar/mobile ios",
-    "build": "pnpm --filter api build && pnpm --filter web build"
+    "build": "pnpm --filter web build",
+    "build:all": "pnpm --filter api build && pnpm --filter web build"
   },
   "engines": {
     "node": ">=20"
