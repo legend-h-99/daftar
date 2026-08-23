@@ -30,10 +30,12 @@ export default function BottomNav() {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+              className="motion-press flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
             >
               <Icon
-                className={`h-6 w-6 ${active ? "text-brand-700" : "text-gray-500"}`}
+                className={`h-6 w-6 transition-transform duration-150 ${
+                  active ? "scale-110 text-brand-700" : "text-gray-500"
+                }`}
                 strokeWidth={active ? 2.5 : 2}
               />
               <span className={active ? "text-brand-700" : "text-gray-500"}>
