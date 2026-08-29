@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
+import PageMotion from "@/components/PageMotion";
 import { getToken } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
 import { Business, User } from "@/lib/types";
@@ -42,12 +43,8 @@ export default function AppLayout({
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f7f8f7]">
-        <div className="relative flex items-center justify-center">
-          {/* Pulsing rings */}
-          <span aria-hidden="true" className="absolute h-16 w-16 animate-pulse-ring rounded-full bg-brand-200" />
-          <span aria-hidden="true" className="absolute h-16 w-16 animate-pulse-ring rounded-full bg-brand-200" style={{ animationDelay: "0.8s" }} />
-          {/* Logo */}
-          <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-700 text-xl font-extrabold text-white">
+        <div className="motion-loading-mark rounded-lg border border-brand-100 bg-white p-3 shadow-sm">
+          <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-700 text-xl font-extrabold text-white">
             د
           </span>
         </div>
@@ -59,7 +56,7 @@ export default function AppLayout({
     <BusinessProvider value={{ user, business, refresh }}>
       <div className="min-h-screen bg-[#f7f8f7]">
         <TopBar businessName={business?.name} />
-        <div className="mx-auto max-w-md px-4 pb-24 pt-4">{children}</div>
+        <PageMotion className="mx-auto max-w-md px-4 pb-24 pt-4">{children}</PageMotion>
         <BottomNav />
       </div>
     </BusinessProvider>
