@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from './email.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -53,6 +54,10 @@ describe('AuthService', () => {
           provide: ConfigService,
           useValue: config,
         },
+        {
+          provide: EmailService,
+          useValue: { sendVerificationEmail: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -89,6 +94,7 @@ describe('AuthService', () => {
           },
         },
         { provide: JwtService, useValue: { sign: jest.fn() } },
+        { provide: EmailService, useValue: { sendVerificationEmail: jest.fn() } },
         { provide: ConfigService, useValue: config },
       ],
     }).compile();
@@ -145,7 +151,8 @@ describe('AuthService', () => {
       user: { upsert: jest.fn() },
     };
     const mockJwt = { sign: jest.fn() };
-    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).toThrow(
+    const mockEmail = { sendVerificationEmail: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, mockEmail as any, cfg as any)).toThrow(
       'AUTH_DEV_OTP is only allowed when NODE_ENV is "development" or "test"',
     );
   });
@@ -163,7 +170,8 @@ describe('AuthService', () => {
       user: { upsert: jest.fn() },
     };
     const mockJwt = { sign: jest.fn() };
-    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).toThrow(
+    const mockEmail = { sendVerificationEmail: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, mockEmail as any, cfg as any)).toThrow(
       'AUTH_DEV_OTP is only allowed when NODE_ENV is "development" or "test"',
     );
   });
@@ -181,6 +189,7 @@ describe('AuthService', () => {
       user: { upsert: jest.fn() },
     };
     const mockJwt = { sign: jest.fn() };
-    expect(() => new AuthService(mockPrisma as any, mockJwt as any, cfg as any)).not.toThrow();
+    const mockEmail = { sendVerificationEmail: jest.fn() };
+    expect(() => new AuthService(mockPrisma as any, mockJwt as any, mockEmail as any, cfg as any)).not.toThrow();
   });
 });

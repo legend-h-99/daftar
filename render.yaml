@@ -20,3 +20,9 @@ services:
         value: "true"
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: APP_URL
+        value: https://daftar-ead.pages.dev
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

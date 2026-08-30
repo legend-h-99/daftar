@@ -56,6 +56,10 @@ import { apiPost } from "@/lib/api";
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("صفحة تسجيل الدخول (Login)", () => {
+  async function openPhoneTab(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "رقم الجوال" }));
+  }
+
   beforeEach(() => {
     vi.mocked(apiPost).mockReset();
     mockPush.mockReset();
@@ -71,12 +75,13 @@ describe("صفحة تسجيل الدخول (Login)", () => {
   // ── العرض ────────────────────────────────────────────────────────────────
 
   describe("العرض الأولي", () => {
-    it("يعرض شعار دفتر وحقل الجوال وزر الإرسال", () => {
+    it("يعرض شعار دفتر ونموذج البريد الإلكتروني كخيار افتراضي", () => {
       render(<LoginPage />);
       expect(screen.getByText("دفتر")).toBeInTheDocument();
-      expect(screen.getByLabelText("رقم الجوال")).toBeInTheDocument();
+      expect(screen.getByLabelText("البريد الإلكتروني")).toBeInTheDocument();
+      expect(screen.getByLabelText("كلمة المرور")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "إرسال رمز التحقق" }),
+        screen.getByRole("button", { name: "تسجيل الدخول" }),
       ).toBeInTheDocument();
     });
 
@@ -106,6 +111,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يقبل الأرقام فقط ويحذف الأحرف", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       const input = screen.getByLabelText("رقم الجوال");
       await user.type(input, "05abc12345");
       expect(input).toHaveValue("0512345");
@@ -114,6 +120,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يحدّ الإدخال بـ 10 أرقام", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       const input = screen.getByLabelText("رقم الجوال");
       await user.type(input, "05123456789999");
       expect((input as HTMLInputElement).value.length).toBe(10);
@@ -122,6 +129,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يحتفظ بالرقم المكتوب بشكل صحيح", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       const input = screen.getByLabelText("رقم الجوال");
       await user.type(input, "0512345678");
       expect(input).toHaveValue("0512345678");
@@ -134,6 +142,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يُظهر خطأ عند الإرسال بحقل فارغ", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
       );
@@ -145,6 +154,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يُظهر خطأ إذا لم يبدأ الرقم بـ 05", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0612345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -155,6 +165,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("يُظهر خطأ إذا كان الرقم أقل من 10 أرقام", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "05123");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -165,6 +176,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
     it("لا يرسل الطلب إذا كان الرقم غير صحيح", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0612345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -180,6 +192,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockResolvedValue({ sent: true });
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -196,6 +209,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockResolvedValue({ sent: true, devCode: "1234" });
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -215,6 +229,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
         new ApiError("هذا الرقم محظور", 403),
       );
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -228,6 +243,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockRejectedValue(new Error("network error"));
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -243,6 +259,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockReturnValue(new Promise(() => {})); // لا يُحل أبداً
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),
@@ -259,6 +276,7 @@ describe("صفحة تسجيل الدخول (Login)", () => {
       // أول محاولة تفشل
       vi.mocked(apiPost).mockRejectedValueOnce(new Error("fail"));
       render(<LoginPage />);
+      await openPhoneTab(user);
       await user.type(screen.getByLabelText("رقم الجوال"), "0512345678");
       await user.click(
         screen.getByRole("button", { name: "إرسال رمز التحقق" }),

@@ -59,15 +59,33 @@ model Business {
 }
 
 model User {
-  id         String    @id @default(uuid())
-  phone      String?   @unique
-  email      String?   @unique
-  googleSub  String?   @unique
-  avatarUrl  String?
-  name       String?
-  businessId String?
-  business   Business? @relation(fields: [businessId], references: [id])
-  createdAt  DateTime  @default(now())
+  id             String    @id @default(uuid())
+  phone          String?   @unique
+  email          String?   @unique
+  emailVerified  Boolean   @default(false)
+  passwordHash   String?
+  googleSub      String?   @unique
+  avatarUrl      String?
+  name           String?
+  businessId     String?
+  business       Business? @relation(fields: [businessId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  emailVerifications EmailVerification[]
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token, consumed, expiresAt])
+  @@index([userId])
 }
 
 model OtpCode {
@@ -80,7 +98,8 @@ model OtpCode {
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
-  @@index([phone])
+  // Composite covers the hot path: findFirst({ phone, consumed: false, expiresAt: { gt } })
+  @@index([phone, consumed, expiresAt])
 }
 
 model Material {
@@ -98,6 +117,7 @@ model Material {
   stockQty      Float    @default(0)
   reorderLevel  Float?
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   recipeItems    RecipeItem[]
   purchaseItems  PurchaseItem[]
@@ -117,6 +137,11 @@ enum StockMovementType {
   PURCHASE
   SALE
   ADJUSTMENT
+}
+
+enum StockRefType {
+  PURCHASE
+  INVOICE
 }
 
 model Supplier {
@@ -167,6 +192,9 @@ model PurchaseItem {
   quantity   Float
   unitPrice  Float
   lineTotal  Float
+
+  @@index([purchaseId])
+  @@index([materialId])
 }
 
 // Append-only inventory ledger: every stock change (purchase in, sale out,
@@ -182,13 +210,14 @@ model StockMovement {
   qty          Float // signed: positive = in, negative = out
   balanceAfter Float
   costAmount   Float?
-  refType      String? // 'purchase' | 'invoice' | null for manual adjustments
+  refType      StockRefType?
   refId        String?
   note         String?
   createdAt    DateTime          @default(now())
 
   @@index([businessId, createdAt])
   @@index([businessId, materialId, createdAt])
+  @@index([businessId, type, createdAt])
   @@index([materialId])
 }
 
@@ -227,6 +256,7 @@ model RecipeItem {
   lineCost     Float
   type         RecipeItemType @default(RAW)
   createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   @@index([materialId])
   @@index([productId, materialId])
@@ -285,6 +315,7 @@ model InvoiceItem {
   quantity  Float
   lineTotal Float
 
+  @@index([invoiceId])
   @@index([productId])
 }
 

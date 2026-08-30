@@ -51,7 +51,7 @@ describe('InventoryService', () => {
         materialId: 'mat-flour',
         type: 'SALE',
         qty: -6,
-        refType: 'invoice',
+        refType: 'INVOICE',
         refId: 'inv-1',
       }),
     });
@@ -113,7 +113,7 @@ describe('InventoryService', () => {
         qty: 3,
         balanceAfter: 7,
         costAmount: 24,
-        refType: 'purchase',
+        refType: 'PURCHASE',
         refId: 'purchase-1',
       },
     });

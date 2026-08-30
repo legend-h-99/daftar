@@ -1,10 +1,14 @@
-import { randomInt, randomUUID } from 'crypto';
+import { randomBytes, randomInt, randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../common/types/auth.types';
+import { EmailService } from './email.service';
+
+const EMAIL_VERIFY_TTL_HOURS = 24;
 
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
@@ -38,6 +42,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly emailService: EmailService,
     configService: ConfigService,
   ) {
     this.devOtpEnabled = configService.get<string>('AUTH_DEV_OTP') === 'true';
@@ -288,6 +293,121 @@ export class AuthService {
       business: user.business,
       user: userPayload,
     };
+  }
+
+  async registerEmail(email: string, password: string, name?: string) {
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      if (existing.emailVerified) {
+        throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
+      }
+      // Re-send verification if account exists but not verified
+      await this.sendVerificationEmail(existing);
+      return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await this.prisma.user.create({
+      data: { email, passwordHash, name: name ?? null },
+    });
+
+    await this.sendVerificationEmail(user);
+    return { sent: true, message: 'تم التسجيل! تحقق من بريدك الإلكتروني لتفعيل الحساب' };
+  }
+
+  async loginEmail(email: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    }
+
+    if (!user.emailVerified) {
+      throw new BadRequestException('يجب تأكيد بريدك الإلكتروني أولاً. تحقق من صندوق الوارد.');
+    }
+
+    const accessToken = this.signToken({
+      sub: user.id,
+      phone: user.phone,
+      email: user.email,
+      businessId: user.businessId,
+    });
+
+    return {
+      accessToken,
+      user: { id: user.id, phone: user.phone, email: user.email, name: user.name, businessId: user.businessId },
+      hasBusiness: !!user.businessId,
+    };
+  }
+
+  async verifyEmailToken(token: string) {
+    const record = await this.prisma.emailVerification.findFirst({
+      where: { token, consumed: false, expiresAt: { gt: new Date() } },
+      include: { user: true },
+    });
+
+    if (!record) {
+      throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
+    }
+
+    await this.prisma.emailVerification.update({
+      where: { id: record.id },
+      data: { consumed: true },
+    });
+
+    const user = await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { emailVerified: true },
+    });
+
+    const accessToken = this.signToken({
+      sub: user.id,
+      phone: user.phone,
+      email: user.email,
+      businessId: user.businessId,
+    });
+
+    return {
+      accessToken,
+      user: { id: user.id, phone: user.phone, email: user.email, name: user.name, businessId: user.businessId },
+      hasBusiness: !!user.businessId,
+    };
+  }
+
+  async resendVerificationEmail(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      // Don't reveal whether email exists
+      return { sent: true };
+    }
+    if (user.emailVerified) {
+      throw new BadRequestException('البريد الإلكتروني مُفعَّل بالفعل');
+    }
+    await this.sendVerificationEmail(user);
+    return { sent: true };
+  }
+
+  private async sendVerificationEmail(user: { id: string; email: string | null; name: string | null }) {
+    if (!user.email) return;
+
+    // Invalidate old tokens
+    await this.prisma.emailVerification.updateMany({
+      where: { userId: user.id, consumed: false },
+      data: { consumed: true },
+    });
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + EMAIL_VERIFY_TTL_HOURS * 60 * 60 * 1000);
+
+    await this.prisma.emailVerification.create({
+      data: { userId: user.id, token, expiresAt },
+    });
+
+    await this.emailService.sendVerificationEmail(user.email, token, user.name);
   }
 
   signToken(payload: JwtPayload): string {

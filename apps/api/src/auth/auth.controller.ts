@@ -6,6 +6,10 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { DemoLoginDto } from './dto/demo-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { RegisterEmailDto } from './dto/register-email.dto';
+import { LoginEmailDto } from './dto/login-email.dto';
+import { VerifyEmailTokenDto } from './dto/verify-email-token.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
@@ -44,6 +48,30 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: CurrentUserData) {
     return this.authService.me(user.userId);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Post('email/register')
+  registerEmail(@Body() dto: RegisterEmailDto) {
+    return this.authService.registerEmail(dto.email, dto.password, dto.name);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('email/login')
+  loginEmail(@Body() dto: LoginEmailDto) {
+    return this.authService.loginEmail(dto.email, dto.password);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('email/verify')
+  verifyEmail(@Body() dto: VerifyEmailTokenDto) {
+    return this.authService.verifyEmailToken(dto.token);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Post('email/resend-verification')
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerificationEmail(dto.email);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
