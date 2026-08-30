@@ -49,4 +49,4 @@ jobs:
           service-ports: "3000:http"
           service-routes: "/:3000"
           service-checks: "3000:http:/login"
-          service-env: NODE_ENV=production,PORT=3000,DATABASE_URL=@DAFTAR_DATABASE_URL,JWT_SECRET=@DAFTAR_JWT_SECRET,CORS_ORIGIN=*,DEMO_AUTH_ENABLED=true,NEXT_PUBLIC_DEMO_LOGIN=true
+          service-env: NODE_ENV=production,PORT=3000,DATABASE_URL=@DAFTAR_DATABASE_URL,JWT_SECRET=@DAFTAR_JWT_SECRET,CORS_ORIGIN=https://daftar-ead.pages.dev,APP_URL=https://daftar-ead.pages.dev,API_PROXY_TARGET=http://localhost:3001/api,DEMO_AUTH_ENABLED=false,NEXT_PUBLIC_DEMO_LOGIN=false
