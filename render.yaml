@@ -3,6 +3,7 @@ services:
     name: daftar-api
     runtime: docker
     dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /api/health
     envVars:
