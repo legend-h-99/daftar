@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Unit } from '@prisma/client';
+import { Prisma, StockRefType, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
@@ -175,7 +175,7 @@ export class InventoryService {
         qty: item.quantity,
         balanceAfter: stockQtyAfter,
         costAmount: lineTotal,
-        refType: 'purchase',
+        refType: StockRefType.PURCHASE,
         refId: purchaseId,
       },
     });
@@ -204,7 +204,7 @@ export class InventoryService {
           qty: -item.quantity,
           balanceAfter: updated.stockQty,
           costAmount: null,
-          refType: 'purchase',
+          refType: StockRefType.PURCHASE,
           refId: purchase.id,
           note: `عكس حذف فاتورة شراء رقم ${purchase.number}`,
         },
@@ -271,7 +271,7 @@ export class InventoryService {
           qty: -qty,
           balanceAfter: updated.stockQty,
           costAmount: qty * unitPrice,
-          refType: 'invoice',
+          refType: StockRefType.INVOICE,
           refId: invoiceId,
         },
       });

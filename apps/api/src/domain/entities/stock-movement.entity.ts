@@ -8,7 +8,7 @@ export interface StockMovement {
   qty: number;
   balanceAfter: number;
   costAmount: number | null;
-  refType: string | null;
+  refType: 'PURCHASE' | 'INVOICE' | null;
   refId: string | null;
   note: string | null;
   createdAt: Date;
@@ -21,7 +21,7 @@ export interface CreateMovementData {
   qty: number;
   balanceAfter: number;
   costAmount?: number;
-  refType?: string;
+  refType?: 'PURCHASE' | 'INVOICE';
   refId?: string;
   note?: string;
 }
