@@ -71,7 +71,7 @@ export class ProductsService {
     if (ids.length === 0) return;
 
     const materials = await db.material.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, businessId },
       select: { id: true, unitPrice: true },
     });
     const priceById = new Map(materials.map((m) => [m.id, m.unitPrice]));
@@ -126,6 +126,8 @@ export class ProductsService {
   }
 
   async create(businessId: string, dto: CreateProductDto) {
+    await this.assertMaterialsBelongToBusiness(businessId, dto.recipeItems);
+
     const overheadCost = dto.overheadCost ?? 0;
     const costs = this.computeCosts(dto.recipeItems, overheadCost, dto.profitMargin);
 
@@ -182,6 +184,10 @@ export class ProductsService {
 
   async update(businessId: string, id: string, dto: UpdateProductDto) {
     const existing = await this.findOne(businessId, id);
+
+    if (dto.recipeItems) {
+      await this.assertMaterialsBelongToBusiness(businessId, dto.recipeItems);
+    }
 
     const overheadCost = dto.overheadCost ?? existing.overheadCost;
     const profitMargin = dto.profitMargin ?? existing.profitMargin;
@@ -243,5 +249,28 @@ export class ProductsService {
     await this.findOne(businessId, id);
     await this.prisma.product.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  private async assertMaterialsBelongToBusiness(businessId: string, items: RecipeItemDto[]) {
+    const materialIds = [
+      ...new Set(
+        items
+          .map((item) => item.materialId)
+          .filter((materialId): materialId is string => Boolean(materialId)),
+      ),
+    ];
+
+    if (materialIds.length === 0) return;
+
+    const count = await this.prisma.material.count({
+      where: {
+        id: { in: materialIds },
+        businessId,
+      },
+    });
+
+    if (count !== materialIds.length) {
+      throw new NotFoundException('Material not found');
+    }
   }
 }
