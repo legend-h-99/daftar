@@ -26,6 +26,35 @@ export class InvoicesService {
       throw new NotFoundException('Business not found');
     }
 
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, businessId },
+      });
+      if (!customer) {
+        throw new NotFoundException('Customer not found');
+      }
+    }
+
+    const productIds = [
+      ...new Set(
+        dto.items
+          .map((item) => item.productId)
+          .filter((productId): productId is string => Boolean(productId)),
+      ),
+    ];
+
+    if (productIds.length > 0) {
+      const count = await this.prisma.product.count({
+        where: {
+          id: { in: productIds },
+          businessId,
+        },
+      });
+      if (count !== productIds.length) {
+        throw new NotFoundException('Product not found');
+      }
+    }
+
     const items = dto.items.map((i) => ({
       productId: i.productId,
       name: i.name,
