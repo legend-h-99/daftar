@@ -96,7 +96,7 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       const res = await apiPost<{ accessToken: string; business: Business }>(
-        "/business",
+        "/onboarding",
         {
           name: name.trim(),
           vatEnabled,
@@ -127,22 +127,14 @@ export default function OnboardingPage() {
         {language === "ar" ? "EN" : "عربي"}
       </button>
 
-      {/* Background blobs */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-6 h-60 w-60 -translate-x-1/2 animate-blob bg-brand-100 opacity-70" />
-        <div
-          className="absolute left-[30%] top-20 h-36 w-36 animate-blob bg-brand-200 opacity-40"
-          style={{ animationDelay: "3s", animationDuration: "11s" }}
-        />
-        <div className="absolute left-1/2 top-8 h-52 w-52 -translate-x-1/2 animate-spin-slow rounded-full border-2 border-brand-200 opacity-30" />
-      </div>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-brand-100 bg-brand-50/70" />
 
       {/* Content */}
       <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col px-6 py-12">
 
         {/* Logo + heading */}
         <div className="mb-8 flex animate-fade-up flex-col items-center gap-3 text-center">
-          <span className="flex h-16 w-16 animate-float items-center justify-center rounded-2xl bg-brand-700 text-3xl font-extrabold text-white shadow-sm">
+          <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-brand-700 text-3xl font-extrabold text-white shadow-sm">
             {language === "ar" ? "د" : "D"}
           </span>
           <h1 className="text-2xl font-extrabold text-gray-900">{tx.bizData}</h1>
@@ -167,7 +159,7 @@ export default function OnboardingPage() {
 
         {/* Card */}
         <div
-          className="animate-slide-up rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+          className="motion-surface animate-slide-up rounded-lg border border-gray-100 bg-white p-6 shadow-sm"
           style={{ animationDelay: "120ms" }}
           key={step}
         >
@@ -213,7 +205,7 @@ export default function OnboardingPage() {
 
               <button
                 type="submit"
-                className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800"
+                className="motion-press mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800"
               >
                 {tx.next}
                 {language === "ar" ? (
@@ -231,7 +223,7 @@ export default function OnboardingPage() {
                   <Receipt className="h-4 w-4 text-brand-600" />
                   {tx.vatQuestion}
                 </label>
-                <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5">
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3.5">
                   <span className="text-sm font-medium text-gray-600">
                     {vatEnabled
                       ? language === "ar" ? "مفعّل" : "Enabled"
@@ -288,7 +280,7 @@ export default function OnboardingPage() {
                 <button
                   type="button"
                   onClick={() => { setStep(1); setError(null); }}
-                  className="flex w-14 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white py-3.5 text-gray-600 transition-all active:scale-[0.98] active:bg-gray-50"
+                  className="motion-press flex w-14 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white py-3.5 text-gray-600 transition-all active:scale-[0.98] active:bg-gray-50"
                   aria-label={tx.back}
                 >
                   {language === "ar" ? (
@@ -300,7 +292,7 @@ export default function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-60"
+                  className="motion-press flex-1 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-60"
                 >
                   {loading ? tx.saving : tx.save}
                 </button>
