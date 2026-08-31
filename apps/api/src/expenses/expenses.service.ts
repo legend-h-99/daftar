@@ -23,7 +23,11 @@ export class ExpensesService {
 
   findAll(businessId: string, query: FindExpensesQueryDto) {
     if (!query.month) {
-      return this.prisma.expense.findMany({ where: { businessId }, orderBy: { date: 'desc' } });
+      return this.prisma.expense.findMany({
+        where: { businessId },
+        orderBy: { date: 'desc' },
+        take: 200,
+      });
     }
 
     let range: ReturnType<typeof getMonthRange>;
