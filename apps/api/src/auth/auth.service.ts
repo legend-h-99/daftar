@@ -8,7 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../common/types/auth.types';
 import { EmailService } from './email.service';
 
-const EMAIL_VERIFY_TTL_HOURS = 24;
+const EMAIL_VERIFY_TTL_MINUTES = 15;
+const EMAIL_CODE_MAX_ATTEMPTS = 5;
 
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
@@ -76,6 +77,32 @@ export class AuthService {
     return `+966${digits}`;
   }
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  private async recordAuthEvent(params: {
+    action: string;
+    success?: boolean;
+    userId?: string | null;
+    businessId?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          action: params.action,
+          success: params.success ?? true,
+          userId: params.userId ?? undefined,
+          businessId: params.businessId ?? undefined,
+          metadata: params.metadata,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to write auth audit log for ${params.action}: ${String(error)}`);
+    }
+  }
+
   async requestOtp(phoneInput: string) {
     const phone = this.normalizePhone(phoneInput);
     const code = this.generateCode();
@@ -89,6 +116,8 @@ export class AuthService {
     await this.prisma.otpCode.create({
       data: { phone, code, expiresAt },
     });
+
+    await this.recordAuthEvent({ action: 'OTP_REQUESTED', metadata: { phone } });
 
     if (this.devOtpEnabled) {
       this.logger.warn(`AUTH_DEV_OTP is on — returning OTP for ${phone} in the response`);
@@ -106,6 +135,7 @@ export class AuthService {
     });
 
     if (!otp) {
+      await this.recordAuthEvent({ action: 'OTP_LOGIN_FAILED', success: false, metadata: { phone, reason: 'missing_or_expired_code' } });
       throw new BadRequestException('Invalid or expired verification code');
     }
 
@@ -122,6 +152,7 @@ export class AuthService {
           data: { consumed: true },
         });
       }
+      await this.recordAuthEvent({ action: 'OTP_LOGIN_FAILED', success: false, metadata: { phone, reason: 'invalid_code' } });
       throw new BadRequestException('Invalid or expired verification code');
     }
 
@@ -144,6 +175,8 @@ export class AuthService {
       businessId: user.businessId,
     });
 
+    await this.recordAuthEvent({ action: 'OTP_LOGIN_SUCCEEDED', userId: user.id, businessId: user.businessId });
+
     return {
       accessToken,
       user: {
@@ -165,6 +198,7 @@ export class AuthService {
     const phone = this.normalizePhone(phoneInput);
     const demo = DEMO_BUSINESSES[phone];
     if (!demo) {
+      await this.recordAuthEvent({ action: 'DEMO_LOGIN_FAILED', success: false, metadata: { phone } });
       throw new BadRequestException('Unknown demo account');
     }
 
@@ -193,6 +227,8 @@ export class AuthService {
       businessId: business.id,
     });
 
+    await this.recordAuthEvent({ action: 'DEMO_LOGIN_SUCCEEDED', userId: user.id, businessId: business.id });
+
     return {
       accessToken,
       user: {
@@ -220,23 +256,27 @@ export class AuthService {
       });
       payload = ticket.getPayload();
     } catch {
+      await this.recordAuthEvent({ action: 'GOOGLE_LOGIN_FAILED', success: false, metadata: { reason: 'invalid_credential' } });
       throw new UnauthorizedException('Invalid Google credential');
     }
 
     if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      await this.recordAuthEvent({ action: 'GOOGLE_LOGIN_FAILED', success: false, metadata: { reason: 'email_not_verified' } });
       throw new UnauthorizedException('Google account email is not verified');
     }
 
+    const email = this.normalizeEmail(payload.email);
     const existing =
       (await this.prisma.user.findUnique({ where: { googleSub: payload.sub } })) ??
-      (await this.prisma.user.findUnique({ where: { email: payload.email } }));
+      (await this.prisma.user.findUnique({ where: { email } }));
 
     const user = existing
       ? await this.prisma.user.update({
           where: { id: existing.id },
           data: {
             googleSub: payload.sub,
-            email: payload.email,
+            email,
+            emailVerified: true,
             name: payload.name ?? existing.name,
             avatarUrl: payload.picture,
           },
@@ -244,7 +284,8 @@ export class AuthService {
       : await this.prisma.user.create({
           data: {
             googleSub: payload.sub,
-            email: payload.email,
+            email,
+            emailVerified: true,
             name: payload.name,
             avatarUrl: payload.picture,
           },
@@ -256,6 +297,8 @@ export class AuthService {
       email: user.email,
       businessId: user.businessId,
     });
+
+    await this.recordAuthEvent({ action: 'GOOGLE_LOGIN_SUCCEEDED', userId: user.id, businessId: user.businessId });
 
     return {
       accessToken,
@@ -284,6 +327,7 @@ export class AuthService {
       id: user.id,
       phone: user.phone,
       email: user.email,
+      emailVerified: user.emailVerified,
       name: user.name,
       businessId: user.businessId,
     };
@@ -295,15 +339,17 @@ export class AuthService {
     };
   }
 
-  async registerEmail(email: string, password: string, name?: string) {
+  async registerEmail(emailInput: string, password: string, name?: string) {
+    const email = this.normalizeEmail(emailInput);
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       if (existing.emailVerified) {
+        await this.recordAuthEvent({ action: 'EMAIL_REGISTER_FAILED', success: false, userId: existing.id, businessId: existing.businessId, metadata: { reason: 'already_verified' } });
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
-      // Re-send verification if account exists but not verified
       await this.sendVerificationEmail(existing);
-      return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFICATION_CODE_SENT', userId: existing.id, businessId: existing.businessId, metadata: { reason: 'resend_existing_unverified' } });
+      return { sent: true, message: 'أُرسل رمز التحقق مجدداً إلى بريدك' };
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -312,21 +358,26 @@ export class AuthService {
     });
 
     await this.sendVerificationEmail(user);
-    return { sent: true, message: 'تم التسجيل! تحقق من بريدك الإلكتروني لتفعيل الحساب' };
+    await this.recordAuthEvent({ action: 'EMAIL_REGISTERED', userId: user.id, businessId: user.businessId });
+    return { sent: true, message: 'تم التسجيل! تحقق من بريدك الإلكتروني وأدخل رمز التفعيل' };
   }
 
-  async loginEmail(email: string, password: string) {
+  async loginEmail(emailInput: string, password: string) {
+    const email = this.normalizeEmail(emailInput);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
+      await this.recordAuthEvent({ action: 'EMAIL_LOGIN_FAILED', success: false, metadata: { email, reason: 'invalid_credentials' } });
       throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      await this.recordAuthEvent({ action: 'EMAIL_LOGIN_FAILED', success: false, userId: user.id, businessId: user.businessId, metadata: { reason: 'invalid_credentials' } });
       throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
     if (!user.emailVerified) {
+      await this.recordAuthEvent({ action: 'EMAIL_LOGIN_FAILED', success: false, userId: user.id, businessId: user.businessId, metadata: { reason: 'email_not_verified' } });
       throw new BadRequestException('يجب تأكيد بريدك الإلكتروني أولاً. تحقق من صندوق الوارد.');
     }
 
@@ -337,6 +388,8 @@ export class AuthService {
       businessId: user.businessId,
     });
 
+    await this.recordAuthEvent({ action: 'EMAIL_LOGIN_SUCCEEDED', userId: user.id, businessId: user.businessId });
+
     return {
       accessToken,
       user: { id: user.id, phone: user.phone, email: user.email, name: user.name, businessId: user.businessId },
@@ -344,13 +397,22 @@ export class AuthService {
     };
   }
 
-  async verifyEmailToken(token: string) {
+  async verifyEmailToken(input: { token?: string; email?: string; code?: string }) {
+    if (input.email && input.code) {
+      return this.verifyEmailCode(input.email, input.code);
+    }
+
+    if (!input.token) {
+      throw new BadRequestException('أدخل البريد الإلكتروني ورمز التحقق');
+    }
+
     const record = await this.prisma.emailVerification.findFirst({
-      where: { token, consumed: false, expiresAt: { gt: new Date() } },
+      where: { token: input.token, consumed: false, expiresAt: { gt: new Date() } },
       include: { user: true },
     });
 
     if (!record) {
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFY_FAILED', success: false, metadata: { reason: 'invalid_or_expired_token' } });
       throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
     }
 
@@ -364,6 +426,8 @@ export class AuthService {
       data: { emailVerified: true },
     });
 
+    await this.recordAuthEvent({ action: 'EMAIL_VERIFIED', userId: user.id, businessId: user.businessId, metadata: { method: 'token' } });
+
     const accessToken = this.signToken({
       sub: user.id,
       phone: user.phone,
@@ -378,36 +442,107 @@ export class AuthService {
     };
   }
 
-  async resendVerificationEmail(email: string) {
+  private async verifyEmailCode(emailInput: string, code: string) {
+    const email = this.normalizeEmail(emailInput);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFY_FAILED', success: false, metadata: { email, reason: 'unknown_email' } });
+      throw new BadRequestException('رمز التحقق غير صالح أو منتهي الصلاحية');
+    }
+
+    const record = await this.prisma.emailVerification.findFirst({
+      where: {
+        userId: user.id,
+        consumed: false,
+        expiresAt: { gt: new Date() },
+        codeHash: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record?.codeHash) {
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFY_FAILED', success: false, userId: user.id, businessId: user.businessId, metadata: { reason: 'missing_or_expired_code' } });
+      throw new BadRequestException('رمز التحقق غير صالح أو منتهي الصلاحية');
+    }
+
+    const valid = await bcrypt.compare(code, record.codeHash);
+    if (!valid) {
+      const updated = await this.prisma.emailVerification.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      if (updated.attempts >= EMAIL_CODE_MAX_ATTEMPTS) {
+        await this.prisma.emailVerification.update({
+          where: { id: record.id },
+          data: { consumed: true },
+        });
+      }
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFY_FAILED', success: false, userId: user.id, businessId: user.businessId, metadata: { reason: 'invalid_code' } });
+      throw new BadRequestException('رمز التحقق غير صالح أو منتهي الصلاحية');
+    }
+
+    await this.prisma.emailVerification.update({
+      where: { id: record.id },
+      data: { consumed: true },
+    });
+
+    const verified = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true },
+    });
+
+    await this.recordAuthEvent({ action: 'EMAIL_VERIFIED', userId: verified.id, businessId: verified.businessId, metadata: { method: 'code' } });
+
+    const accessToken = this.signToken({
+      sub: verified.id,
+      phone: verified.phone,
+      email: verified.email,
+      businessId: verified.businessId,
+    });
+
+    return {
+      accessToken,
+      user: { id: verified.id, phone: verified.phone, email: verified.email, name: verified.name, businessId: verified.businessId },
+      hasBusiness: !!verified.businessId,
+    };
+  }
+
+  async resendVerificationEmail(emailInput: string) {
+    const email = this.normalizeEmail(emailInput);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
       // Don't reveal whether email exists
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFICATION_RESEND_REQUESTED', metadata: { email, found: false } });
       return { sent: true };
     }
     if (user.emailVerified) {
+      await this.recordAuthEvent({ action: 'EMAIL_VERIFICATION_RESEND_FAILED', success: false, userId: user.id, businessId: user.businessId, metadata: { reason: 'already_verified' } });
       throw new BadRequestException('البريد الإلكتروني مُفعَّل بالفعل');
     }
     await this.sendVerificationEmail(user);
+    await this.recordAuthEvent({ action: 'EMAIL_VERIFICATION_CODE_SENT', userId: user.id, businessId: user.businessId, metadata: { reason: 'manual_resend' } });
     return { sent: true };
   }
 
   private async sendVerificationEmail(user: { id: string; email: string | null; name: string | null }) {
     if (!user.email) return;
 
-    // Invalidate old tokens
+    // Invalidate old codes and links.
     await this.prisma.emailVerification.updateMany({
       where: { userId: user.id, consumed: false },
       data: { consumed: true },
     });
 
+    const code = this.generateCode();
+    const codeHash = await bcrypt.hash(code, 12);
     const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + EMAIL_VERIFY_TTL_HOURS * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + EMAIL_VERIFY_TTL_MINUTES * 60 * 1000);
 
     await this.prisma.emailVerification.create({
-      data: { userId: user.id, token, expiresAt },
+      data: { userId: user.id, token, codeHash, expiresAt },
     });
 
-    await this.emailService.sendVerificationEmail(user.email, token, user.name);
+    await this.emailService.sendVerificationEmail(user.email, code, user.name);
   }
 
   signToken(payload: JwtPayload): string {
@@ -429,5 +564,6 @@ export class AuthService {
       update: {},
       create: { jti, expiresAt },
     });
+    await this.recordAuthEvent({ action: 'LOGOUT', userId: payload.sub, businessId: payload.businessId });
   }
 }
