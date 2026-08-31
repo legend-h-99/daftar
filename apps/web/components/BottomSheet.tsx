@@ -32,7 +32,6 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
         ) ?? [],
       );
 
-    // Move focus to the first interactive control (fallback: the sheet itself).
     const first = focusable()[0];
     (first ?? sheet)?.focus();
 
@@ -66,7 +65,7 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40"
+      className="fixed inset-0 z-40 flex items-end justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -76,17 +75,17 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
         aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-3xl bg-white p-5 pb-8 outline-none"
+        className="w-full max-w-md rounded-t-3xl bg-card p-5 pb-8 outline-none border border-b-0 border-border"
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 id={titleId} className="text-lg font-bold text-gray-900">
+          <h2 id={titleId} className="text-lg font-bold text-foreground">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="إغلاق"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>

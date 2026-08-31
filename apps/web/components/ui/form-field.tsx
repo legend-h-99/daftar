@@ -5,11 +5,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 /**
  * الستايل الموحّد لحقول الإدخال (input / select / textarea) في كل التطبيق.
- * مصدر واحد يطابق DESIGN.md: rounded-2xl، خلفية gray-50، حدود gray-200،
+ * مصدر واحد يطابق اتجاه التصميم الحالي: زوايا هادئة، خلفية gray-50، حدود gray-200،
  * فوكس brand-500 مع ring brand-600. للحشو/الحجم السياقي استخدم cn(fieldClass, "…").
  */
 export const fieldClass =
-  "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-600";
+  "w-full rounded-lg border border-input bg-muted/50 px-4 py-3 text-foreground outline-none transition-colors duration-150 focus:border-primary focus:bg-background focus:ring-2 focus:ring-primary/30";
 
 /** عنوان حقل موحّد + تلميح اختياري رمادي. */
 export function FieldLabel({
@@ -24,11 +24,11 @@ export function FieldLabel({
   return (
     <label
       htmlFor={htmlFor}
-      className="mb-1.5 block text-sm font-semibold text-gray-700"
+      className="mb-1.5 block text-sm font-semibold text-foreground"
     >
       {children}
       {hint != null && (
-        <span className="font-normal text-gray-500"> {hint}</span>
+        <span className="font-normal text-muted-foreground"> {hint}</span>
       )}
     </label>
   );

@@ -18,7 +18,7 @@ export default function BottomNav() {
   const { language } = useLanguage();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {TABS.map(({ href, label, icon: Icon }) => {
           const active =
@@ -34,11 +34,11 @@ export default function BottomNav() {
             >
               <Icon
                 className={`h-6 w-6 transition-transform duration-150 ${
-                  active ? "scale-110 text-brand-700" : "text-gray-500"
+                  active ? "scale-110 text-primary" : "text-muted-foreground"
                 }`}
                 strokeWidth={active ? 2.5 : 2}
               />
-              <span className={active ? "text-brand-700" : "text-gray-500"}>
+              <span className={active ? "text-primary font-semibold" : "text-muted-foreground"}>
                 {label[language]}
               </span>
             </Link>

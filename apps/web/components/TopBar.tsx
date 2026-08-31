@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Languages, LogOut } from "lucide-react";
+import { Languages, LogOut, Sun, Moon } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 import { apiPost } from "@/lib/api";
 import { useLanguage } from "@/lib/language";
+import { useTheme } from "@/lib/theme";
 
 interface TopBarProps {
   businessName?: string | null;
@@ -13,6 +14,7 @@ interface TopBarProps {
 export default function TopBar({ businessName }: TopBarProps) {
   const router = useRouter();
   const { language, toggleLanguage } = useLanguage();
+  const { resolvedTheme, toggleTheme } = useTheme();
 
   async function handleSignOut() {
     try {
@@ -26,29 +28,45 @@ export default function TopBar({ businessName }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex max-w-md items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-700 text-base font-extrabold text-white">
+          <span
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white"
+            style={{ backgroundImage: "linear-gradient(135deg, #4C1D95, #7C3AED)" }}
+          >
             {language === "ar" ? "د" : "D"}
           </span>
-          <span className="text-lg font-extrabold text-gray-900">
+          <span className="text-lg font-extrabold text-foreground">
             {language === "ar" ? "دفتر" : "Daftar"}
           </span>
         </div>
 
         <div className="flex items-center gap-1">
           {businessName && (
-            <span className="max-w-[100px] truncate text-sm font-medium text-gray-600">
+            <span className="max-w-[100px] truncate text-sm font-medium text-muted-foreground">
               {businessName}
             </span>
           )}
 
           <button
             type="button"
+            onClick={toggleTheme}
+            aria-label={resolvedTheme === "dark" ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"}
+            className="motion-press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
+          >
+            {resolvedTheme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={toggleLanguage}
             aria-label={language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
-            className="flex h-11 items-center gap-1 rounded-full px-2 text-xs font-bold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200"
+            className="motion-press flex h-11 items-center gap-1 rounded-full px-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
           >
             <Languages className="h-4 w-4" />
             {language === "ar" ? "EN" : "ع"}
@@ -58,7 +76,7 @@ export default function TopBar({ businessName }: TopBarProps) {
             type="button"
             onClick={handleSignOut}
             aria-label={language === "ar" ? "تسجيل الخروج" : "Sign out"}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:bg-gray-200"
+            className="motion-press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
           >
             <LogOut className="h-4 w-4" />
           </button>

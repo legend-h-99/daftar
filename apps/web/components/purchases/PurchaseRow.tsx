@@ -56,7 +56,7 @@ export default function PurchaseRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm">
+    <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3.5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <select
           aria-label="اختر الصنف"
@@ -109,7 +109,7 @@ export default function PurchaseRow({
 
       <div className="grid grid-cols-2 gap-2.5">
         <div>
-          <label className="mb-1 block text-xs text-gray-500">الكمية</label>
+          <label className="mb-1 block text-xs text-muted-foreground">الكمية</label>
           <input
             aria-label="الكمية"
             type="number"
@@ -123,7 +123,7 @@ export default function PurchaseRow({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">
+          <label className="mb-1 block text-xs text-muted-foreground">
             سعر الوحدة (ر.س)
           </label>
           <input
@@ -142,7 +142,7 @@ export default function PurchaseRow({
 
       <div className="flex items-center justify-between">
         {confidenceBadge(row.confidence) ?? <span />}
-        <span className="text-xs font-bold text-gray-600">
+        <span className="text-xs font-bold text-muted-foreground">
           الإجمالي:{" "}
           {formatSAR((Number(row.quantity) || 0) * (Number(row.unitPrice) || 0))}
         </span>

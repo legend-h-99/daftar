@@ -9,7 +9,7 @@ export default function Icon() {
     (
       <div
         style={{
-          background: "#0f7353",
+          backgroundImage: "linear-gradient(135deg, #4C1D95, #7C3AED)",
           width: "100%",
           height: "100%",
           display: "flex",
@@ -21,10 +21,11 @@ export default function Icon() {
         <span
           style={{
             color: "white",
-            fontSize: 300,
-            fontWeight: 800,
+            fontSize: 310,
+            fontWeight: 900,
             lineHeight: 1,
-            fontFamily: "serif",
+            fontFamily: "sans-serif",
+            letterSpacing: "-0.02em",
           }}
         >
           د

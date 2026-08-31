@@ -5,6 +5,7 @@ const config: Config = {
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
   ],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
@@ -52,7 +53,7 @@ const config: Config = {
           border: "var(--sidebar-border)",
           ring: "var(--sidebar-ring)",
         },
-        /* دفتر brand palette — driven by CSS variables for theming */
+        /* دفتر brand palette — violet, driven by CSS variables */
         brand: {
           50:  "rgb(var(--brand-50)  / <alpha-value>)",
           100: "rgb(var(--brand-100) / <alpha-value>)",

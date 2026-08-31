@@ -29,8 +29,19 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0f7353",
+  themeColor: "#6D28D9",
 };
+
+/* Anti-FOUC: apply dark class before React hydrates */
+const themeScript = `
+(function(){
+  try {
+    var s = localStorage.getItem('daftar-theme');
+    var dark = s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.classList.add('dark');
+  } catch(e){}
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -39,6 +50,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" className={cn("font-sans", tajawal.variable)} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider>
           <LanguageProvider>

@@ -20,27 +20,24 @@ export default function EmptyState({
   onAction,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-12 text-center">
-      <span className="rounded-full bg-brand-50 p-3 text-brand-700">
+    <div className="motion-surface flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
+      <span className="rounded-full bg-accent p-3 text-primary">
         <Icon className="h-6 w-6" strokeWidth={2} />
       </span>
-      <p className="font-semibold text-gray-800">{title}</p>
+      <p className="font-semibold text-foreground">{title}</p>
       {description && (
-        <p className="text-sm text-gray-500">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       )}
       {actionLabel && actionHref && (
         <Link
           href={actionHref}
-          className="mt-2 rounded-2xl bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white active:bg-brand-800"
+          className="motion-press mt-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
         >
           {actionLabel}
         </Link>
       )}
       {actionLabel && !actionHref && onAction && (
-        <Button
-          onClick={onAction}
-          className="mt-2 bg-brand-700 text-white hover:bg-brand-800"
-        >
+        <Button onClick={onAction} className="mt-2">
           {actionLabel}
         </Button>
       )}
