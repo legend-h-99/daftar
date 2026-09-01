@@ -113,7 +113,7 @@ export class CreateInvoiceUseCase {
         qty: -qty,
         balanceAfter: updated.stockQty,
         costAmount: qty * unitPrice,
-        refType: 'invoice',
+        refType: 'INVOICE',
         refId: invoiceId,
       });
     }

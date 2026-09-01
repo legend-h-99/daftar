@@ -146,15 +146,7 @@ export default function OtpPage() {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#f7f8f7]">
 
-      {/* ─── Background blobs (same pattern as login) ─── */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-4 h-56 w-56 -translate-x-1/2 animate-blob bg-brand-100 opacity-60" />
-        <div
-          className="absolute left-[35%] top-16 h-32 w-32 animate-blob bg-brand-200 opacity-35"
-          style={{ animationDelay: "4s", animationDuration: "12s" }}
-        />
-        <div className="absolute left-1/2 top-6 h-48 w-48 -translate-x-1/2 animate-spin-slow rounded-full border-2 border-brand-200 opacity-25" />
-      </div>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-brand-100 bg-brand-50/70" />
 
       {/* ─── Content ─── */}
       <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col px-6 py-10">
@@ -163,7 +155,7 @@ export default function OtpPage() {
         <button
           type="button"
           onClick={() => router.replace("/login")}
-          className="animate-fade-up mb-6 flex items-center gap-1 self-start text-sm font-semibold text-gray-500 transition active:text-gray-800"
+          className="motion-press animate-fade-up mb-6 flex items-center gap-1 self-start text-sm font-semibold text-gray-500 transition active:text-gray-800"
         >
           <ChevronRight className="h-4 w-4" />
           تغيير الرقم
@@ -174,7 +166,7 @@ export default function OtpPage() {
           className="animate-fade-up mb-8 flex flex-col items-center gap-2 text-center"
           style={{ animationDelay: "60ms" }}
         >
-          <div className="mb-1 flex h-16 w-16 animate-float items-center justify-center rounded-2xl bg-brand-700 text-3xl font-extrabold text-white shadow-sm">
+          <div className="mb-1 flex h-16 w-16 items-center justify-center rounded-lg bg-brand-700 text-3xl font-extrabold text-white shadow-sm">
             د
           </div>
           <h1 className="text-2xl font-extrabold text-gray-900">أدخل رمز التحقق</h1>
@@ -196,7 +188,7 @@ export default function OtpPage() {
           <button
             type="button"
             onClick={fillDevCode}
-            className="animate-fade-up mb-6 flex w-full items-center justify-between rounded-2xl border border-dashed border-brand-300 bg-brand-50 px-4 py-3 text-right transition active:scale-[0.98] active:bg-brand-100"
+            className="motion-press animate-fade-up mb-6 flex w-full items-center justify-between rounded-lg border border-dashed border-brand-300 bg-brand-50 px-4 py-3 text-right transition active:scale-[0.98] active:bg-brand-100"
             style={{ animationDelay: "100ms" }}
           >
             <span className="flex items-center gap-2 text-xs font-bold text-brand-700">
@@ -253,7 +245,7 @@ export default function OtpPage() {
           <button
             type="submit"
             disabled={code.length !== CODE_LENGTH || loading}
-            className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-50"
+            className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-50"
           >
             {loading ? "جاري التأكيد..." : "تأكيد الرمز"}
           </button>

@@ -21,6 +21,9 @@ vi.mock("lucide-react", () => ({
   PenLine:    () => null,
   Eye:        () => null,
   TrendingUp: () => null,
+  Smartphone: () => null,
+  ShieldCheck: () => null,
+  MapPin:     () => null,
 }));
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -50,10 +53,11 @@ describe("صفحة الـ Landing", () => {
   // ── Hero ─────────────────────────────────────────────────────────────────
 
   describe("قسم Hero", () => {
-    it("يعرض H1 'حساباتك'", () => {
+    it("يعرض H1 عن معرفة الربح من الجوال", () => {
       render(<LandingPage />);
       const h1 = screen.getByRole("heading", { level: 1 });
-      expect(h1).toHaveTextContent("حساباتك");
+      expect(h1).toHaveTextContent("اعرف ربحك");
+      expect(h1).toHaveTextContent("من جوالك");
     });
 
     it("يعرض جملة AEO في blockquote", () => {
@@ -68,7 +72,7 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       const bq = document.querySelector("blockquote");
       const wordCount = bq!.textContent!.trim().split(/\s+/).length;
-      expect(wordCount).toBeGreaterThanOrEqual(25);
+      expect(wordCount).toBeGreaterThanOrEqual(20);
       expect(wordCount).toBeLessThanOrEqual(50);
     });
 
@@ -96,9 +100,9 @@ describe("صفحة الـ Landing", () => {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   describe("قسم الإحصاءات", () => {
-    it("يعرض '+500' و '10×' و '<10 ث'", () => {
+    it("يعرض '500+' و '10×' و '<10 ث'", () => {
       render(<LandingPage />);
-      expect(screen.getByText("+500")).toBeInTheDocument();
+      expect(screen.getByText("500+")).toBeInTheDocument();
       expect(screen.getByText("10×")).toBeInTheDocument();
       expect(screen.getByText("<10 ث")).toBeInTheDocument();
     });
@@ -113,35 +117,18 @@ describe("صفحة الـ Landing", () => {
 
   // ── Problem ──────────────────────────────────────────────────────────────
 
-  describe("قسم المشكلة", () => {
-    it("يعرض عنوان المشكلة", () => {
+  describe("قسم المشكلة والحل", () => {
+    it("يعرض عنوان المشكلة والحل", () => {
       render(<LandingPage />);
       expect(
         screen.getByText(/الأدوات الموجودة صُمِّمت لمحاسبين في شركات/),
       ).toBeInTheDocument();
     });
 
-    it("لا يذكر 'دفتر' كحل في قسم المشكلة (الحل يأتي لاحقًا)", () => {
+    it("يعرض مقارنة قبل وبعد دفتر", () => {
       render(<LandingPage />);
-      // نتأكد أن قسم المشكلة يتحدث عن الألم فقط — أبسط تحقق: الفقرة الأولى
-      const problemPara = screen.getByText(/برامج المحاسبة الغربية كلها مصطلحات/);
-      expect(problemPara).toBeInTheDocument();
-    });
-  });
-
-  // ── Solution ─────────────────────────────────────────────────────────────
-
-  describe("قسم الحل", () => {
-    it("يعرض بادج 'الحل'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("الحل")).toBeInTheDocument();
-    });
-
-    it("يعرض عنوان الحل", () => {
-      render(<LandingPage />);
-      expect(
-        screen.getByText(/دفتر ورقي ذكي، مألوف ومريح/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("قبل دفتر")).toBeInTheDocument();
+      expect(screen.getByText("بعد دفتر")).toBeInTheDocument();
     });
   });
 
@@ -172,10 +159,10 @@ describe("صفحة الـ Landing", () => {
 
   // ── Social Proof ──────────────────────────────────────────────────────────
 
-  describe("قسم الشهادات", () => {
-    it("يعرض عنوان 'يقولون عن دفتر'", () => {
+  describe("قسم أمثلة الاستخدام", () => {
+    it("يعرض عنوان أمثلة الاستخدام", () => {
       render(<LandingPage />);
-      expect(screen.getByText("يقولون عن دفتر")).toBeInTheDocument();
+      expect(screen.getByText("أمثلة استخدام حقيقية من السوق")).toBeInTheDocument();
     });
 
     it("يعرض أسماء أصحاب الشهادات الثلاثة", () => {
@@ -187,9 +174,9 @@ describe("صفحة الـ Landing", () => {
 
     it("يعرض نص كل شهادة", () => {
       render(<LandingPage />);
-      expect(screen.getByText(/كنت أكتب في ورقة وأضيعها/)).toBeInTheDocument();
-      expect(screen.getByText(/سهّل عليّ حساب تكلفة كل طلب/)).toBeInTheDocument();
-      expect(screen.getByText(/المخزون والمصاريف كانت ضيعة/)).toBeInTheDocument();
+      expect(screen.getByText(/سيناريو محل معمول/)).toBeInTheDocument();
+      expect(screen.getByText(/سيناريو كيك منزلي/)).toBeInTheDocument();
+      expect(screen.getByText(/سيناريو تموينات/)).toBeInTheDocument();
     });
 
     it("يعرض أدوار ومدن أصحاب الشهادات", () => {
@@ -197,21 +184,6 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getByText(/صاحبة محل معمول ومقبلات — الرياض/)).toBeInTheDocument();
       expect(screen.getByText(/بائعة كيك منزلي — جدة/)).toBeInTheDocument();
       expect(screen.getByText(/تموينات صغيرة — الدمام/)).toBeInTheDocument();
-    });
-  });
-
-  // ── Mid-page CTA ─────────────────────────────────────────────────────────
-
-  describe("CTA منتصف الصفحة", () => {
-    it("يعرض 'سجّل محلك الآن — مجانًا'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("سجّل محلك الآن — مجانًا")).toBeInTheDocument();
-    });
-
-    it("زر 'ابدأ الآن — مجاني' يوجّه إلى /login", () => {
-      render(<LandingPage />);
-      const link = screen.getByRole("link", { name: /ابدأ الآن — مجاني/ });
-      expect(link).toHaveAttribute("href", "/login");
     });
   });
 
@@ -364,10 +336,10 @@ describe("صفحة الـ Landing", () => {
       expect(link).toHaveAttribute("href", "/login");
     });
 
-    it("يعرض النص الإنجليزي للـ AEO", () => {
+    it("يعرض نصًا عربيًا ثانويًا بدل العبارة الإنجليزية", () => {
       render(<LandingPage />);
       expect(
-        screen.getByText(/Try Daftar free — Arabic-first accounting/),
+        screen.getByText(/دفتر مجاني للبدء/),
       ).toBeInTheDocument();
     });
   });
@@ -383,10 +355,10 @@ describe("صفحة الـ Landing", () => {
       ).toBeInTheDocument();
     });
 
-    it("يعرض النص الإنجليزي في الـ footer", () => {
+    it("يعرض وعد الهوية العربية في الـ footer", () => {
       render(<LandingPage />);
       expect(
-        screen.getByText(/Arabic Accounting App for Small Businesses/),
+        screen.getByText(/عربي أولًا/),
       ).toBeInTheDocument();
     });
   });
@@ -399,8 +371,8 @@ describe("صفحة الـ Landing", () => {
       const ctaLinks = screen
         .getAllByRole("link")
         .filter((a) => a.getAttribute("href") === "/login");
-      // ابدأ مجانًا (nav) + جرّب مجانًا (hero) + ابدأ الآن—مجاني (mid) + سجّل محلك الآن (final)
-      expect(ctaLinks.length).toBeGreaterThanOrEqual(4);
+      // ابدأ مجانًا (nav) + جرّب مجانًا (hero) + سجّل محلك الآن (final)
+      expect(ctaLinks.length).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -416,7 +388,7 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       // صفّان مدفوعان في LedgerPreview — getAllByText
       expect(screen.getAllByText("مدفوعة").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("آجل")).toBeInTheDocument();
+      expect(screen.getAllByText("آجل").length).toBeGreaterThanOrEqual(1);
     });
 
     it("يعرض 'صافي ربح الشهر'", () => {

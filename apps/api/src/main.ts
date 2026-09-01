@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
@@ -24,7 +25,10 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  // Order matters: NestJS applies filters last-registered first.
+  // AllExceptionsFilter is the outermost safety net; PrismaExceptionFilter
+  // runs before it to handle known Prisma errors with specific HTTP codes.
+  app.useGlobalFilters(new AllExceptionsFilter(), new PrismaExceptionFilter());
 
   const corsOrigin = process.env.CORS_ORIGIN;
   const isDev = process.env.NODE_ENV !== 'production';

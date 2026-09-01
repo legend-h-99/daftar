@@ -83,7 +83,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Status tabs */}
-      <div className="flex gap-1.5 rounded-2xl bg-gray-100 p-1">
+      <div className="flex gap-1.5 rounded-lg bg-gray-100 p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -98,7 +98,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Summary: month stepper + totals in one card */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+      <section className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
         <MonthNav month={month} isCurrentMonth={isCurrentMonth} onPrev={previousMonth} onNext={nextMonth} className="border-0 shadow-none bg-transparent px-0 py-0" />
 
         {filtered && filtered.length > 0 && (
@@ -130,7 +130,7 @@ export default function InvoicesPage() {
       )}
 
       {created && (
-        <Alert className="rounded-2xl border-green-200 bg-green-50">
+        <Alert className="rounded-lg border-green-200 bg-green-50">
           <AlertDescription className="font-medium text-green-700">
             {language === "ar" ? "تم حفظ الفاتورة وتحديث المخزون مباشرة" : "Invoice saved and stock updated."}
           </AlertDescription>
@@ -167,7 +167,7 @@ export default function InvoicesPage() {
                 <Link
                   href={DEMO_MODE ? "/invoices/demo" : `/invoices/${inv.id}`}
                   aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customer?.name || (language === "ar" ? "بدون زبون" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
-                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
+                  className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="truncate font-semibold text-gray-900">

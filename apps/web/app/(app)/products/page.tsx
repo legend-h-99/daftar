@@ -75,7 +75,7 @@ export default function ProductsPage() {
               <li key={p.id}>
                 <Link
                   href={`/products/${p.id}/edit`}
-                  className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >
                   <div className="flex flex-col gap-1">
                     <span className="font-semibold text-gray-900">{p.name}</span>

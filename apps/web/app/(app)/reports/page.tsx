@@ -127,7 +127,7 @@ export default function ReportsPage() {
             <div className="flex flex-col gap-3">
               {/* Net profit hero — same language as the dashboard hero (white/wash, never solid brand) */}
               <div
-                className={`flex flex-col gap-1 rounded-2xl border p-5 shadow-sm ${
+                className={`flex flex-col gap-1 rounded-lg border p-5 shadow-sm ${
                   isProfit ? "border-brand-100 bg-brand-50" : "border-red-100 bg-red-50"
                 }`}
               >
@@ -158,7 +158,7 @@ export default function ReportsPage() {
               </div>
 
               {/* Bar chart */}
-              <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+              <div className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
                 <h2 className="mb-4 text-sm font-bold text-gray-900">
                   مقارنة بصرية
                 </h2>
@@ -173,7 +173,7 @@ export default function ReportsPage() {
 
               {/* Expense breakdown by category */}
               {expenseByCategory.length > 0 && (
-                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                <div className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
                   <h2 className="mb-3 text-sm font-bold text-gray-900">
                     تفصيل المصاريف
                   </h2>

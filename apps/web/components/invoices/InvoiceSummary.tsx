@@ -13,7 +13,7 @@ export default function InvoiceSummary({
   vatEnabled: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-brand-900 p-5 text-white shadow-sm">
+    <div className="rounded-lg bg-brand-900 p-5 text-white shadow-sm">
       <div className="flex items-center justify-between text-sm text-brand-100">
         <span>المجموع الفرعي</span>
         <span className="font-semibold">{formatSAR(subtotal)}</span>

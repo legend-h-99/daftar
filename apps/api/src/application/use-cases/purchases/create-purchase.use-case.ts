@@ -124,7 +124,7 @@ export class CreatePurchaseUseCase {
       qty: item.quantity,
       balanceAfter: material.stockQty,
       costAmount: lineTotal,
-      refType: 'purchase',
+      refType: 'PURCHASE',
       refId: purchaseId,
     });
 

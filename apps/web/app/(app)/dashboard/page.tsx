@@ -131,7 +131,7 @@ export default function DashboardPage() {
               return (
                 <section
                   aria-label={`${language === "ar" ? "صافي الربح" : "Net profit"} ${formatSAR(summary.netProfit, language)}`}
-                  className={`animate-fade-up rounded-2xl border p-5 shadow-sm ${
+                  className={`animate-fade-up rounded-lg border p-5 shadow-sm ${
                     positive ? "border-brand-100 bg-brand-50" : "border-red-100 bg-red-50"
                   }`}
                 >
@@ -229,7 +229,7 @@ export default function DashboardPage() {
                       <Link
                         href={`/invoices/${inv.id}`}
                         aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customerName || (language === "ar" ? "زبون بدون اسم" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
-                        className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm transition active:bg-gray-50"
+                        className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm transition active:bg-gray-50"
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
                           <span className="truncate font-semibold text-gray-900">

@@ -152,7 +152,7 @@ export default function NewInvoicePage() {
         />
 
         {/* Due date */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
             تاريخ الاستحقاق{" "}
             <span className="font-normal text-gray-500">(اختياري)</span>
@@ -166,7 +166,7 @@ export default function NewInvoicePage() {
         </div>
 
         {/* Notes */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
             ملاحظات <span className="font-normal text-gray-500">(اختياري)</span>
           </label>

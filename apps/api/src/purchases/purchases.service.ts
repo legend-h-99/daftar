@@ -140,10 +140,7 @@ export class PurchasesService {
 
   /** Purchase totals grouped by supplier and by month, for the reports view. */
   async summary(businessId: string) {
-    // bySupplier: delegate to DB via groupBy — supplierId groups correctly.
-    // byMonth: Prisma groupBy on DateTime groups by exact timestamp, not month.
-    //   Fallback: cap findMany at 500 rows and aggregate in JS (plan 013 note).
-    const [bySupplierRaw, purchases] = await Promise.all([
+    const [bySupplierRaw, byMonthRaw] = await Promise.all([
       this.prisma.purchase.groupBy({
         by: ['supplierId'],
         where: { businessId },
@@ -152,12 +149,18 @@ export class PurchasesService {
         orderBy: { _sum: { total: 'desc' } },
         take: 50,
       }),
-      this.prisma.purchase.findMany({
-        where: { businessId },
-        select: { date: true, total: true },
-        orderBy: { date: 'desc' },
-        take: 500,
-      }),
+      // DATE_TRUNC pushes month aggregation into the DB — no row-count cap needed.
+      this.prisma.$queryRaw<{ month: string; count: bigint; total: number }[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') AS month,
+          COUNT(*)                                       AS count,
+          SUM(total)                                     AS total
+        FROM "Purchase"
+        WHERE "businessId" = ${businessId}
+        GROUP BY DATE_TRUNC('month', date)
+        ORDER BY DATE_TRUNC('month', date) DESC
+        LIMIT 24
+      `,
     ]);
 
     // Resolve supplier names in a single follow-up query
@@ -171,23 +174,17 @@ export class PurchasesService {
     });
     const supplierMap = new Map(suppliers.map((s) => [s.id, s.name]));
 
-    // Aggregate by month in JS (last 500 purchases, capped for memory safety)
-    const byMonthMap = new Map<string, { month: string; count: number; total: number }>();
-    for (const p of purchases) {
-      const month = p.date.toISOString().slice(0, 7);
-      const m = byMonthMap.get(month) ?? { month, count: 0, total: 0 };
-      m.count += 1;
-      m.total += p.total;
-      byMonthMap.set(month, m);
-    }
-
     return {
       bySupplier: bySupplierRaw.map((r) => ({
         name: r.supplierId ? (supplierMap.get(r.supplierId) ?? 'بدون مورد') : 'بدون مورد',
         count: r._count.id,
         total: r._sum.total ?? 0,
       })),
-      byMonth: [...byMonthMap.values()].sort((a, b) => b.month.localeCompare(a.month)),
+      byMonth: byMonthRaw.map((r) => ({
+        month: r.month,
+        count: Number(r.count),
+        total: Number(r.total),
+      })),
     };
   }
 

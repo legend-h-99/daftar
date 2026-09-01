@@ -107,7 +107,7 @@ export default function ExpensesPage() {
       <MonthNav month={month} isCurrentMonth={isCurrentMonth} onPrev={previousMonth} onNext={nextMonth} />
 
       {expenses && total > 0 && (
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-medium text-gray-500">
               {language === "ar" ? `إجمالي مصاريف ${formatMonthLabel(month, language)}` : `Total expenses in ${formatMonthLabel(month, language)}`}
@@ -171,7 +171,7 @@ export default function ExpensesPage() {
       {expenses && (expenses.length > 0 || costOfGoodsSold > 0) && (
         <ul className="flex flex-col gap-2">
           {costOfGoodsSold > 0 && (
-            <li className="flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3.5 shadow-sm">
+            <li className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-4 py-3.5 shadow-sm">
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-amber-900">
                   {language === "ar" ? "تكلفة المخزون المباع" : "Cost of goods sold"}
@@ -189,7 +189,7 @@ export default function ExpensesPage() {
             <li
               key={exp.id}
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm"
+              className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm"
             >
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-gray-900">

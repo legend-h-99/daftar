@@ -62,7 +62,7 @@ export default function ScanPurchasePage() {
 
       {!draft && (
         <label
-          className={`flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center transition-colors ${
+          className={`flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-14 text-center transition-colors ${
             scanning
               ? "border-brand-300 bg-brand-50"
               : "border-gray-300 bg-white active:bg-gray-50"
@@ -111,7 +111,7 @@ export default function ScanPurchasePage() {
             <img
               src={preview}
               alt="صورة الفاتورة"
-              className="max-h-44 w-full rounded-2xl border border-gray-100 object-cover"
+              className="max-h-44 w-full rounded-lg border border-gray-100 object-cover"
             />
           )}
           <PurchaseForm draft={draft} source="OCR" />

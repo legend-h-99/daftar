@@ -31,7 +31,7 @@ export default function InvoiceCustomerField({
   }, [customers, query]);
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
       <label className="mb-1.5 block text-sm font-semibold text-gray-700">
         الزبون <span className="font-normal text-gray-500">(اختياري)</span>
       </label>

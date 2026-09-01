@@ -141,7 +141,7 @@ export default function ProductForm({ product }: ProductFormProps) {
         materials={materials}
       />
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
         <label htmlFor="product-overhead" className="mb-1.5 block text-sm font-semibold text-gray-700">
           تكاليف تشغيل إضافية{" "}
           <span className="font-normal text-gray-500">(اختياري)</span>
@@ -159,7 +159,7 @@ export default function ProductForm({ product }: ProductFormProps) {
         />
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <label className="text-sm font-semibold text-gray-700">
             نسبة الربح %
@@ -190,7 +190,7 @@ export default function ProductForm({ product }: ProductFormProps) {
         />
       </div>
 
-      <div className="rounded-2xl bg-brand-900 p-5 text-white shadow-sm">
+      <div className="rounded-lg bg-brand-900 p-5 text-white shadow-sm">
         <div className="mb-3 flex items-center justify-between text-sm text-brand-100">
           <span>سعر التكلفة</span>
           <span className="font-semibold">{formatSAR(result.totalCost)}</span>
@@ -212,7 +212,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       <button
         type="submit"
         disabled={saving}
-        className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition active:bg-brand-800 disabled:opacity-60"
+        className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition active:bg-brand-800 disabled:opacity-60"
       >
         {saving ? "جاري الحفظ..." : "حفظ"}
       </button>
@@ -223,7 +223,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           onClick={handleDelete}
           disabled={deleting}
           aria-label={deletingConfirm ? "اضغط مرة ثانية لتأكيد الحذف" : "حذف المنتج"}
-          className={`flex w-full items-center justify-center gap-1.5 rounded-2xl border py-3 text-sm font-semibold transition active:bg-red-50 disabled:opacity-60 ${
+          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border py-3 text-sm font-semibold transition active:bg-red-50 disabled:opacity-60 ${
             deletingConfirm
               ? "border-red-500 bg-red-500 text-white"
               : "border-red-200 text-red-600"

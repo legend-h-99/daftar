@@ -120,7 +120,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <div className="flex rounded-2xl bg-gray-100 p-1">
+      <div className="flex rounded-lg bg-gray-100 p-1">
         {(
           [
             ["items", language === "ar" ? "الأصناف" : "Items"],
@@ -147,7 +147,7 @@ export default function InventoryPage() {
           <button
             type="button"
             onClick={() => setShowAdd(true)}
-            className="flex items-center justify-center gap-1.5 rounded-2xl border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
           >
             <Plus className="h-4 w-4" />
             {language === "ar" ? "إضافة صنف يدويًا" : "Add item manually"}
@@ -177,7 +177,7 @@ export default function InventoryPage() {
                 <li
                   key={m.id}
                   onClick={(e) => e.stopPropagation()}
-                  className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm"
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm"
                 >
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -266,7 +266,7 @@ export default function InventoryPage() {
                 return (
                   <li
                     key={mv.id}
-                    className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm"
+                    className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3 shadow-sm"
                   >
                     <div className="flex items-center gap-3">
                       <span

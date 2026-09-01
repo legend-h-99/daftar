@@ -3,7 +3,7 @@
 export default function OfflinePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#f7f8f7] px-6 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-brand-700 text-4xl font-extrabold text-white">
+      <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-brand-700 text-4xl font-extrabold text-white">
         د
       </div>
       <div className="flex flex-col gap-2">

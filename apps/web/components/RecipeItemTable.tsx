@@ -69,7 +69,7 @@ export default function RecipeItemTable({
   const subtotal = items.reduce((sum, item) => sum + lineCost(item), 0);
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         <span className="text-xs font-semibold text-gray-500">

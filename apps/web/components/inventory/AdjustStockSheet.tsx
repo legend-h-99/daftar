@@ -147,7 +147,7 @@ export default function AdjustStockSheet({
           type="button"
           onClick={handleAdjust}
           disabled={saving}
-          className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
+          className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
         >
           {saving ? "جاري الحفظ..." : "حفظ التعديل"}
         </button>

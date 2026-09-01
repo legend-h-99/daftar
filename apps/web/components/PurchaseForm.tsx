@@ -161,13 +161,13 @@ export default function PurchaseForm({
       <button
         type="button"
         onClick={() => setRows((prev) => [...prev, emptyRow()])}
-        className="flex items-center justify-center gap-1.5 rounded-2xl border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
+        className="motion-press flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
       >
         <Plus className="h-4 w-4" />
         إضافة صنف
       </button>
 
-      <div className="flex items-center justify-between rounded-2xl bg-brand-900 px-4 py-3.5 text-white">
+      <div className="flex items-center justify-between rounded-lg bg-brand-900 px-4 py-3.5 text-white">
         <span className="text-sm text-brand-100">إجمالي فاتورة الشراء</span>
         <span className="text-lg font-extrabold">{formatSAR(total)}</span>
       </div>
@@ -181,7 +181,7 @@ export default function PurchaseForm({
       <button
         type="submit"
         disabled={saving}
-        className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
+        className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
       >
         {saving ? "جاري الحفظ..." : "حفظ وتحديث المخزون"}
       </button>

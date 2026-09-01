@@ -159,7 +159,7 @@ export default function InvoiceDetailPage() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <p className="text-lg font-extrabold text-gray-900">
@@ -250,13 +250,13 @@ export default function InvoiceDetailPage() {
           <button
             type="button"
             onClick={() => { setShowPartialForm((v) => !v); setError(null); }}
-            className="w-full rounded-2xl border border-brand-300 py-3 text-sm font-semibold text-brand-700 active:bg-brand-50"
+            className="w-full rounded-lg border border-brand-300 py-3 text-sm font-semibold text-brand-700 active:bg-brand-50"
           >
             تسجيل دفع جزئي
           </button>
 
           {showPartialForm && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
               <label className="text-sm font-semibold text-gray-700">
                 المبلغ المدفوع <span className="font-normal text-gray-500">(من {formatSAR(invoice.total)})</span>
               </label>
@@ -288,7 +288,7 @@ export default function InvoiceDetailPage() {
           type="button"
           onClick={downloadPdf}
           disabled={downloading}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
         >
           <Download className="h-4 w-4" />
           {downloading ? "جاري التحميل..." : "تحميل PDF"}
