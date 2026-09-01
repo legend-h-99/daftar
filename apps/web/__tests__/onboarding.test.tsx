@@ -218,7 +218,7 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
-        expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/business", {
+        expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", {
           name: "المحل",
           vatEnabled: false,
           vatNumber: undefined,
@@ -244,7 +244,7 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       await user.type(screen.getByLabelText(/الرقم الضريبي/), "3000000000003");
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
-        expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/business", {
+        expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", {
           name: "مطعم السلام",
           vatEnabled: true,
           vatNumber: "3000000000003",

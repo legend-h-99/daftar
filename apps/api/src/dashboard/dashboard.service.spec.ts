@@ -3,81 +3,96 @@ import { BadRequestException } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-// Helper to build a fresh mock PrismaService value for each test
+/**
+ * Builds a PrismaService mock aligned with the optimised DashboardService:
+ *   - invoice.aggregate  × 2  (paid totals + unpaid totals)
+ *   - purchase.aggregate × 1
+ *   - expense.aggregate  × 1
+ *   - $queryRaw          × 2  (COGS JOIN query + low-stock query)
+ *   - invoice.findMany   × 1  (capped unpaid list for display)
+ */
 function buildPrismaMock(overrides: Partial<{
-  paidInvoices: any[];
-  purchases: any[];
-  expenses: any[];
-  saleCost: number;
+  totalSales: number;
+  totalPurchases: number;
+  totalExpenses: number;
+  saleCogs: number;
   unpaidInvoices: any[];
   lowStock: any[];
 }> = {}) {
-  const paidInvoices = overrides.paidInvoices ?? [];
-  const purchases = overrides.purchases ?? [];
-  const expenses = overrides.expenses ?? [];
-  const saleCost = overrides.saleCost ?? 0;
-  const unpaidInvoices = overrides.unpaidInvoices ?? [];
-  const lowStock = overrides.lowStock ?? [];
+  const totalSales      = overrides.totalSales      ?? 0;
+  const totalPurchases  = overrides.totalPurchases  ?? 0;
+  const totalExpenses   = overrides.totalExpenses   ?? 0;
+  const saleCogs        = overrides.saleCogs        ?? 0;
+  const unpaidInvoices  = overrides.unpaidInvoices  ?? [];
+  const lowStock        = overrides.lowStock        ?? [];
 
-  // invoice.findMany is called TWICE: first for PAID, then for UNPAID/PARTIAL.
-  // We distinguish by returning different values based on call order.
-  let invoiceFindManyCallCount = 0;
+  const unpaidTotal     = unpaidInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
+  const unpaidPaid      = unpaidInvoices.reduce((s, i) => s + (i.paidAmount ?? 0), 0);
+
+  // invoice.aggregate is called twice: once for PAID sums, once for UNPAID/PARTIAL sums
+  let aggregateCallCount = 0;
+  const invoiceAggregate = jest.fn().mockImplementation(() => {
+    aggregateCallCount++;
+    if (aggregateCallCount === 1) {
+      // First call: PAID invoice totals
+      return Promise.resolve({ _sum: { total: totalSales || null } });
+    }
+    // Second call: UNPAID/PARTIAL aggregate
+    return Promise.resolve({
+      _count: { id: unpaidInvoices.length },
+      _sum: {
+        total: unpaidTotal || null,
+        paidAmount: unpaidPaid || null,
+      },
+    });
+  });
+
+  // $queryRaw is called twice: COGS JOIN query first, low-stock query second
+  let queryRawCallCount = 0;
+  const queryRaw = jest.fn().mockImplementation(() => {
+    queryRawCallCount++;
+    if (queryRawCallCount === 1) {
+      // COGS result
+      return Promise.resolve([{ cogs: saleCogs }]);
+    }
+    // Low-stock result
+    return Promise.resolve(lowStock);
+  });
+
   return {
     invoice: {
-      findMany: jest.fn().mockImplementation(() => {
-        invoiceFindManyCallCount++;
-        return Promise.resolve(
-          invoiceFindManyCallCount === 1 ? paidInvoices : unpaidInvoices,
-        );
-      }),
-      aggregate: jest.fn().mockResolvedValue({
-        _count: { id: unpaidInvoices.length },
-        _sum: {
-          total: unpaidInvoices.length > 0
-            ? unpaidInvoices.reduce((s: number, i: any) => s + (i.total ?? 0), 0)
-            : null,
-          paidAmount: unpaidInvoices.length > 0
-            ? unpaidInvoices.reduce((s: number, i: any) => s + (i.paidAmount ?? 0), 0)
-            : null,
-        },
-      }),
+      aggregate: invoiceAggregate,
+      findMany: jest.fn().mockResolvedValue(unpaidInvoices),
     },
     purchase: {
-      findMany: jest.fn().mockResolvedValue(purchases),
+      aggregate: jest.fn().mockResolvedValue({
+        _sum: { total: totalPurchases || null },
+      }),
     },
     expense: {
-      findMany: jest.fn().mockResolvedValue(expenses),
+      aggregate: jest.fn().mockResolvedValue({
+        _sum: { amount: totalExpenses || null },
+      }),
     },
-    stockMovement: {
-      findMany: jest.fn().mockResolvedValue(
-        saleCost > 0
-          ? [{ qty: -1, costAmount: saleCost, material: { unitPrice: saleCost } }]
-          : [],
-      ),
-    },
-    $queryRaw: jest.fn().mockResolvedValue(lowStock),
+    $queryRaw: queryRaw,
   };
 }
 
 describe('DashboardService', () => {
-  let service: DashboardService;
-
   async function buildService(prismaValue: any): Promise<DashboardService> {
     const module = await Test.createTestingModule({
       providers: [
         DashboardService,
-        {
-          provide: PrismaService,
-          useValue: prismaValue,
-        },
+        { provide: PrismaService, useValue: prismaValue },
       ],
     }).compile();
     return module.get(DashboardService);
   }
 
-  it('returns zeros when no invoices/purchases/expenses exist', async () => {
-    service = await buildService(buildPrismaMock());
+  it('returns zeros when no data exists', async () => {
+    const service = await buildService(buildPrismaMock());
     const result = await service.summary('biz-1', '2026-01');
+
     expect(result.totalSales).toBe(0);
     expect(result.totalPurchases).toBe(0);
     expect(result.costOfGoodsSold).toBe(0);
@@ -89,32 +104,29 @@ describe('DashboardService', () => {
     expect(result.unpaidInvoicesTotal).toBe(0);
   });
 
-  it('totalSales equals sum of PAID invoice totals', async () => {
-    const paidInvoices = [{ total: 100 }, { total: 200 }, { total: 50 }];
-    service = await buildService(buildPrismaMock({ paidInvoices }));
+  it('totalSales equals the aggregate sum of PAID invoices', async () => {
+    const service = await buildService(buildPrismaMock({ totalSales: 350 }));
     const result = await service.summary('biz-1', '2026-01');
     expect(result.totalSales).toBe(350);
   });
 
-  it('netProfit = sales − cost of goods sold − operating expenses', async () => {
-    const paidInvoices = [{ total: 500 }];
-    const purchases = [{ total: 150 }];
-    const expenses = [{ amount: 75 }];
-    service = await buildService(buildPrismaMock({
-      paidInvoices,
-      purchases,
-      expenses,
-      saleCost: 120,
+  it('netProfit = sales − COGS − operating expenses', async () => {
+    const service = await buildService(buildPrismaMock({
+      totalSales:     500,
+      totalPurchases: 150,
+      totalExpenses:  75,
+      saleCogs:       120,
     }));
     const result = await service.summary('biz-1', '2026-01');
+
     expect(result.totalPurchases).toBe(150);
     expect(result.costOfGoodsSold).toBe(120);
     expect(result.operatingExpenses).toBe(75);
-    expect(result.totalExpenses).toBe(120 + 75);
-    expect(result.netProfit).toBe(500 - 120 - 75); // 305
+    expect(result.totalExpenses).toBe(195);   // 120 + 75
+    expect(result.netProfit).toBe(305);        // 500 − 120 − 75
   });
 
-  it('unpaid invoice appears in unpaidInvoices', async () => {
+  it('unpaid invoice appears in unpaidInvoices list with customerName', async () => {
     const unpaidInvoices = [
       {
         id: 'inv-1',
@@ -123,20 +135,43 @@ describe('DashboardService', () => {
         paidAmount: 0,
         dueDate: new Date('2026-02-01'),
         status: 'UNPAID',
-        customer: { id: 'cust-1', name: 'عميل تجريبي' },
+        customer: { name: 'عميل تجريبي' },
       },
     ];
-    service = await buildService(buildPrismaMock({ unpaidInvoices }));
+    const service = await buildService(buildPrismaMock({ unpaidInvoices }));
     const result = await service.summary('biz-1', '2026-01');
+
     expect(result.unpaidInvoices).toHaveLength(1);
     expect(result.unpaidInvoices[0].id).toBe('inv-1');
     expect(result.unpaidInvoices[0].customerName).toBe('عميل تجريبي');
     expect(result.unpaidInvoicesCount).toBe(1);
-    expect(result.unpaidInvoicesTotal).toBe(300); // total - paidAmount
+    expect(result.unpaidInvoicesTotal).toBe(300);
+  });
+
+  it('partial invoice outstanding = total − paidAmount', async () => {
+    const unpaidInvoices = [
+      { id: 'inv-2', number: 5, total: 400, paidAmount: 100,
+        dueDate: null, status: 'PARTIAL', customer: null },
+    ];
+    const service = await buildService(buildPrismaMock({ unpaidInvoices }));
+    const result = await service.summary('biz-1', '2026-01');
+    // trueTotal = sum(total) − sum(paidAmount) = 400 − 100 = 300
+    expect(result.unpaidInvoicesTotal).toBe(300);
+  });
+
+  it('low-stock materials are passed through', async () => {
+    const lowStock = [
+      { id: 'm-1', name: 'طحين', unit: 'KG', stockQty: 1, reorderLevel: 5 },
+    ];
+    const service = await buildService(buildPrismaMock({ lowStock }));
+    const result = await service.summary('biz-1', '2026-01');
+    expect(result.lowStock).toHaveLength(1);
+    expect(result.lowStock[0].name).toBe('طحين');
   });
 
   it('invalid month string throws BadRequestException', async () => {
-    service = await buildService(buildPrismaMock());
-    await expect(service.summary('biz-1', 'not-a-month')).rejects.toThrow(BadRequestException);
+    const service = await buildService(buildPrismaMock());
+    await expect(service.summary('biz-1', 'not-a-month'))
+      .rejects.toThrow(BadRequestException);
   });
 });
