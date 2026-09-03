@@ -56,6 +56,7 @@ model Business {
   suppliers      Supplier[]
   purchases      Purchase[]
   stockMovements StockMovement[]
+  auditLogs      AuditLog[]
 }
 
 model User {
@@ -73,6 +74,7 @@ model User {
   updatedAt      DateTime  @updatedAt
 
   emailVerifications EmailVerification[]
+  auditLogs          AuditLog[]
 }
 
 model EmailVerification {
@@ -80,12 +82,31 @@ model EmailVerification {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
+  codeHash  String?
+  attempts  Int      @default(0)
   expiresAt DateTime
   consumed  Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([token, consumed, expiresAt])
   @@index([userId])
+  @@index([userId, consumed, expiresAt])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  action     String
+  success    Boolean   @default(true)
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([action, createdAt])
 }
 
 model OtpCode {
