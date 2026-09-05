@@ -37,7 +37,7 @@ const themeScript = `
 (function(){
   try {
     var s = localStorage.getItem('daftar-theme');
-    var dark = s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var dark = s === 'dark' || ((!s || s === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (dark) document.documentElement.classList.add('dark');
   } catch(e){}
 })();

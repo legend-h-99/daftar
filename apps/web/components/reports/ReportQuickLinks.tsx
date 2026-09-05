@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, ShoppingCart, Wallet } from "lucide-react";
+import { FileText, ShoppingCart, Wallet, ArrowUpLeft } from "lucide-react";
 
 const LINKS = [
   { href: "/invoices", label: "الفواتير", icon: FileText, color: "text-primary bg-accent" },
@@ -10,19 +10,24 @@ const LINKS = [
 /** روابط سريعة أسفل التقرير لأقسام الفواتير والمشتريات والمصاريف. */
 export default function ReportQuickLinks() {
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {LINKS.map(({ href, label, icon: Icon, color }) => (
-        <Link
-          key={href}
-          href={href}
-          className="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card py-3 shadow-sm active:bg-muted"
-        >
-          <span className={`rounded-lg p-1.5 ${color}`}>
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </span>
-          <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        </Link>
-      ))}
-    </div>
+    <section aria-labelledby="report-records-heading" className="rounded-xl border border-border bg-card p-4">
+      <h2 id="report-records-heading" className="text-sm font-bold text-foreground">تفاصيل التقرير</h2>
+      <p className="mt-1 mb-3 text-xs text-muted-foreground">راجع السجلات المرتبطة بأرقام تقريرك</p>
+      <div className="divide-y divide-border">
+        {LINKS.map(({ href, label, icon: Icon, color }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className={`rounded-lg p-1.5 ${color}`}>
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="flex-1 text-sm font-semibold text-foreground">{label}</span>
+            <ArrowUpLeft className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
