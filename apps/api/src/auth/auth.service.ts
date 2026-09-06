@@ -301,8 +301,15 @@ export class AuthService {
       if (existing.emailVerified) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
-      // Re-send verification if account exists but not verified
-      await this.sendVerificationEmail(existing);
+      // Overwrite the stored hash with the *current* attempt's password so that
+      // a pre-registration attacker cannot lock the legitimate owner out by
+      // claiming the address first with an attacker-chosen password.
+      const passwordHash = await bcrypt.hash(password, 12);
+      const updated = await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, name: name ?? existing.name },
+      });
+      await this.sendVerificationEmail(updated);
       return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
     }
 

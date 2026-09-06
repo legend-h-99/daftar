@@ -26,6 +26,17 @@ export class InvoicesService {
       throw new NotFoundException('Business not found');
     }
 
+    // Reject customer IDs that don't belong to this business to prevent
+    // cross-tenant data leakage via the returned customer relationship.
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, businessId },
+      });
+      if (!customer) {
+        throw new NotFoundException('Customer not found');
+      }
+    }
+
     const items = dto.items.map((i) => ({
       productId: i.productId,
       name: i.name,
@@ -97,6 +108,7 @@ export class InvoicesService {
       },
       include: { customer: true },
       orderBy: { number: 'desc' },
+      take: 500,
     });
   }
 

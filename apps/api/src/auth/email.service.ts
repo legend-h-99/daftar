@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
@@ -8,17 +8,21 @@ export class EmailService {
   private readonly resend: Resend | null = null;
   private readonly from: string;
   private readonly appUrl: string;
+  private readonly isDev: boolean;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = config.get<string>('RESEND_API_KEY');
     this.from = config.get<string>('EMAIL_FROM') ?? 'Daftar <onboarding@resend.dev>';
     this.appUrl = config.get<string>('APP_URL') ?? 'https://daftar-ead.pages.dev';
+    this.isDev = ['development', 'test'].includes(config.get<string>('NODE_ENV') ?? '');
 
     if (apiKey) {
       this.resend = new Resend(apiKey);
       this.logger.log('Email service ready via Resend');
+    } else if (this.isDev) {
+      this.logger.warn('RESEND_API_KEY not set — verification links will only be logged (dev mode).');
     } else {
-      this.logger.warn('RESEND_API_KEY not set — verification links will only be logged.');
+      throw new Error('RESEND_API_KEY is required in non-development environments.');
     }
   }
 
@@ -83,8 +87,11 @@ export class EmailService {
 </html>`;
 
     if (!this.resend) {
-      this.logger.warn(`[DEV] Verification link for ${email}: ${link}`);
-      return;
+      if (this.isDev) {
+        this.logger.warn(`[DEV] Verification link for ${email}: ${link}`);
+        return;
+      }
+      throw new InternalServerErrorException('Email service not configured');
     }
 
     const { error } = await this.resend.emails.send({

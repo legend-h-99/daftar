@@ -260,7 +260,7 @@ export class InventoryService {
       const { qty, unitPrice } = consumed;
       if (qty <= 0) continue;
       const updated = await tx.material.update({
-        where: { id: materialId },
+        where: { id: materialId, businessId },
         data: { stockQty: { decrement: qty } },
       });
       await tx.stockMovement.create({

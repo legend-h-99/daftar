@@ -125,7 +125,22 @@ export class ProductsService {
     }
   }
 
+  private async assertMaterialsOwnedByBusiness(
+    businessId: string,
+    items: Array<{ materialId?: string }>,
+  ) {
+    const ids = [...new Set(items.map((i) => i.materialId).filter(Boolean))] as string[];
+    if (ids.length === 0) return;
+    const count = await this.prisma.material.count({
+      where: { id: { in: ids }, businessId },
+    });
+    if (count !== ids.length) {
+      throw new NotFoundException('One or more materials not found');
+    }
+  }
+
   async create(businessId: string, dto: CreateProductDto) {
+    await this.assertMaterialsOwnedByBusiness(businessId, dto.recipeItems);
     const overheadCost = dto.overheadCost ?? 0;
     const costs = this.computeCosts(dto.recipeItems, overheadCost, dto.profitMargin);
 
@@ -182,6 +197,9 @@ export class ProductsService {
 
   async update(businessId: string, id: string, dto: UpdateProductDto) {
     const existing = await this.findOne(businessId, id);
+    if (dto.recipeItems) {
+      await this.assertMaterialsOwnedByBusiness(businessId, dto.recipeItems);
+    }
 
     const overheadCost = dto.overheadCost ?? existing.overheadCost;
     const profitMargin = dto.profitMargin ?? existing.profitMargin;
