@@ -10,10 +10,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "figma:connect": "figma connect publish",
-    "figma:unpublish": "figma connect unpublish"
+    "figma:unpublish": "figma connect unpublish",
+    "test:ux": "node test/ux/run.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@sentry/nextjs": "^10.73.0",
+    "@tanstack/react-query": "^5.101.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

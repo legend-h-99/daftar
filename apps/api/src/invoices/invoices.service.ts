@@ -108,7 +108,8 @@ export class InvoicesService {
       },
       include: { customer: true },
       orderBy: { number: 'desc' },
-      take: 500,
+      take: query.limit ?? 50,
+      skip: query.skip ?? 0,
     });
   }
 

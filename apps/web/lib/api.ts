@@ -74,6 +74,8 @@ export async function apiFetch<T = unknown>(
       ...rest,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      // Send HttpOnly cookie automatically (web); mobile uses Bearer header above.
+      credentials: 'include' as RequestCredentials,
     };
     response = DEMO_MODE
       ? await demoApiFetch(path, request)
@@ -117,8 +119,8 @@ export function apiGet<T = unknown>(path: string) {
   return apiFetch<T>(path, { method: "GET" });
 }
 
-export function apiPost<T = unknown>(path: string, body?: unknown) {
-  return apiFetch<T>(path, { method: "POST", body });
+export function apiPost<T = unknown>(path: string, body?: unknown, options: Pick<ApiFetchOptions, "auth"> = {}) {
+  return apiFetch<T>(path, { ...options, method: "POST", body });
 }
 
 export function apiPatch<T = unknown>(path: string, body?: unknown) {
@@ -139,6 +141,7 @@ export async function apiGetBlob(path: string): Promise<Blob> {
   let response: Response;
   try {
     const request = {
+      credentials: 'include' as RequestCredentials,
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     };
     response = DEMO_MODE

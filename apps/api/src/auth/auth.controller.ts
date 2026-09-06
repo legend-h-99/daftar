@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -13,6 +13,22 @@ import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
+
+const COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function setAuthCookie(res: Response, token: string) {
+  res.cookie('access_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: COOKIE_TTL_MS,
+    path: '/',
+  });
+}
+
+function clearAuthCookie(res: Response) {
+  res.clearCookie('access_token', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+}
 
 @Controller('auth')
 export class AuthController {
@@ -28,20 +44,26 @@ export class AuthController {
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('otp/verify')
-  verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.verifyOtp(dto.phone, dto.code);
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.verifyOtp(dto.phone, dto.code);
+    setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('demo')
-  demoLogin(@Body() dto: DemoLoginDto) {
-    return this.authService.demoLogin(dto.phone);
+  async demoLogin(@Body() dto: DemoLoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.demoLogin(dto.phone);
+    setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('google')
-  googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.authService.googleLogin(dto.credential);
+  async googleLogin(@Body() dto: GoogleLoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.googleLogin(dto.credential);
+    setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -58,8 +80,10 @@ export class AuthController {
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('email/login')
-  loginEmail(@Body() dto: LoginEmailDto) {
-    return this.authService.loginEmail(dto.email, dto.password);
+  async loginEmail(@Body() dto: LoginEmailDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.loginEmail(dto.email, dto.password);
+    setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
@@ -77,10 +101,14 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  async logout(@Req() req: Request) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Accept token from cookie (web) or Authorization header (mobile)
+    const cookieToken = (req.cookies as Record<string, string>)?.access_token;
     const auth = req.headers.authorization;
-    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+    const bearerToken = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+    const token = cookieToken ?? bearerToken;
     if (token) await this.authService.logout(token);
+    clearAuthCookie(res);
     return { loggedOut: true };
   }
 }

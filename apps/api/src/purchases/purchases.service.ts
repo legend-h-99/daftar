@@ -124,6 +124,8 @@ export class PurchasesService {
       },
       include: { supplier: true, items: true },
       orderBy: { number: 'desc' },
+      take: query.limit ?? 50,
+      skip: query.skip ?? 0,
     });
   }
 

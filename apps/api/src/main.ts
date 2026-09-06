@@ -1,9 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
+import * as Sentry from '@sentry/nestjs';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV ?? 'development',
+    integrations: [nodeProfilingIntegration()],
+    tracesSampleRate: 0.1,
+    profilesSampleRate: 0.1,
+  });
+}
 
 async function bootstrap() {
   // bodyParser disabled so we can re-register JSON parsing with a 12mb limit:
@@ -16,6 +29,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.useBodyParser('json', { limit: '12mb' });
   app.useBodyParser('urlencoded', { extended: true });
+  app.use(cookieParser());
 
   app.useGlobalPipes(
     new ValidationPipe({

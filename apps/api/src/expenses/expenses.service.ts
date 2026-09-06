@@ -22,11 +22,15 @@ export class ExpensesService {
   }
 
   findAll(businessId: string, query: FindExpensesQueryDto) {
+    const limit = query.limit ?? 50;
+    const skip = query.skip ?? 0;
+
     if (!query.month) {
       return this.prisma.expense.findMany({
         where: { businessId },
         orderBy: { date: 'desc' },
-        take: 200,
+        take: limit,
+        skip,
       });
     }
 
@@ -40,6 +44,8 @@ export class ExpensesService {
     return this.prisma.expense.findMany({
       where: { businessId, date: { gte: range.start, lt: range.end } },
       orderBy: { date: 'desc' },
+      take: limit,
+      skip,
     });
   }
 

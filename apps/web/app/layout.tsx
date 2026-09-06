@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/lib/theme";
 import { LanguageProvider } from "@/lib/language";
+import { QueryProvider } from "@/lib/query-client";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -54,12 +55,14 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="font-sans antialiased">
-        <ThemeProvider>
-          <LanguageProvider>
-            <ServiceWorkerRegistration />
-            {children}
-          </LanguageProvider>
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider>
+            <LanguageProvider>
+              <ServiceWorkerRegistration />
+              {children}
+            </LanguageProvider>
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );
