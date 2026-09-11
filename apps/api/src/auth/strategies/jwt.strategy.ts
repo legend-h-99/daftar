@@ -29,11 +29,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
       if (revoked) throw new UnauthorizedException('Token has been revoked');
     }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        phone: true,
+        email: true,
+        businessId: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
     return {
-      userId: payload.sub,
-      phone: payload.phone,
-      email: payload.email,
-      businessId: payload.businessId,
+      userId: user.id,
+      phone: user.phone,
+      email: user.email,
+      businessId: user.businessId,
     };
   }
 }

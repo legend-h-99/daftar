@@ -65,7 +65,7 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('email/verify')
   verifyEmail(@Body() dto: VerifyEmailTokenDto) {
-    return this.authService.verifyEmailToken(dto.token);
+    return this.authService.verifyEmailToken(dto);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 3 } })

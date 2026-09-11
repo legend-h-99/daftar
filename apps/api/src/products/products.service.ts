@@ -71,7 +71,7 @@ export class ProductsService {
     if (ids.length === 0) return;
 
     const materials = await db.material.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, businessId },
       select: { id: true, unitPrice: true },
     });
     const priceById = new Map(materials.map((m) => [m.id, m.unitPrice]));
@@ -129,35 +129,40 @@ export class ProductsService {
     const overheadCost = dto.overheadCost ?? 0;
     const costs = this.computeCosts(dto.recipeItems, overheadCost, dto.profitMargin);
 
-    return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.create({
-        data: {
-          businessId,
-          name: dto.name,
-          category: dto.category,
-          overheadCost,
-          profitMargin: dto.profitMargin,
-          rawCost: costs.rawCost,
-          packagingCost: costs.packagingCost,
-          totalCost: costs.totalCost,
-          sellingPrice: costs.sellingPrice,
-          recipeItems: {
-            create: dto.recipeItems.map((item) => ({
-              materialId: item.materialId,
-              name: item.name,
-              unit: item.unit,
-              unitPrice: item.unitPrice,
-              quantityUsed: item.quantityUsed,
-              lineCost: item.unitPrice * item.quantityUsed,
-              type: item.type,
-            })),
-          },
-        },
-        include: { recipeItems: true },
-      });
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.assertMaterialsBelongToBusiness(tx, businessId, dto.recipeItems);
 
-      return product;
-    });
+        const product = await tx.product.create({
+          data: {
+            businessId,
+            name: dto.name,
+            category: dto.category,
+            overheadCost,
+            profitMargin: dto.profitMargin,
+            rawCost: costs.rawCost,
+            packagingCost: costs.packagingCost,
+            totalCost: costs.totalCost,
+            sellingPrice: costs.sellingPrice,
+            recipeItems: {
+              create: dto.recipeItems.map((item) => ({
+                materialId: item.materialId,
+                name: item.name,
+                unit: item.unit,
+                unitPrice: item.unitPrice,
+                quantityUsed: item.quantityUsed,
+                lineCost: item.unitPrice * item.quantityUsed,
+                type: item.type,
+              })),
+            },
+          },
+          include: { recipeItems: true },
+        });
+
+        return product;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   findAll(businessId: string, pagination: PaginationParams) {
@@ -181,67 +186,107 @@ export class ProductsService {
   }
 
   async update(businessId: string, id: string, dto: UpdateProductDto) {
-    const existing = await this.findOne(businessId, id);
+    return this.prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.product.findFirst({
+          where: { id, businessId },
+          include: { recipeItems: true },
+        });
+        if (!existing) {
+          throw new NotFoundException('Product not found');
+        }
 
-    const overheadCost = dto.overheadCost ?? existing.overheadCost;
-    const profitMargin = dto.profitMargin ?? existing.profitMargin;
+        if (dto.recipeItems) {
+          await this.assertMaterialsBelongToBusiness(tx, businessId, dto.recipeItems);
+        }
 
-    // If recipeItems weren't sent, keep existing items for cost recomputation.
-    const itemsForCalc: RecipeItemDto[] =
-      dto.recipeItems ??
-      existing.recipeItems.map((i) => ({
-        materialId: i.materialId ?? undefined,
-        name: i.name,
-        unit: i.unit,
-        unitPrice: i.unitPrice,
-        quantityUsed: i.quantityUsed,
-        type: i.type,
-      }));
+        const overheadCost = dto.overheadCost ?? existing.overheadCost;
+        const profitMargin = dto.profitMargin ?? existing.profitMargin;
 
-    const costs = this.computeCosts(itemsForCalc, overheadCost, profitMargin);
+        // If recipeItems weren't sent, keep existing items for cost recomputation.
+        const itemsForCalc: RecipeItemDto[] =
+          dto.recipeItems ??
+          existing.recipeItems.map((i) => ({
+            materialId: i.materialId ?? undefined,
+            name: i.name,
+            unit: i.unit,
+            unitPrice: i.unitPrice,
+            quantityUsed: i.quantityUsed,
+            type: i.type,
+          }));
 
-    return this.prisma.$transaction(async (tx) => {
-      if (dto.recipeItems) {
-        await tx.recipeItem.deleteMany({ where: { productId: id } });
-      }
+        const costs = this.computeCosts(itemsForCalc, overheadCost, profitMargin);
 
-      const updated = await tx.product.update({
-        where: { id },
-        data: {
-          name: dto.name ?? existing.name,
-          category: dto.category ?? existing.category,
-          overheadCost,
-          profitMargin,
-          rawCost: costs.rawCost,
-          packagingCost: costs.packagingCost,
-          totalCost: costs.totalCost,
-          sellingPrice: costs.sellingPrice,
-          ...(dto.recipeItems
-            ? {
-                recipeItems: {
-                  create: dto.recipeItems.map((item) => ({
-                    materialId: item.materialId,
-                    name: item.name,
-                    unit: item.unit,
-                    unitPrice: item.unitPrice,
-                    quantityUsed: item.quantityUsed,
-                    lineCost: item.unitPrice * item.quantityUsed,
-                    type: item.type,
-                  })),
-                },
-              }
-            : {}),
-        },
-        include: { recipeItems: true },
-      });
+        if (dto.recipeItems) {
+          await tx.recipeItem.deleteMany({ where: { productId: id } });
+        }
 
-      return updated;
-    });
+        const updated = await tx.product.update({
+          where: { id },
+          data: {
+            name: dto.name ?? existing.name,
+            category: dto.category ?? existing.category,
+            overheadCost,
+            profitMargin,
+            rawCost: costs.rawCost,
+            packagingCost: costs.packagingCost,
+            totalCost: costs.totalCost,
+            sellingPrice: costs.sellingPrice,
+            ...(dto.recipeItems
+              ? {
+                  recipeItems: {
+                    create: dto.recipeItems.map((item) => ({
+                      materialId: item.materialId,
+                      name: item.name,
+                      unit: item.unit,
+                      unitPrice: item.unitPrice,
+                      quantityUsed: item.quantityUsed,
+                      lineCost: item.unitPrice * item.quantityUsed,
+                      type: item.type,
+                    })),
+                  },
+                }
+              : {}),
+          },
+          include: { recipeItems: true },
+        });
+
+        return updated;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async remove(businessId: string, id: string) {
     await this.findOne(businessId, id);
     await this.prisma.product.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  private async assertMaterialsBelongToBusiness(
+    db: Prisma.TransactionClient,
+    businessId: string,
+    items: RecipeItemDto[],
+  ) {
+    const materialIds = [
+      ...new Set(
+        items
+          .map((item) => item.materialId)
+          .filter((materialId): materialId is string => Boolean(materialId)),
+      ),
+    ];
+
+    if (materialIds.length === 0) return;
+
+    const count = await db.material.count({
+      where: {
+        id: { in: materialIds },
+        businessId,
+      },
+    });
+
+    if (count !== materialIds.length) {
+      throw new NotFoundException('Material not found');
+    }
   }
 }

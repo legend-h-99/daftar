@@ -21,10 +21,13 @@ export class InvoicesService {
   ) {}
 
   async create(businessId: string, dto: CreateInvoiceDto) {
-    const business = await this.prisma.business.findUnique({ where: { id: businessId } });
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
+    const productIds = [
+      ...new Set(
+        dto.items
+          .map((item) => item.productId)
+          .filter((productId): productId is string => Boolean(productId)),
+      ),
+    ];
 
     const items = dto.items.map((i) => ({
       productId: i.productId,
@@ -34,8 +37,6 @@ export class InvoicesService {
       lineTotal: i.unitPrice * i.quantity,
     }));
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
-    const vatAmount = business.vatEnabled ? subtotal * VAT_RATE : 0;
-    const total = subtotal + vatAmount;
 
     // Sequential per-business invoice numbering. We derive next number inside
     // a Serializable transaction (protects against concurrent races) and
@@ -47,6 +48,35 @@ export class InvoicesService {
       try {
         return await this.prisma.$transaction(
           async (tx) => {
+            const business = await tx.business.findUnique({ where: { id: businessId } });
+            if (!business) {
+              throw new NotFoundException('Business not found');
+            }
+
+            if (dto.customerId) {
+              const customer = await tx.customer.findFirst({
+                where: { id: dto.customerId, businessId },
+              });
+              if (!customer) {
+                throw new NotFoundException('Customer not found');
+              }
+            }
+
+            if (productIds.length > 0) {
+              const count = await tx.product.count({
+                where: {
+                  id: { in: productIds },
+                  businessId,
+                },
+              });
+              if (count !== productIds.length) {
+                throw new NotFoundException('Product not found');
+              }
+            }
+
+            const vatAmount = business.vatEnabled ? subtotal * VAT_RATE : 0;
+            const total = subtotal + vatAmount;
+
             const agg = await tx.invoice.aggregate({
               where: { businessId },
               _max: { number: true },
