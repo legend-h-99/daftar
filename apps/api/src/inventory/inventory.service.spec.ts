@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { Unit } from '@prisma/client';
 import { InventoryService } from './inventory.service';
 
 describe('InventoryService', () => {
@@ -38,11 +39,11 @@ describe('InventoryService', () => {
     ]);
 
     expect(tx.material.update).toHaveBeenCalledWith({
-      where: { id: 'mat-flour' },
+      where: { id: 'mat-flour', businessId: 'biz-1' },
       data: { stockQty: { decrement: 6 } },
     });
     expect(tx.material.update).toHaveBeenCalledWith({
-      where: { id: 'mat-box' },
+      where: { id: 'mat-box', businessId: 'biz-1' },
       data: { stockQty: { decrement: 2 } },
     });
     expect(tx.stockMovement.create).toHaveBeenCalledWith({
@@ -68,7 +69,7 @@ describe('InventoryService', () => {
       buildService().applyPurchaseLine(tx as any, 'biz-1', 'purchase-1', {
         materialId: 'mat-other',
         name: 'Flour',
-        unit: 'KG' as any,
+        unit: Unit.KG,
         quantity: 1,
         unitPrice: 3,
       }),
@@ -90,7 +91,7 @@ describe('InventoryService', () => {
       buildService().applyPurchaseLine(tx as any, 'biz-1', 'purchase-1', {
         materialId: 'mat-1',
         name: 'Flour',
-        unit: 'KG' as any,
+        unit: Unit.KG,
         quantity: 3,
         unitPrice: 8,
       }),

@@ -9,9 +9,9 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { FindInvoicesQueryDto } from './dto/find-invoices-query.dto';
 import { getMonthRange } from '../common/utils/month-range';
+import { retryOnConflict } from '../common/utils/retry-on-conflict';
 
 const VAT_RATE = 0.15;
-const MAX_NUMBER_ASSIGN_RETRIES = 5;
 
 @Injectable()
 export class InvoicesService {
@@ -48,54 +48,41 @@ export class InvoicesService {
     const vatAmount = business.vatEnabled ? subtotal * VAT_RATE : 0;
     const total = subtotal + vatAmount;
 
-    // Sequential per-business invoice numbering. We derive next number inside
-    // a Serializable transaction (protects against concurrent races) and
-    // additionally retry on a unique-constraint conflict (@@unique([businessId, number]))
-    // as a defense-in-depth safety net for databases/drivers where true
-    // serializable isolation still allows a narrow race window.
-    let lastError: unknown;
-    for (let attempt = 0; attempt < MAX_NUMBER_ASSIGN_RETRIES; attempt++) {
-      try {
-        return await this.prisma.$transaction(
-          async (tx) => {
-            const agg = await tx.invoice.aggregate({
-              where: { businessId },
-              _max: { number: true },
-            });
-            const nextNumber = (agg._max.number ?? 0) + 1;
+    // Sequential per-business invoice numbering. Serializable transaction is the
+    // primary guard; retryOnConflict is the defense-in-depth safety net for P2002.
+    return retryOnConflict(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const agg = await tx.invoice.aggregate({
+            where: { businessId },
+            _max: { number: true },
+          });
+          const nextNumber = (agg._max.number ?? 0) + 1;
 
-            const invoice = await tx.invoice.create({
-              data: {
-                businessId,
-                customerId: dto.customerId,
-                number: nextNumber,
-                status: dto.status ?? 'UNPAID',
-                dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-                notes: dto.notes,
-                subtotal,
-                vatAmount,
-                total,
-                paidAmount: 0,
-                items: { create: items },
-              },
-              include: { items: true, customer: true },
-            });
+          const invoice = await tx.invoice.create({
+            data: {
+              businessId,
+              customerId: dto.customerId,
+              number: nextNumber,
+              status: dto.status ?? 'UNPAID',
+              dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+              notes: dto.notes,
+              subtotal,
+              vatAmount,
+              total,
+              paidAmount: 0,
+              items: { create: items },
+            },
+            include: { items: true, customer: true },
+          });
 
-            await this.inventoryService.consumeStockForSale(tx, businessId, invoice.id, items);
+          await this.inventoryService.consumeStockForSale(tx, businessId, invoice.id, items);
 
-            return invoice;
-          },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-        );
-      } catch (error) {
-        lastError = error;
-        // P2002 = unique constraint violation on [businessId, number]; retry.
-        if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) {
-          throw error;
-        }
-      }
-    }
-    throw lastError;
+          return invoice;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
+    );
   }
 
   findAll(businessId: string, query: FindInvoicesQueryDto) {

@@ -1,16 +1,30 @@
 import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { InvoiceStatus } from '@prisma/client';
 import { InvoicesService } from './invoices.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { FindInvoicesQueryDto } from './dto/find-invoices-query.dto';
 
 // NOTE: InvoicesService only injects PrismaService — no ConfigService or other deps.
 // create() and generatePdf() are excluded: they require $transaction and PDFKit mocking.
 
+type PrismaMock = {
+  invoice: {
+    findMany: jest.Mock;
+    findFirst: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    aggregate: jest.Mock;
+  };
+};
+
+type InventoryMock = { consumeStockForSale: jest.Mock };
+
 describe('InvoicesService', () => {
   let service: InvoicesService;
-  let prisma: any;
-  let inventory: any;
+  let prisma: PrismaMock;
+  let inventory: InventoryMock;
 
   const mockInvoice = {
     id: 'inv-1',
@@ -61,7 +75,7 @@ describe('InvoicesService', () => {
   });
 
   it('findAll() returns only invoices for the given businessId', async () => {
-    const result = await service.findAll('biz-1', {} as any);
+    const result = await service.findAll('biz-1', {} as FindInvoicesQueryDto);
     expect(result).toHaveLength(1);
     expect(prisma.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ businessId: 'biz-1' }) }),
@@ -84,7 +98,7 @@ describe('InvoicesService', () => {
   });
 
   it('updateStatus() to PAID calls prisma.invoice.update with { status: "PAID" }', async () => {
-    const dto = { status: 'PAID' as any, paidAmount: 100 };
+    const dto = { status: InvoiceStatus.PAID, paidAmount: 100 };
     await service.updateStatus('biz-1', 'inv-1', dto);
     expect(prisma.invoice.update).toHaveBeenCalledWith(
       expect.objectContaining({

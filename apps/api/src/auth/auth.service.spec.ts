@@ -6,10 +6,20 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 
+type OtpCodeMock = {
+  updateMany: jest.Mock;
+  create: jest.Mock;
+  findFirst: jest.Mock;
+  update: jest.Mock;
+};
+
+type PrismaMock = { otpCode: OtpCodeMock; user: { upsert: jest.Mock } };
+type ConfigMock = { get: jest.Mock };
+
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: any;
-  let config: any;
+  let prisma: PrismaMock;
+  let config: ConfigMock;
 
   const futureDate = new Date(Date.now() + 10 * 60 * 1000);
   const pastDate = new Date(Date.now() - 10 * 60 * 1000);
@@ -68,7 +78,7 @@ describe('AuthService', () => {
   it('requestOtp without AUTH_DEV_OTP returns { sent: true } only', async () => {
     const result = await service.requestOtp('0500000001');
     expect(result.sent).toBe(true);
-    expect((result as any).devCode).toBeUndefined();
+    expect((result as { devCode?: string }).devCode).toBeUndefined();
   });
 
   it('requestOtp with AUTH_DEV_OTP=true returns devCode', async () => {
@@ -101,7 +111,7 @@ describe('AuthService', () => {
     const svc = module.get(AuthService);
     const result = await svc.requestOtp('0500000001');
     expect(result.sent).toBe(true);
-    expect((result as any).devCode).toBeDefined();
+    expect((result as { devCode?: string }).devCode).toBeDefined();
   });
 
   it('verifyOtp with correct code returns accessToken and user', async () => {

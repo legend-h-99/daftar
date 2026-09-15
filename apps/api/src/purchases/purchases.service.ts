@@ -6,8 +6,7 @@ import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { OCR_PROVIDER, OcrProvider } from './ocr/ocr.provider';
 import { getMonthRange } from '../common/utils/month-range';
 import { FindPurchasesQueryDto } from './dto/find-purchases-query.dto';
-
-const MAX_NUMBER_ASSIGN_RETRIES = 5;
+import { retryOnConflict } from '../common/utils/retry-on-conflict';
 
 type Tx = Prisma.TransactionClient;
 
@@ -44,75 +43,66 @@ export class PurchasesService {
    *    (single source of truth for the calculator math).
    */
   async create(businessId: string, dto: CreatePurchaseDto) {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < MAX_NUMBER_ASSIGN_RETRIES; attempt++) {
-      try {
-        return await this.prisma.$transaction(
-          async (tx) => {
-            const supplierId = await this.resolveSupplier(tx, businessId, dto);
+    return retryOnConflict(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const supplierId = await this.resolveSupplier(tx, businessId, dto);
 
-            const agg = await tx.purchase.aggregate({
-              where: { businessId },
-              _max: { number: true },
-            });
-            const nextNumber = (agg._max.number ?? 0) + 1;
+          const agg = await tx.purchase.aggregate({
+            where: { businessId },
+            _max: { number: true },
+          });
+          const nextNumber = (agg._max.number ?? 0) + 1;
 
-            const total = dto.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+          const total = dto.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
 
-            const purchase = await tx.purchase.create({
+          const purchase = await tx.purchase.create({
+            data: {
+              businessId,
+              supplierId,
+              number: nextNumber,
+              date: dto.date ? new Date(dto.date) : new Date(),
+              total: Math.round(total * 100) / 100,
+              notes: dto.notes,
+              source: dto.source ?? 'MANUAL',
+            },
+          });
+
+          const touchedMaterialIds: string[] = [];
+
+          for (const item of dto.items) {
+            const lineTotal = item.quantity * item.unitPrice;
+            const materialId = await this.inventoryService.applyPurchaseLine(
+              tx,
+              businessId,
+              purchase.id,
+              item,
+            );
+
+            touchedMaterialIds.push(materialId);
+            await tx.purchaseItem.create({
               data: {
-                businessId,
-                supplierId,
-                number: nextNumber,
-                date: dto.date ? new Date(dto.date) : new Date(),
-                total: Math.round(total * 100) / 100,
-                notes: dto.notes,
-                source: dto.source ?? 'MANUAL',
+                purchaseId: purchase.id,
+                materialId,
+                name: item.name,
+                unit: item.unit,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal,
               },
             });
+          }
 
-            const touchedMaterialIds: string[] = [];
+          await this.inventoryService.recostMaterials(tx, businessId, touchedMaterialIds);
 
-            for (const item of dto.items) {
-              const lineTotal = item.quantity * item.unitPrice;
-              const materialId = await this.inventoryService.applyPurchaseLine(
-                tx,
-                businessId,
-                purchase.id,
-                item,
-              );
-
-              touchedMaterialIds.push(materialId);
-              await tx.purchaseItem.create({
-                data: {
-                  purchaseId: purchase.id,
-                  materialId,
-                  name: item.name,
-                  unit: item.unit,
-                  quantity: item.quantity,
-                  unitPrice: item.unitPrice,
-                  lineTotal,
-                },
-              });
-            }
-
-            await this.inventoryService.recostMaterials(tx, businessId, touchedMaterialIds);
-
-            return tx.purchase.findUniqueOrThrow({
-              where: { id: purchase.id },
-              include: { items: true, supplier: true },
-            });
-          },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-        );
-      } catch (error) {
-        lastError = error;
-        if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) {
-          throw error;
-        }
-      }
-    }
-    throw lastError;
+          return tx.purchase.findUniqueOrThrow({
+            where: { id: purchase.id },
+            include: { items: true, supplier: true },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
+    );
   }
 
   findAll(businessId: string, query: FindPurchasesQueryDto = {}) {
