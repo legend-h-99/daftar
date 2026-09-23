@@ -30,7 +30,17 @@ function readInitialLanguage(): Language {
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(readInitialLanguage);
+  // Always start from the server-rendered default ("ar"). Reading
+  // localStorage synchronously here would make the client's first render
+  // diverge from the server-rendered HTML whenever a visitor had switched
+  // to English before, causing a React hydration mismatch. Instead we
+  // apply the stored preference after mount, once hydration is done.
+  const [language, setLanguageState] = useState<Language>("ar");
+
+  useEffect(() => {
+    const stored = readInitialLanguage();
+    setLanguageState((current) => (current === stored ? current : stored));
+  }, []);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);

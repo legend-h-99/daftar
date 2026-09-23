@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Languages, Mail, Lock, User, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
@@ -53,6 +54,7 @@ export default function LoginPage() {
         const res = await apiPost<{ accessToken: string; hasBusiness: boolean }>(
           "/auth/demo",
           { phone: phoneNumber },
+          { auth: false },
         );
         setToken(res.accessToken);
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
@@ -70,21 +72,35 @@ export default function LoginPage() {
   async function handleEmailSubmit(e: FormEvent) {
     e.preventDefault();
     setEmailError(null);
+
+    if (emailMode === "register" && password.length < 8) {
+      setEmailError(
+        language === "ar"
+          ? "كلمة المرور لازم تكون 8 أحرف على الأقل"
+          : "Password must be at least 8 characters",
+      );
+      return;
+    }
+
     setEmailLoading(true);
     try {
       if (emailMode === "register") {
-        await apiPost("/auth/email/register", { email, password, name: name || undefined });
+        await apiPost("/auth/email/register", { email, password, name: name || undefined }, { auth: false });
         setRegisterSuccess(true);
       } else {
         const res = await apiPost<{
           accessToken: string;
           hasBusiness: boolean;
-        }>("/auth/email/login", { email, password });
+        }>("/auth/email/login", { email, password }, { auth: false });
         setToken(res.accessToken);
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
       }
     } catch (err) {
-      setEmailError(err instanceof ApiError ? err.message : "حدث خطأ، حاول مرة أخرى");
+      setEmailError(
+        err instanceof ApiError
+          ? err.message
+          : language === "ar" ? "حدث خطأ، حاول مرة أخرى" : "Something went wrong, please try again",
+      );
     } finally {
       setEmailLoading(false);
     }
@@ -92,21 +108,33 @@ export default function LoginPage() {
 
   if (registerSuccess) {
     return (
-      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background text-foreground px-6">
+      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background text-foreground px-6" dir={language === "ar" ? "rtl" : "ltr"}>
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-border bg-accent/40" />
         <div className="relative z-10 w-full max-w-sm animate-slide-up rounded-2xl border border-border bg-card p-8 shadow-sm text-center">
           <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-green-600 dark:text-green-400" />
-          <h2 className="text-xl font-extrabold text-foreground">تم التسجيل بنجاح!</h2>
+          <h2 className="text-xl font-extrabold text-foreground">
+            {language === "ar" ? "تم التسجيل بنجاح!" : "Registration successful!"}
+          </h2>
           <p className="mt-3 text-sm text-muted-foreground">
-            أرسلنا رابط تأكيد إلى <strong className="text-foreground">{email}</strong>.
-            <br />
-            تحقق من صندوق الوارد وانقر على الرابط لتفعيل حسابك.
+            {language === "ar" ? (
+              <>
+                أرسلنا رابط تأكيد إلى <strong className="text-foreground">{email}</strong>.
+                <br />
+                تحقق من صندوق الوارد وانقر على الرابط لتفعيل حسابك.
+              </>
+            ) : (
+              <>
+                We sent a confirmation link to <strong className="text-foreground">{email}</strong>.
+                <br />
+                Check your inbox and click the link to activate your account.
+              </>
+            )}
           </p>
           <button
             onClick={() => { setRegisterSuccess(false); setEmailMode("login"); }}
             className="mt-6 w-full rounded-2xl bg-brand-700 py-3 text-sm font-bold text-white"
           >
-            تسجيل الدخول
+            {language === "ar" ? "تسجيل الدخول" : "Sign in"}
           </button>
         </div>
       </main>
@@ -242,16 +270,22 @@ export default function LoginPage() {
                     onChange={(e) => { setPassword(e.target.value); setEmailError(null); }}
                     autoComplete={emailMode === "register" ? "new-password" : "current-password"}
                     dir="ltr"
-                    placeholder={emailMode === "register" ? "8 أحرف على الأقل" : "••••••••"}
+                    placeholder={
+                      emailMode === "register"
+                        ? language === "ar" ? "8 أحرف على الأقل" : "At least 8 characters"
+                        : "••••••••"
+                    }
                     className={cn(fieldClass, "py-3 text-left pe-10")}
                     minLength={emailMode === "register" ? 8 : undefined}
                     required
                   />
                   <button
                     type="button"
-                    tabIndex={-1}
+                    aria-label={language === "ar" ? (showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور") : (showPassword ? "Hide password" : "Show password")}
+                    aria-pressed={showPassword}
+                    aria-controls="password"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 end-3 flex items-center text-muted-foreground"
+                    className="absolute inset-y-0 end-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -259,7 +293,7 @@ export default function LoginPage() {
               </div>
 
               {emailError && (
-                <p className="animate-scale-in rounded-xl bg-red-50 dark:bg-red-950 px-3 py-2.5 text-center text-sm font-medium text-red-600 dark:text-red-300">
+                <p role="alert" className="animate-scale-in rounded-xl bg-red-50 dark:bg-red-950 px-3 py-2.5 text-center text-sm font-medium text-red-600 dark:text-red-300">
                   {emailError}
                 </p>
               )}
@@ -276,6 +310,9 @@ export default function LoginPage() {
                     : (language === "ar" ? "إنشاء الحساب" : "Create account")}
               </button>
             </form>
+            <Link href="/privacy" className="mt-4 flex min-h-11 items-center justify-center rounded-lg text-sm text-primary underline underline-offset-4">
+              {language === "ar" ? "إشعار الخصوصية" : "Privacy notice"}
+            </Link>
           </div>
         </div>
 

@@ -4,7 +4,7 @@ import { DEMO_MODE, demoApiFetch } from "./demo-api";
 function getLang(): "ar" | "en" {
   if (typeof window === "undefined") return "ar";
   try {
-    return (localStorage.getItem("daftar_lang") as "ar" | "en") ?? "ar";
+    return (localStorage.getItem("daftar_language") as "ar" | "en") ?? "ar";
   } catch { return "ar"; }
 }
 
