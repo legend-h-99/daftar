@@ -423,7 +423,7 @@ export class AuthService {
     // Only password-auth accounts can reset a password this way; Google-only
     // accounts have no passwordHash. Either way, never reveal whether the
     // address is registered — always return the same response.
-    if (!user || !user.passwordHash) {
+    if (!user || !user.passwordHash || !user.email) {
       return { sent: true };
     }
 
@@ -458,18 +458,13 @@ export class AuthService {
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: record.userId },
-        data: { passwordHash },
+        // A password reset proves mailbox control — treat it the same as
+        // clicking the verification link for accounts that hadn't done so yet.
+        data: { passwordHash, emailVerified: true },
       }),
       this.prisma.passwordReset.update({
         where: { id: record.id },
         data: { consumed: true },
-      }),
-      // A password reset proves control of the mailbox, which is one of the
-      // ways we already accept as email ownership — so treat it the same as
-      // clicking the verification link for accounts that hadn't done so yet.
-      this.prisma.user.update({
-        where: { id: record.userId },
-        data: { emailVerified: true },
       }),
     ]);
 
