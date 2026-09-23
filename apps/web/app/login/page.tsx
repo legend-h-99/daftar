@@ -290,6 +290,14 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {emailMode === "login" && (
+                  <Link
+                    href="/forgot-password"
+                    className="mt-1.5 flex min-h-6 items-center justify-end text-xs font-semibold text-primary underline underline-offset-4"
+                  >
+                    {language === "ar" ? "نسيت كلمة المرور؟" : "Forgot password?"}
+                  </Link>
+                )}
               </div>
 
               {emailError && (

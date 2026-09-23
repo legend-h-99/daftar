@@ -10,6 +10,8 @@ import { RegisterEmailDto } from './dto/register-email.dto';
 import { LoginEmailDto } from './dto/login-email.dto';
 import { VerifyEmailTokenDto } from './dto/verify-email-token.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentUserData } from '../common/types/auth.types';
@@ -96,6 +98,22 @@ export class AuthController {
   @Post('email/resend-verification')
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerificationEmail(dto.email);
+  }
+
+  // Same low limit as resend-verification: this is the email-flooding /
+  // account-enumeration surface for password reset.
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Post('password/forgot')
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('password/reset')
+  async resetPassword(@Body() dto: ResetPasswordDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.resetPassword(dto.token, dto.password);
+    setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 20 } })

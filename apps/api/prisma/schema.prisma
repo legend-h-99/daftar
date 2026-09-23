@@ -73,9 +73,23 @@ model User {
   updatedAt      DateTime  @updatedAt
 
   emailVerifications EmailVerification[]
+  passwordResets     PasswordReset[]
 }
 
 model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token, consumed, expiresAt])
+  @@index([userId])
+}
+
+model PasswordReset {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

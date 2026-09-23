@@ -9,6 +9,7 @@ import { JwtPayload } from '../common/types/auth.types';
 import { EmailService } from './email.service';
 
 const EMAIL_VERIFY_TTL_HOURS = 24;
+const PASSWORD_RESET_TTL_HOURS = 1;
 
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
@@ -415,6 +416,76 @@ export class AuthService {
     });
 
     await this.emailService.sendVerificationEmail(user.email, token, user.name);
+  }
+
+  async requestPasswordReset(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Only password-auth accounts can reset a password this way; Google-only
+    // accounts have no passwordHash. Either way, never reveal whether the
+    // address is registered — always return the same response.
+    if (!user || !user.passwordHash) {
+      return { sent: true };
+    }
+
+    await this.prisma.passwordReset.updateMany({
+      where: { userId: user.id, consumed: false },
+      data: { consumed: true },
+    });
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_HOURS * 60 * 60 * 1000);
+
+    await this.prisma.passwordReset.create({
+      data: { userId: user.id, token, expiresAt },
+    });
+
+    await this.emailService.sendPasswordResetEmail(user.email!, token, user.name);
+    return { sent: true };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    const record = await this.prisma.passwordReset.findFirst({
+      where: { token, consumed: false, expiresAt: { gt: new Date() } },
+      include: { user: true },
+    });
+
+    if (!record) {
+      throw new BadRequestException('رابط إعادة التعيين غير صالح أو منتهي الصلاحية');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      }),
+      this.prisma.passwordReset.update({
+        where: { id: record.id },
+        data: { consumed: true },
+      }),
+      // A password reset proves control of the mailbox, which is one of the
+      // ways we already accept as email ownership — so treat it the same as
+      // clicking the verification link for accounts that hadn't done so yet.
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerified: true },
+      }),
+    ]);
+
+    const user = record.user;
+    const accessToken = this.signToken({
+      sub: user.id,
+      phone: user.phone,
+      email: user.email,
+      businessId: user.businessId,
+    });
+
+    return {
+      accessToken,
+      user: { id: user.id, phone: user.phone, email: user.email, name: user.name, businessId: user.businessId },
+      hasBusiness: !!user.businessId,
+    };
   }
 
   signToken(payload: JwtPayload): string {
