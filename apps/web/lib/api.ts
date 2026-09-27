@@ -12,6 +12,7 @@ function getLang(): "ar" | "en" {
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
+  const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const isLocal =
@@ -21,9 +22,9 @@ function resolveApiUrl(): string {
     // Local dev: hit the API server directly (no tunnel needed)
     if (isLocal) return `${protocol}//${hostname}:3001/api`;
     // Production (static export on Cloudflare Pages): use the configured API URL
-    return process.env.NEXT_PUBLIC_API_URL || "/api-proxy";
+    return process.env.NEXT_PUBLIC_API_URL || productionApiUrl;
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+  return process.env.NEXT_PUBLIC_API_URL || productionApiUrl;
 }
 
 export const API_URL = resolveApiUrl();
