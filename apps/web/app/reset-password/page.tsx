@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, XCircle, Lock, Eye, EyeOff } from "lucide-react";
@@ -161,8 +161,13 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense>
+    <SuspenseBoundary>
       <ResetPasswordContent />
-    </Suspense>
+    </SuspenseBoundary>
   );
 }
+
+// Keep the boundary compatible with the workspace's React 19 type packages.
+// Next still requires a Suspense boundary for useSearchParams during export.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SuspenseBoundary = (require("react") as any).Suspense;
