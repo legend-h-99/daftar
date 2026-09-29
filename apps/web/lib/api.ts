@@ -12,7 +12,9 @@ function getLang(): "ar" | "en" {
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
-  const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
+  // Keep the fallback aligned with the production API declared in render.yaml.
+  // NEXT_PUBLIC_API_URL still takes precedence when a deployment overrides it.
+  const productionApiUrl = "https://daftar-api.onrender.com/api";
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const isLocal =
