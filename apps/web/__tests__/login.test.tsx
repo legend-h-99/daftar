@@ -17,18 +17,6 @@ vi.mock("@/lib/language", () => ({
   LanguageProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiPost: vi.fn(),
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-      this.name = "ApiError";
-    }
-  },
-}));
-
 const mockSetToken = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -51,13 +39,22 @@ vi.mock("@/components/GoogleSignInButton", () => ({
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
 import LoginPage from "@/app/login/page";
-import { apiPost } from "@/lib/api";
+
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("صفحة تسجيل الدخول بدون رقم الجوال", () => {
   beforeEach(() => {
-    vi.mocked(apiPost).mockReset();
+    mockFetch.mockReset();
     mockReplace.mockReset();
     mockSetToken.mockReset();
   });
@@ -72,19 +69,26 @@ describe("صفحة تسجيل الدخول بدون رقم الجوال", () => 
   });
 
   it("يسجل الدخول بالبريد ويوجه للوحة التحكم", async () => {
-    vi.mocked(apiPost).mockResolvedValue({ accessToken: "test-token", hasBusiness: true });
+    mockFetch.mockResolvedValue(jsonResponse({ accessToken: "test-token", hasBusiness: true }));
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "test@example.com");
     await user.type(screen.getByLabelText("كلمة المرور"), "password123");
     await user.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"));
-    expect(apiPost).toHaveBeenCalledWith("/auth/email/login", { email: "test@example.com", password: "password123" });
     expect(mockSetToken).toHaveBeenCalledWith("test-token");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3001/api/auth/email/login",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ email: "test@example.com", password: "password123" }),
+      }),
+    );
   });
 
   it("ينشئ الحساب بالبريد دون طلب رقم جوال", async () => {
-    vi.mocked(apiPost).mockResolvedValue({ sent: true });
+    mockFetch.mockResolvedValue(jsonResponse({ sent: true }));
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.click(screen.getByRole("button", { name: "حساب جديد" }));
@@ -92,6 +96,13 @@ describe("صفحة تسجيل الدخول بدون رقم الجوال", () => 
     await user.type(screen.getByLabelText("كلمة المرور"), "password123");
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
     expect(await screen.findByText("تم التسجيل بنجاح!")).toBeInTheDocument();
-    expect(apiPost).toHaveBeenCalledWith("/auth/email/register", { email: "test@example.com", password: "password123", name: undefined });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3001/api/auth/email/register",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ email: "test@example.com", password: "password123" }),
+      }),
+    );
   });
 });
