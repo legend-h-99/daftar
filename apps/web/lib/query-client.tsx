@@ -1,9 +1,16 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 
-export function QueryProvider({ children }: { children: React.ReactNode }) {
+// Keep the provider compatible when the workspace resolves more than one
+// @types/react version during the Cloudflare build.
+const CompatibleQueryClientProvider = QueryClientProvider as unknown as ComponentType<{
+  client: QueryClient;
+  children?: ReactNode;
+}>;
+
+export function QueryProvider({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
       new QueryClient({
@@ -17,5 +24,5 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         },
       }),
   );
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return <CompatibleQueryClientProvider client={client}>{children}</CompatibleQueryClientProvider>;
 }
