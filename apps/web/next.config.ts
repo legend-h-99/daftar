@@ -4,14 +4,13 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
 const basePath = process.env.NEXT_BASE_PATH || "";
-const configuredApiProxyTarget = (
-  process.env.API_PROXY_TARGET ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api"
-).replace(/\/$/, "");
-const apiProxyTarget = configuredApiProxyTarget.includes(".onrender.com")
-  ? "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api"
-  : configuredApiProxyTarget;
+const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
+const configuredApiProxyTarget = process.env.API_PROXY_TARGET || process.env.NEXT_PUBLIC_API_URL;
+const apiProxyTarget =
+  configuredApiProxyTarget === productionApiUrl ||
+  configuredApiProxyTarget === "http://localhost:3001/api"
+    ? configuredApiProxyTarget
+    : productionApiUrl;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
