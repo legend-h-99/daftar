@@ -109,7 +109,7 @@ export default function NewInvoicePage() {
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
       });
-      router.push(DEMO_MODE ? "/invoices?created=1" : `/invoices/detail?id=${encodeURIComponent(invoice.id)}`);
+      router.push(DEMO_MODE ? "/invoices?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "تعذر إنشاء الفاتورة");
     } finally {

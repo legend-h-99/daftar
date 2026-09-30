@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import EditProductClient from "../[id]/edit/EditProductClient";
+import EditProductClient from "../../[id]/edit/EditProductClient";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { Skeleton } from "@/components/ui/skeleton";
 

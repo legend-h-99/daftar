@@ -227,7 +227,7 @@ export default function DashboardPage() {
                   {summary.unpaidInvoices.map((inv, i) => (
                     <li key={inv.id} className="animate-fade-up" style={{ animationDelay: `${320 + i * 50}ms` }}>
                       <Link
-                        href={`/invoices/detail?id=${encodeURIComponent(inv.id)}`}
+                        href={`/invoices/detail/view?id=${encodeURIComponent(inv.id)}`}
                         aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customerName || (language === "ar" ? "زبون بدون اسم" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
                         className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm transition active:bg-gray-50"
                       >
