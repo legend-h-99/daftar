@@ -12,13 +12,12 @@ function getLang(): "ar" | "en" {
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
-  // Keep production requests on the Supabase API even if an old deployment
-  // environment variable still points to the retired backend.
+  // Production requests use the approved Supabase API endpoint.
   const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
-  const safeApiUrl = configuredApiUrl?.includes(".onrender.com")
-    ? productionApiUrl
-    : configuredApiUrl || productionApiUrl;
+  const safeApiUrl = configuredApiUrl === productionApiUrl
+    ? configuredApiUrl
+    : productionApiUrl;
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const isLocal =
