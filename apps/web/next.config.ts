@@ -4,11 +4,14 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
 const basePath = process.env.NEXT_BASE_PATH || "";
-const apiProxyTarget = (
+const configuredApiProxyTarget = (
   process.env.API_PROXY_TARGET ||
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3001/api"
+  "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api"
 ).replace(/\/$/, "");
+const apiProxyTarget = configuredApiProxyTarget.includes(".onrender.com")
+  ? "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api"
+  : configuredApiProxyTarget;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -46,9 +49,10 @@ const nextConfig: NextConfig = {
       : "script-src 'self' 'unsafe-inline' https://accounts.google.com";
     // In dev, allow the API on any local IP or HTTPS origin (for mobile testing via tunnel).
     // In production, restrict to the known API origin.
+    const productionApiOrigin = new URL(apiProxyTarget).origin;
     const connectSrc = isDev
       ? "connect-src 'self' http://*:3001 https://* https://wa.me"
-      : `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL ?? ""} https://accounts.google.com https://wa.me`;
+      : `connect-src 'self' ${productionApiOrigin} https://accounts.google.com https://wa.me`;
 
     return [
       {
