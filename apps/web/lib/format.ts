@@ -63,6 +63,14 @@ export function currentMonthStr(): string {
   return `${now.getFullYear()}-${month}`;
 }
 
+/** Returns today's calendar date in the browser's local timezone for date inputs. */
+export function currentDateStr(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 export function shiftMonth(month: string, delta: number): string {
   const [year, m] = month.split("-").map(Number);
   const d = new Date(year, m - 1 + delta, 1);

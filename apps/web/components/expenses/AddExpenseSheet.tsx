@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { apiPost, ApiError } from "@/lib/api";
+import { currentDateStr } from "@/lib/format";
 import {
   EXPENSE_CATEGORY_LABELS,
   ExpenseCategory,
@@ -24,7 +25,7 @@ export default function AddExpenseSheet({
 }) {
   const [category, setCategory] = useState<ExpenseCategory>("INGREDIENTS");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(currentDateStr);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);

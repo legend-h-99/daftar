@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
-import { formatSAR } from "@/lib/format";
+import { currentDateStr, formatSAR } from "@/lib/format";
 import { Material, OcrDraft, PurchaseSource } from "@/lib/types";
 import PurchaseRow, {
   emptyRow,
@@ -29,7 +29,7 @@ export default function PurchaseForm({
   const [materials, setMaterials] = useState<Material[]>([]);
   const [supplierName, setSupplierName] = useState(draft?.supplierName ?? "");
   const [date, setDate] = useState(
-    draft?.date ?? new Date().toISOString().slice(0, 10),
+    draft?.date ?? currentDateStr(),
   );
   const [rows, setRows] = useState<RowState[]>(
     draft && draft.items.length > 0
