@@ -165,7 +165,7 @@ export default function InvoicesPage() {
             return (
               <li key={inv.id}>
                 <Link
-                  href={DEMO_MODE ? "/invoices/demo" : `/invoices/${inv.id}`}
+                  href={`/invoices/detail?id=${encodeURIComponent(DEMO_MODE ? "demo" : inv.id)}`}
                   aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customer?.name || (language === "ar" ? "بدون زبون" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
                   className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >

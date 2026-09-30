@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Download, MessageCircle, CheckCircle2, Trash2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { apiGet, apiGetBlob, apiPatch, apiDelete, ApiError } from "@/lib/api";
@@ -13,8 +13,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 
-export default function InvoiceDetailPage() {
-  const params = useParams<{ id: string }>();
+export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
   const { business } = useBusiness();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -27,12 +26,12 @@ export default function InvoiceDetailPage() {
   const [deletingId, setDeletingId] = useState(false);
 
   const load = useCallback(() => {
-    return apiGet<Invoice>(`/invoices/${params.id}`)
+    return apiGet<Invoice>(`/invoices/${invoiceId}`)
       .then(setInvoice)
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "تعذر تحميل الفاتورة");
       });
-  }, [params.id]);
+  }, [invoiceId]);
 
   useEffect(() => {
     load();

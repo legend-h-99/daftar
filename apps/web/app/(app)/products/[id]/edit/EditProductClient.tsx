@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import ProductForm from "@/components/ProductForm";
 import { apiGet, ApiError } from "@/lib/api";
 import { Product } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 
-export default function EditProductPage() {
-  const params = useParams<{ id: string }>();
+export default function EditProductClient({ productId }: { productId: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    apiGet<Product>(`/products/${params.id}`)
+    apiGet<Product>(`/products/${productId}`)
       .then((data) => {
         if (!cancelled) setProduct(data);
       })
@@ -27,7 +25,7 @@ export default function EditProductPage() {
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [productId]);
 
   return (
     <div className="flex flex-col gap-4">
