@@ -202,7 +202,7 @@ describe("صفحة الفواتير (Invoices)", () => {
       await waitFor(() =>
         expect(
           screen.getByRole("link", { name: /فاتورة INV-001/ }),
-        ).toHaveAttribute("href", "/invoices/inv-abc"),
+        ).toHaveAttribute("href", "/invoices/detail/view?id=inv-abc"),
       );
     });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import InvoiceDetailClient from "../[id]/InvoiceDetailClient";
+import InvoiceDetailClient from "../../[id]/InvoiceDetailClient";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { Skeleton } from "@/components/ui/skeleton";
 

@@ -1,2 +1,2 @@
-/invoices/:id /invoices/demo/ 200
-/products/:id/edit /products/demo/edit/ 200
+/invoices/:id /invoices/detail/view?id=:id 301
+/products/:id/edit /products/edit/view?id=:id 301
