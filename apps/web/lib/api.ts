@@ -12,9 +12,13 @@ function getLang(): "ar" | "en" {
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
-  // Keep the fallback aligned with the production API declared in render.yaml.
-  // NEXT_PUBLIC_API_URL still takes precedence when a deployment overrides it.
-  const productionApiUrl = "https://daftar-api.onrender.com/api";
+  // Keep production requests on the Supabase API even if an old deployment
+  // environment variable still points to the retired backend.
+  const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const safeApiUrl = configuredApiUrl?.includes(".onrender.com")
+    ? productionApiUrl
+    : configuredApiUrl || productionApiUrl;
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const isLocal =
@@ -24,9 +28,9 @@ function resolveApiUrl(): string {
     // Local dev: hit the API server directly (no tunnel needed)
     if (isLocal) return `${protocol}//${hostname}:3001/api`;
     // Production (static export on Cloudflare Pages): use the configured API URL
-    return process.env.NEXT_PUBLIC_API_URL || productionApiUrl;
+    return safeApiUrl;
   }
-  return process.env.NEXT_PUBLIC_API_URL || productionApiUrl;
+  return safeApiUrl;
 }
 
 export const API_URL = resolveApiUrl();

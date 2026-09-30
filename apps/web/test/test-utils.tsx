@@ -11,14 +11,14 @@ function makeTestQueryClient() {
   });
 }
 
-function AllProviders({ children }: { children: React.ReactNode }) {
+function AllProviders({ children }: Pick<React.ComponentProps<typeof QueryClientProvider>, "children">) {
   const [queryClient] = React.useState(makeTestQueryClient);
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
 
-function customRender(ui: React.ReactElement, options?: RenderOptions) {
+function customRender(ui: Parameters<typeof render>[0], options?: RenderOptions) {
   return render(ui, { wrapper: AllProviders, ...options });
 }
 

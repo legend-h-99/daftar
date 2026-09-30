@@ -9,7 +9,7 @@
 **دفتر** تطبيق محاسبة عربي مبسّط للأسر المنتجة والمشاريع الصغيرة في السعودية. يُمكّن صاحب المشروع من متابعة مبيعاته ومصاريفه وفواتيره وأرباحه من مكان واحد — بدون مصطلحات محاسبية.
 
 - **الموقع المنشور:** https://daftar-ead.pages.dev
-- **API (Backend):** https://daftar-api.onrender.com
+- **API (Backend):** https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api
 - **مستودع GitHub:** https://github.com/legend-h-99/daftar
 
 ---
@@ -20,7 +20,7 @@
 daftar/
 ├── apps/
 │   ├── web/          # Next.js 14 App Router — PWA مستضاف على Cloudflare Pages
-│   └── api/          # NestJS REST API — مستضاف على Render
+│   └── api/          # NestJS REST API — مستضاف عبر Supabase Edge Functions
 ├── package.json      # pnpm workspaces root
 └── pnpm-lock.yaml
 ```
@@ -45,7 +45,7 @@ daftar/
 |---|---|
 | NestJS | إطار العمل |
 | Prisma ORM | قاعدة البيانات |
-| PostgreSQL | قاعدة البيانات (على Render) |
+| PostgreSQL | قاعدة البيانات على Supabase |
 | JWT | المصادقة |
 | Google OAuth | تسجيل الدخول بـ Google |
 
@@ -142,7 +142,7 @@ GET/POST/PATCH/DELETE /api/materials
 - [x] مجموعة اختبارات (138 اختبار Vitest عبر 7 ملفات)
 
 ### المرحلة 4 — النشر
-- [x] API على Render (https://daftar-api.onrender.com)
+- [x] API عبر Supabase Edge Functions (https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api)
 - [x] الموقع على Cloudflare Pages (https://daftar-ead.pages.dev)
 - [x] Static Export (`NEXT_OUTPUT_EXPORT=1`) لتجنب مشاكل الـ cache
 - [x] SPA redirects في `_redirects` للمسارات الديناميكية
@@ -156,7 +156,7 @@ GET/POST/PATCH/DELETE /api/materials
 ### 🔴 مهم — تسجيل الدخول
 
 #### 1. Demo Login (سريع — دقيقتان)
-أضف على Render:
+إعداد سابق أُلغي مع نقل الواجهة إلى Supabase:
 ```
 DEMO_AUTH_ENABLED=true
 ```
@@ -180,7 +180,7 @@ DEMO_AUTH_ENABLED=true
 NEXT_PUBLIC_GOOGLE_CLIENT_ID = <client_id>
 ```
 
-على Render:
+على Supabase:
 ```
 GOOGLE_CLIENT_ID = <client_id>
 ```
@@ -210,18 +210,12 @@ GOOGLE_CLIENT_ID = <client_id>
 | المتغير | القيمة | الحالة |
 |---|---|---|
 | `NEXT_OUTPUT_EXPORT` | `1` | ✅ مضبوط |
-| `NEXT_PUBLIC_API_URL` | `https://daftar-api.onrender.com/api` | ✅ مضبوط |
+| `NEXT_PUBLIC_API_URL` | `https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api/api` | ✅ مضبوط |
 | `NEXT_PUBLIC_DEMO_LOGIN` | `true` | ✅ مضبوط |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `<client_id>` | ⏳ ينتظر إعداد Google OAuth |
 
-### Render (Backend API)
-| المتغير | الوصف | الحالة |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL connection string | ✅ مضبوط |
-| `JWT_SECRET` | مفتاح توقيع الـ JWT | ✅ مضبوط |
-| `NODE_ENV` | `production` | ✅ مضبوط |
-| `DEMO_AUTH_ENABLED` | تفعيل Demo Login | ⏳ أضفه = `true` |
-| `GOOGLE_CLIENT_ID` | Google OAuth | ⏳ ينتظر Client ID |
+### Supabase (Backend API)
+واجهة الموقع تتصل بوظيفة `api` على Supabase. إعدادات الوظيفة والمصادقة تُدار في مشروع Supabase.
 
 ---
 
@@ -278,7 +272,7 @@ pnpm build
 | 22 أغسطس 2026 | إصلاح مشكلة cache size (36 MB) بالانتقال لـ static export |
 | 22 أغسطس 2026 | إضافة `_redirects` للمسارات الديناميكية |
 | 22 أغسطس 2026 | تفعيل `NEXT_PUBLIC_DEMO_LOGIN=true` على Cloudflare Pages |
-| سابق | API على Render جاهز ومنشور |
+| سابق | API عبر Supabase Edge Functions جاهز ومنشور |
 | سابق | إعادة كتابة Landing Page (SEO+AEO كامل) |
 | سابق | إصلاح جدول المقارنة على الجوال |
 | سابق | إضافة 138 اختبار (Vitest) |
