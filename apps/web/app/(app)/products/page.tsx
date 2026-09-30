@@ -74,7 +74,7 @@ export default function ProductsPage() {
             return (
               <li key={p.id}>
                 <Link
-                  href={`/products/${p.id}/edit`}
+                  href={`/products/edit?id=${encodeURIComponent(p.id)}`}
                   className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >
                   <div className="flex flex-col gap-1">
