@@ -161,11 +161,12 @@ export default function NewInvoicePage() {
 
         {/* Due date */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+          <label htmlFor="invoice-due-date" className="mb-1.5 block text-sm font-semibold text-gray-700">
             {en ? "Due date" : "تاريخ الاستحقاق"}{" "}
             <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
           </label>
           <input
+            id="invoice-due-date"
             type="date"
             value={dueDate}
             onChange={(e) => { setDueDate(e.target.value); setError(null); }}
@@ -175,10 +176,11 @@ export default function NewInvoicePage() {
 
         {/* Notes */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+          <label htmlFor="invoice-notes" className="mb-1.5 block text-sm font-semibold text-gray-700">
             {en ? "Notes" : "ملاحظات"} <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
           </label>
           <textarea
+            id="invoice-notes"
             value={notes}
             onChange={(e) => { setNotes(e.target.value); setError(null); }}
             rows={2}

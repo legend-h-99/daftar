@@ -165,7 +165,7 @@ export default function DashboardPage() {
                           {row.label}
                         </dt>
                         <dd className={`text-sm font-bold tracking-tight ${row.text}`}>
-                          {formatSAR(row.value)}
+                          {formatSAR(row.value, language)}
                         </dd>
                       </div>
                     ))}
@@ -220,7 +220,7 @@ export default function DashboardPage() {
                 <EmptyState
                   icon={Users}
                   title={language === "ar" ? "ولا فاتورة غير مدفوعة" : "No unpaid invoices"}
-                  description={language === "ar" ? "كل زباينك سدّدوا فواتيرهم، عاش!" : "All customer invoices are settled."}
+                  description={language === "ar" ? "أي فاتورة ما انسدّت بالكامل بتطلع هنا." : "Invoices that aren't fully paid will show up here."}
                 />
               ) : (
                 <ul className="flex flex-col gap-2">
@@ -228,7 +228,7 @@ export default function DashboardPage() {
                     <li key={inv.id} className="animate-fade-up" style={{ animationDelay: `${320 + i * 50}ms` }}>
                       <Link
                         href={`/invoices/detail/view?id=${encodeURIComponent(inv.id)}`}
-                        aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customerName || (language === "ar" ? "زبون بدون اسم" : "Unnamed customer")}, ${formatSAR(inv.total, language)}`}
+                        aria-label={`${language === "ar" ? "فاتورة" : "Invoice"} ${inv.number}, ${inv.customerName || (language === "ar" ? "زبون بدون اسم" : "Unnamed customer")}, ${formatSAR(inv.total - (inv.paidAmount ?? 0), language)}`}
                         className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm transition active:bg-gray-50"
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -242,7 +242,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5">
                           <span className="font-bold text-gray-900">
-                            {formatSAR(inv.total, language)}
+                            {formatSAR(inv.total - (inv.paidAmount ?? 0), language)}
                           </span>
                           <StatusBadge status={inv.status} />
                         </div>

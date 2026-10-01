@@ -319,6 +319,25 @@ describe("صفحة الرئيسية (Dashboard)", () => {
       expect(screen.getByText("800.00 ر.س")).toBeInTheDocument();
     });
 
+    it("يعرض المتبقي (الإجمالي − المدفوع) للفاتورة المدفوعة جزئيًا", async () => {
+      vi.mocked(apiGet).mockResolvedValue(
+        makeSummary({
+          unpaidInvoices: [
+            makeInvoice({ customerName: "أم فهد", total: 30, paidAmount: 10, status: "PARTIAL" }),
+          ],
+          unpaidInvoicesCount: 1,
+          unpaidInvoicesTotal: 20,
+        }),
+      );
+      render(<DashboardPage />);
+
+      await waitFor(() =>
+        expect(screen.getByText("أم فهد")).toBeInTheDocument(),
+      );
+      expect(screen.getAllByText("20.00 ر.س").length).toBeGreaterThan(0);
+      expect(screen.queryByText("30.00 ر.س")).not.toBeInTheDocument();
+    });
+
     it("يعرض 'زبون بدون اسم' للفواتير بدون اسم زبون", async () => {
       vi.mocked(apiGet).mockResolvedValue(
         makeSummary({

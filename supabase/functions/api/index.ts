@@ -523,7 +523,7 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   const unpaidInvoices = unpaidAll.slice(0, 5).map(i => ({
     id: i.id, number: i.number,
     customerName: (i.customer as Record<string, unknown>)?.name ?? null,
-    total: i.total, dueDate: i.dueDate ?? null, status: i.status,
+    total: i.total, paidAmount: (i.paidAmount as number) ?? 0, dueDate: i.dueDate ?? null, status: i.status,
   }))
 
   const lowStock = materials

@@ -51,7 +51,7 @@ export function formatMonthLabel(monthStr: string, locale: "ar" | "en" = "ar"): 
   const [year, month] = monthStr.split("-").map(Number);
   if (!year || !month) return monthStr;
   const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString(locale === "en" ? "en-US" : "ar-SA", {
+  return d.toLocaleDateString(locale === "en" ? "en-US" : "ar-SA-u-ca-gregory-nu-latn", {
     year: "numeric",
     month: "long",
   });

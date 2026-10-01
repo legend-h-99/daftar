@@ -2,24 +2,27 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, MessageCircle, CheckCircle2, Trash2, ArrowRight } from "lucide-react";
+import { MessageCircle, CheckCircle2, Trash2, ArrowRight, ArrowLeft, Printer } from "lucide-react";
 import Link from "next/link";
-import { apiGet, apiGetBlob, apiPatch, apiDelete, ApiError } from "@/lib/api";
+import { apiGet, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { fieldClass } from "@/components/ui/form-field";
 import { formatSAR, formatDate, normalizeSaudiPhone } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import StatusBadge from "@/components/StatusBadge";
+import ZatcaQr from "@/components/invoices/ZatcaQr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
+import { useLanguage } from "@/lib/language";
 
 export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
   const { business } = useBusiness();
+  const { language } = useLanguage();
+  const en = language === "en";
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [showPartialForm, setShowPartialForm] = useState(false);
   const [partialAmount, setPartialAmount] = useState("");
   const [savingPartial, setSavingPartial] = useState(false);
@@ -29,9 +32,9 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     return apiGet<Invoice>(`/invoices/${invoiceId}`)
       .then(setInvoice)
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "تعذر تحميل الفاتورة");
+        setError(err instanceof ApiError ? err.message : en ? "Could not load the invoice" : "تعذر تحميل الفاتورة");
       });
-  }, [invoiceId]);
+  }, [invoiceId, en]);
 
   useEffect(() => {
     load();
@@ -41,7 +44,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     if (!invoice) return;
     const amount = parseFloat(partialAmount.replace(/,/g, ""));
     if (isNaN(amount) || amount <= 0 || amount >= invoice.total) {
-      setError("أدخل مبلغًا أقل من الإجمالي وأكبر من صفر");
+      setError(en ? "Enter an amount above zero and below the total" : "أدخل مبلغًا أقل من الإجمالي وأكبر من صفر");
       return;
     }
     setSavingPartial(true);
@@ -55,7 +58,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
       setShowPartialForm(false);
       setPartialAmount("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر تحديث الحالة");
+      setError(err instanceof ApiError ? err.message : en ? "Could not update the status" : "تعذر تحديث الحالة");
     } finally {
       setSavingPartial(false);
     }
@@ -71,7 +74,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     setDeletingId(false);
     apiDelete(`/invoices/${invoice.id}`)
       .then(() => router.replace("/invoices"))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "تعذر حذف الفاتورة"));
+      .catch((err) => setError(err instanceof ApiError ? err.message : en ? "Could not delete the invoice" : "تعذر حذف الفاتورة"));
   }
 
   async function markAsPaid() {
@@ -84,7 +87,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
       );
       setInvoice(updated);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر تحديث الحالة");
+      setError(err instanceof ApiError ? err.message : en ? "Could not update the status" : "تعذر تحديث الحالة");
     } finally {
       setUpdating(false);
     }
@@ -100,54 +103,42 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     return <Skeleton className="h-64 rounded-2xl" />;
   }
 
-  const statusLabel =
-    invoice.status === "PAID"
-      ? "مدفوعة"
-      : invoice.status === "PARTIAL"
-        ? "جزئي"
-        : "غير مدفوعة";
+  const statusLabel = en
+    ? invoice.status === "PAID" ? "Paid" : invoice.status === "PARTIAL" ? "Partially paid" : "Unpaid"
+    : invoice.status === "PAID" ? "مدفوعة" : invoice.status === "PARTIAL" ? "مدفوعة جزئيًا" : "غير مدفوعة";
 
-  const waText = `فاتورة رقم ${invoice.number} من ${business?.name || "دفتر"}\nالإجمالي: ${formatSAR(invoice.total)}\nالحالة: ${statusLabel}`;
+  const paidAmount = invoice.status === "PAID" ? invoice.total : Number(invoice.paidAmount ?? 0);
+  const remaining = Math.max(invoice.total - paidAmount, 0);
+  const businessName = business?.name || (en ? "Daftar" : "دفتر");
+
+  const waLines = en
+    ? [`Invoice #${invoice.number} from ${businessName}`, `Total: ${formatSAR(invoice.total, "en")}`]
+    : [`فاتورة رقم ${invoice.number} من ${businessName}`, `الإجمالي: ${formatSAR(invoice.total)}`];
+  if (invoice.status === "PARTIAL") {
+    waLines.push(en ? `Remaining: ${formatSAR(remaining, "en")}` : `المتبقي: ${formatSAR(remaining)}`);
+  }
+  waLines.push(en ? `Status: ${statusLabel}` : `الحالة: ${statusLabel}`);
+  const waText = waLines.join("\n");
+  const BackIcon = en ? ArrowLeft : ArrowRight;
   const waPhone = invoice.customer?.phone
     ? normalizeSaudiPhone(invoice.customer.phone)
     : "";
   const waHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(waText)}`;
 
-  async function downloadPdf() {
-    if (!invoice || downloading) return;
-    setDownloading(true);
-    setError(null);
-    try {
-      const blob = await apiGetBlob(`/invoices/${invoice.id}/pdf`);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `فاتورة-${invoice.number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر تحميل الملف");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <Link
           href="/invoices"
-          aria-label="رجوع"
+          aria-label={en ? "Back" : "رجوع"}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
-          <ArrowRight className="h-5 w-5" />
+          <BackIcon className="h-5 w-5" />
         </Link>
         <button
           type="button"
           onClick={handleDelete}
-          aria-label={deletingId ? "تأكيد الحذف" : "حذف الفاتورة"}
+          aria-label={deletingId ? (en ? "Tap again to delete" : "اضغط مرة ثانية للحذف") : (en ? "Delete invoice" : "حذف الفاتورة")}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
             deletingId
               ? "bg-red-500 text-white"
@@ -158,14 +149,24 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm print:border-0 print:p-0 print:shadow-none">
+        <p className="mb-3 hidden text-center text-lg font-extrabold print:block">
+          {business?.vatEnabled
+            ? (en ? "Simplified Tax Invoice" : "فاتورة ضريبية مبسطة")
+            : (en ? "Invoice" : "فاتورة")}
+        </p>
         <div className="mb-4 flex items-start justify-between">
           <div>
             <p className="text-lg font-extrabold text-gray-900">
-              {business?.name || "دفتر"}
+              {businessName}
             </p>
+            {business?.vatEnabled && business.vatNumber && (
+              <p className="text-xs text-gray-500">
+                {en ? "VAT No." : "الرقم الضريبي"}: <bdi dir="ltr">{business.vatNumber}</bdi>
+              </p>
+            )}
             <p className="text-xs text-gray-500">
-              فاتورة رقم {invoice.number}
+              {en ? `Invoice #${invoice.number}` : `فاتورة رقم ${invoice.number}`}
             </p>
             {invoice.createdAt && (
               <p className="text-xs text-gray-500">
@@ -178,7 +179,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
         {invoice.customer && (
           <div className="mb-4 rounded-xl bg-gray-50 px-3.5 py-3">
-            <p className="text-xs text-gray-500">الزبون</p>
+            <p className="text-xs text-gray-500">{en ? "Customer" : "الزبون"}</p>
             <p className="font-semibold text-gray-900">
               {invoice.customer.name}
             </p>
@@ -193,11 +194,11 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                   {item.name}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {item.quantity} × {formatSAR(item.unitPrice)}
+                  {item.quantity} × {formatSAR(item.unitPrice, language)}
                 </p>
               </div>
               <p className="text-sm font-bold text-gray-900">
-                {formatSAR(item.unitPrice * item.quantity)}
+                {formatSAR(item.unitPrice * item.quantity, language)}
               </p>
             </div>
           ))}
@@ -205,26 +206,38 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
         <div className="mt-4 flex flex-col gap-1.5 border-t border-gray-100 pt-4">
           <div className="flex items-center justify-between text-sm text-gray-500">
-            <span>المجموع الفرعي</span>
-            <span>{formatSAR(invoice.subtotal)}</span>
+            <span>{en ? "Subtotal" : "المجموع الفرعي"}</span>
+            <span>{formatSAR(invoice.subtotal, language)}</span>
           </div>
           {invoice.vatAmount > 0 && (
             <div className="flex items-center justify-between text-sm text-gray-500">
-              <span>ضريبة القيمة المضافة</span>
-              <span>{formatSAR(invoice.vatAmount)}</span>
+              <span>{en ? "VAT" : "ضريبة القيمة المضافة"}</span>
+              <span>{formatSAR(invoice.vatAmount, language)}</span>
             </div>
           )}
           <div className="mt-1 flex items-center justify-between rounded-xl bg-brand-50 px-3 py-2.5">
-            <span className="text-sm font-bold text-brand-800">الإجمالي</span>
+            <span className="text-sm font-bold text-brand-800">{en ? "Total" : "الإجمالي"}</span>
             <span className="text-2xl font-extrabold tracking-tight text-brand-700">
-              {formatSAR(invoice.total)}
+              {formatSAR(invoice.total, language)}
             </span>
           </div>
+          {invoice.status === "PARTIAL" && (
+            <>
+              <div className="mt-1 flex items-center justify-between text-sm text-green-700">
+                <span>{en ? "Paid" : "المدفوع"}</span>
+                <span className="font-semibold">{formatSAR(paidAmount, language)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm font-bold text-red-600">
+                <span>{en ? "Remaining" : "المتبقي"}</span>
+                <span>{formatSAR(remaining, language)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {invoice.dueDate && (
           <p className="mt-3 text-xs text-gray-500">
-            تاريخ الاستحقاق: {formatDate(invoice.dueDate)}
+            {en ? "Due date" : "تاريخ الاستحقاق"}: {formatDate(invoice.dueDate)}
           </p>
         )}
         {invoice.notes && (
@@ -232,10 +245,22 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             {invoice.notes}
           </p>
         )}
+        {business?.vatEnabled && business.vatNumber && (
+          <ZatcaQr
+            label={en ? "ZATCA invoice QR code" : "رمز QR للفاتورة (هيئة الزكاة والضريبة)"}
+            fields={{
+              sellerName: business.name,
+              vatNumber: business.vatNumber,
+              timestamp: new Date(invoice.issueDate ?? invoice.createdAt ?? Date.now()).toISOString(),
+              total: invoice.total,
+              vatAmount: invoice.vatAmount,
+            }}
+          />
+        )}
       </div>
 
       {invoice.status !== "PAID" && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 print:hidden">
           <button
             type="button"
             onClick={markAsPaid}
@@ -243,7 +268,9 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
           >
             <CheckCircle2 className="h-5 w-5" />
-            {updating ? "جاري التحديث..." : 'تحديد كـ"مدفوعة" كاملاً'}
+            {updating
+              ? (en ? "Updating..." : "جاري التحديث...")
+              : (en ? "Mark as fully paid" : 'تحديد كـ"مدفوعة" كاملاً')}
           </button>
 
           <button
@@ -251,13 +278,16 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             onClick={() => { setShowPartialForm((v) => !v); setError(null); }}
             className="w-full rounded-lg border border-brand-300 py-3 text-sm font-semibold text-brand-700 active:bg-brand-50"
           >
-            تسجيل دفع جزئي
+            {en ? "Record a partial payment" : "تسجيل دفع جزئي"}
           </button>
 
           {showPartialForm && (
             <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
               <label className="text-sm font-semibold text-gray-700">
-                المبلغ المدفوع <span className="font-normal text-gray-500">(من {formatSAR(invoice.total)})</span>
+                {invoice.status === "PARTIAL"
+                  ? (en ? "Total paid so far" : "إجمالي المدفوع حتى الآن")
+                  : (en ? "Amount paid" : "المبلغ المدفوع")}{" "}
+                <span className="font-normal text-gray-500">({en ? "of" : "من"} {formatSAR(invoice.total, language)})</span>
               </label>
               <input
                 type="number"
@@ -275,22 +305,23 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                 disabled={savingPartial || !partialAmount}
                 className="w-full rounded-2xl bg-brand-700 py-3 text-sm font-bold text-white active:bg-brand-800 disabled:opacity-60"
               >
-                {savingPartial ? "جاري الحفظ..." : "حفظ الدفع الجزئي"}
+                {savingPartial
+                  ? (en ? "Saving..." : "جاري الحفظ...")
+                  : (en ? "Save partial payment" : "حفظ الدفع الجزئي")}
               </button>
             </div>
           )}
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 print:hidden">
         <button
           type="button"
-          onClick={downloadPdf}
-          disabled={downloading}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
+          onClick={() => window.print()}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50"
         >
-          <Download className="h-4 w-4" />
-          {downloading ? "جاري التحميل..." : "تحميل PDF"}
+          <Printer className="h-4 w-4" />
+          {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
         </button>
         <a
           href={waHref}
@@ -299,7 +330,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
           className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-green-500 py-3 text-sm font-semibold text-white active:bg-green-600"
         >
           <MessageCircle className="h-4 w-4" />
-          مشاركة عبر واتساب
+          {en ? "Share on WhatsApp" : "مشاركة عبر واتساب"}
         </a>
       </div>
 

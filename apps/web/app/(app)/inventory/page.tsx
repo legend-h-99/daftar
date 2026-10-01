@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SCAN_ENABLED } from "@/lib/features";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -90,13 +91,15 @@ export default function InventoryPage() {
             <Package className="h-4 w-4" />
             {language === "ar" ? "المنتجات" : "Products"}
           </Link>
-          <Link
-            href="/purchases/scan"
-            className="flex h-10 items-center gap-1.5 rounded-full bg-brand-700 px-3.5 text-sm font-bold text-white shadow-sm active:bg-brand-800"
-          >
-            <Camera className="h-4 w-4" />
-            {language === "ar" ? "تصوير" : "Scan"}
-          </Link>
+          {SCAN_ENABLED && (
+            <Link
+              href="/purchases/scan"
+              className="flex h-10 items-center gap-1.5 rounded-full bg-brand-700 px-3.5 text-sm font-bold text-white shadow-sm active:bg-brand-800"
+            >
+              <Camera className="h-4 w-4" />
+              {language === "ar" ? "تصوير فاتورة" : "Scan invoice"}
+            </Link>
+          )}
         </div>
       </div>
 
@@ -165,7 +168,11 @@ export default function InventoryPage() {
             <EmptyState
               icon={Boxes}
               title={language === "ar" ? "ما عندك أصناف في المخزون" : "No stock items yet"}
-              description={language === "ar" ? "أضف أصنافك بتصوير فاتورة شراء أو بتسجيل شراء يدوي" : "Add items by scanning a purchase invoice or recording one manually."}
+              description={
+                SCAN_ENABLED
+                  ? (language === "ar" ? "أضف أصنافك بتصوير فاتورة شراء أو بتسجيل شراء يدوي" : "Add items by scanning a purchase invoice or recording one manually.")
+                  : (language === "ar" ? "أضف أصنافك بتسجيل شراء أو يدويًا" : "Add items by recording a purchase or manually.")
+              }
               actionLabel={language === "ar" ? "تسجيل شراء" : "Record purchase"}
               actionHref="/purchases/new"
             />
