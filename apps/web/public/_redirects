@@ -1,4 +1,6 @@
-/invoices/:id /invoices/detail/view?id=:id 301
+# Do not add a catch-all /invoices/:id redirect here. Cloudflare Pages applies
+# redirects before static assets, so it captures Next.js RSC files such as
+# /invoices/index.txt and /invoices/new.txt as invoice IDs.
 /products/:id/edit /products/edit/view?id=:id 301
 /favicon.ico /icon 301
 /landing / 301
