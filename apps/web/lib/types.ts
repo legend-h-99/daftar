@@ -246,6 +246,8 @@ export interface UnpaidInvoiceSummary {
   number: string;
   customerName?: string | null;
   total: number;
+  /** Amount already collected; the dashboard shows total − paidAmount. */
+  paidAmount?: number | null;
   dueDate?: string | null;
   status: InvoiceStatus;
 }

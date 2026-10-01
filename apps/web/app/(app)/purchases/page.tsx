@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { SCAN_ENABLED } from "@/lib/features";
 import Link from "next/link";
 import { Camera, Plus, ShoppingCart } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
@@ -53,13 +54,15 @@ export default function PurchasesPage() {
           {language === "ar" ? "المشتريات" : "Purchases"}
         </h1>
         <div className="flex gap-2">
-          <Link
-            href="/purchases/scan"
-            aria-label={language === "ar" ? "تصوير فاتورة شراء" : "Scan purchase invoice"}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700 shadow-sm active:bg-brand-100"
-          >
-            <Camera className="h-5 w-5" />
-          </Link>
+          {SCAN_ENABLED && (
+            <Link
+              href="/purchases/scan"
+              aria-label={language === "ar" ? "تصوير فاتورة شراء" : "Scan purchase invoice"}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700 shadow-sm active:bg-brand-100"
+            >
+              <Camera className="h-5 w-5" />
+            </Link>
+          )}
           <Link
             href="/purchases/new"
             aria-label={language === "ar" ? "شراء جديد" : "New purchase"}
@@ -124,7 +127,11 @@ export default function PurchasesPage() {
         <EmptyState
           icon={ShoppingCart}
           title={language === "ar" ? `ما في مشتريات في ${formatMonthLabel(month, language)}` : `No purchases in ${formatMonthLabel(month, language)}`}
-          description={language === "ar" ? "سجّل مشترياتك يدويًا أو صوّر فاتورة الشراء" : "Record purchases manually or scan the supplier invoice."}
+          description={
+            SCAN_ENABLED
+              ? (language === "ar" ? "سجّل مشترياتك يدويًا أو صوّر فاتورة الشراء" : "Record purchases manually or scan the supplier invoice.")
+              : (language === "ar" ? "سجّل مشترياتك من الموردين عشان تعرف تكلفتك" : "Record supplier purchases to track your costs.")
+          }
           actionLabel={language === "ar" ? "تسجيل شراء" : "Record purchase"}
           actionHref="/purchases/new"
         />
