@@ -1,9 +1,7 @@
 name: Deploy web to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
+  # Optional demo build only. Production is hosted on Cloudflare Pages.
   workflow_dispatch:
 
 permissions:
