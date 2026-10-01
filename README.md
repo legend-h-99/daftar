@@ -66,19 +66,16 @@ displays it on the OTP screen behind a "وضع تجريبي" badge.
 - No payment gateway — "مدفوعة" is a manual status toggle, not a real
   collection flow.
 
-## Free hosted deployment: Koyeb
+## Production deployment
 
-`Dockerfile.koyeb` runs both the Next.js web app and the NestJS API in one
-container, which fits Koyeb's single free web service model:
+The production web app is served from [daftar1.com](https://daftar1.com/) via
+Cloudflare Pages. The configured backend and database are hosted by Supabase.
+The GitHub Pages and Koyeb workflows are retained only as manual legacy/demo
+options; pushes to `main` do not deploy to them. The unused, unrouted Cloudflare
+Worker is disconnected from Git deployments. Cloudflare Pages pull request
+builds are used to preview web changes before release.
 
-- public web service: Next.js on port `3000`
-- internal API: NestJS on port `3001`
-- browser calls stay same-origin through `/api-proxy`
-
-Required GitHub Actions secrets:
-
-- `KOYEB_API_TOKEN`
-- `DATABASE_URL`
-- `JWT_SECRET`
-
-Then run the `Deploy to Koyeb` workflow from GitHub Actions.
+Before releasing a change, verify the Cloudflare Pages preview and the
+Supabase migrations for that change. Production database access must continue
+to use row-level security; privileged service credentials belong only in
+server-side secrets and must never use a `NEXT_PUBLIC_` variable.

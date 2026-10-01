@@ -6,7 +6,11 @@ import path from 'node:path';
 const base = process.env.UX_BASE_URL || 'https://daftar-ead.pages.dev';
 const out = path.resolve(process.env.UX_OUTPUT_DIR || '../../outputs/ux-2026-09-06');
 await mkdir(out, {recursive:true});
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+  ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+    : {}),
+});
 const results=[];
 const summary={totalSales:100,totalPurchases:20,costOfGoodsSold:20,operatingExpenses:10,totalExpenses:30,netProfit:70,unpaidInvoices:[],unpaidInvoicesCount:0,unpaidInvoicesTotal:0,lowStock:[]};
 async function scenario(name, options, run){
@@ -113,7 +117,9 @@ await scenario('English translation across app forms and reports',{},async(page,
  await page.getByRole('button',{name:'Save and update stock'}).waitFor();
  await page.goto(`${base}/products/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Product cost calculator'}).waitFor();
  await page.getByLabel('Product name').waitFor();await page.getByText('Suggested selling price',{exact:true}).waitFor();
- await page.goto(`${base}/purchases/scan/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Scan purchase invoice'}).waitFor();
+ await page.goto(`${base}/purchases/scan/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Enter a purchase from its invoice'}).waitFor();
+ await page.getByRole('link',{name:'Enter purchase manually'}).waitFor();
+ assert.equal(await page.locator('input[type="file"]').count(),0,'Disabled OCR must not upload invoice photos');
 });
 await scenario('corrected form errors clear as fields are fixed',{},async(page,context)=>{
  await fixtures(context);await page.goto(`${base}/expenses/`,{waitUntil:'networkidle'});
@@ -124,11 +130,11 @@ await scenario('corrected form errors clear as fields are fixed',{},async(page,c
  await page.getByRole('button',{name:'حفظ',exact:true}).click();await page.getByText('اكتب اسم المنتج',{exact:true}).waitFor();
  await page.locator('#product-name').fill('اختبار');assert.equal(await page.getByText('اكتب اسم المنتج',{exact:true}).count(),0);
 });
-await scenario('unavailable OCR offers manual purchase entry',{},async(page,context)=>{
- await fixtures(context);await context.route('**/purchases/scan',r=>r.fulfill({status:501,json:{message:'ميزة المسح غير متاحة في هذه النسخة'}}));
+await scenario('unavailable OCR offers a private manual fallback',{},async(page,context)=>{
+ await fixtures(context);
  await page.goto(`${base}/purchases/scan/`,{waitUntil:'networkidle'});
- await page.locator('input[type="file"]').setInputFiles({name:'sample-invoice.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/ueQAAAAASUVORK5CYII=','base64')});
- await page.getByRole('alert').getByText(/غير متاحة حاليًا/).waitFor();
+ await page.getByText(/تبقى الصورة على جهازك/).waitFor();
+ assert.equal(await page.locator('input[type="file"]').count(),0,'Invoice photos must stay on the device while OCR is disabled');
  await page.getByRole('link',{name:'إدخال الشراء يدويًا'}).waitFor();
 });
 await scenario('privacy discoverability from login',{},async page=>{await login(page);const link=page.getByRole('link',{name:/خصوصية|privacy/i});assert(await link.count(),'No privacy notice link on login');await link.click();await page.getByRole('heading',{level:1,name:/خصوصية|privacy/i}).waitFor();});

@@ -12,7 +12,12 @@ export interface OcrExtractedItem {
   confidence: number;
 }
 
-/** A draft purchase extracted from an image. NOTHING is saved until the user confirms. */
+/**
+ * A draft purchase extracted from an image. Nothing is saved until the user
+ * confirms. Invoice text and model output are untrusted data: a provider must
+ * extract only these typed fields, ignore embedded instructions, and never
+ * perform actions or access secrets based on document content.
+ */
 export interface OcrPurchaseDraft {
   supplierName?: string;
   date?: string; // ISO yyyy-mm-dd
