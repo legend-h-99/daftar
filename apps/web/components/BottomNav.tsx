@@ -18,7 +18,7 @@ export default function BottomNav() {
   const { language } = useLanguage();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background">
+    <nav className="print:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background">
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {TABS.map(({ href, label, icon: Icon }) => {
           const active =
