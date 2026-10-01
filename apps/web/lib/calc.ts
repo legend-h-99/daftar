@@ -10,6 +10,9 @@ export function lineCost(item: Pick<RecipeItem, "unitPrice" | "quantityUsed">): 
   return (item.unitPrice || 0) * (item.quantityUsed || 0);
 }
 
+/** Highest profit margin (as % of selling price) the calculator accepts. */
+export const MAX_MARGIN = 95;
+
 export function calculateCosts(
   recipeItems: RecipeItem[],
   overheadCost: number | null | undefined,
@@ -25,8 +28,10 @@ export function calculateCosts(
 
   const totalCost = rawCost + packagingCost + (overheadCost || 0);
 
-  const margin = Math.min(Math.max(profitMargin || 0, 0), 99.99);
-  const sellingPrice = margin >= 99.99 ? totalCost : totalCost / (1 - margin / 100);
+  // Margin is a share of the selling price, so it must stay below 100%
+  // (the database rejects >= 100). Cap it where the price stays sensible.
+  const margin = Math.min(Math.max(profitMargin || 0, 0), MAX_MARGIN);
+  const sellingPrice = totalCost / (1 - margin / 100);
 
   return { rawCost, packagingCost, totalCost, sellingPrice };
 }

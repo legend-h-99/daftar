@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import RecipeItemTable from "@/components/RecipeItemTable";
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
-import { calculateCosts } from "@/lib/calc";
+import { calculateCosts, MAX_MARGIN } from "@/lib/calc";
 import { formatSAR } from "@/lib/format";
 import { Material, Product, RecipeItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ export default function ProductForm({ product }: ProductFormProps) {
     product?.profitMargin ?? 30,
   );
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingConfirm, setDeletingConfirm] = useState(false);
@@ -62,7 +63,8 @@ export default function ProductForm({ product }: ProductFormProps) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError(en ? "Enter a product name" : "اكتب اسم المنتج");
+      setNameError(en ? "Enter a product name" : "اكتب اسم المنتج");
+      document.getElementById("product-name")?.focus();
       return;
     }
     setError(null);
@@ -122,10 +124,17 @@ export default function ProductForm({ product }: ProductFormProps) {
         <input
           id="product-name"
           value={name}
-          onChange={(e) => { setName(e.target.value); setError(null); }}
+          onChange={(e) => { setName(e.target.value); setError(null); setNameError(null); }}
           placeholder={en ? "e.g. Chocolate cake" : "مثال: كيك شوكولاتة"}
-          className={cn(fieldClass, "py-3.5")}
+          aria-invalid={nameError ? true : undefined}
+          aria-describedby={nameError ? "product-name-error" : undefined}
+          className={cn(fieldClass, "py-3.5", nameError && "border-red-400")}
         />
+        {nameError && (
+          <p id="product-name-error" role="alert" className="mt-1.5 text-sm font-medium text-red-600">
+            {nameError}
+          </p>
+        )}
       </div>
 
       <RecipeItemTable
@@ -165,7 +174,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <label className="text-sm font-semibold text-gray-700">
-            {en ? "Profit margin %" : "نسبة الربح %"}
+            {en ? "Profit margin (of selling price) %" : "هامش الربح من سعر البيع %"}
           </label>
           <span className="text-sm font-bold text-brand-700">
             {profitMargin}%
@@ -186,11 +195,16 @@ export default function ProductForm({ product }: ProductFormProps) {
           type="number"
           inputMode="decimal"
           min={0}
-          max={99}
+          max={MAX_MARGIN}
           value={profitMargin}
-          onChange={(e) => setProfitMargin(Number(e.target.value) || 0)}
+          onChange={(e) => setProfitMargin(Math.min(Math.max(Number(e.target.value) || 0, 0), MAX_MARGIN))}
           className={cn(fieldClass, "mt-2 py-2.5 text-center")}
         />
+        <p className="mt-2 text-xs text-gray-500">
+          {en
+            ? "Example: cost 70 with a 30% margin → price 100 (30 of every 100 is profit)."
+            : "مثال: تكلفة 70 وهامش 30% ← السعر 100 (يعني 30 من كل 100 ربح)."}
+        </p>
       </div>
 
       <div className="rounded-lg bg-brand-900 p-5 text-white shadow-sm">
