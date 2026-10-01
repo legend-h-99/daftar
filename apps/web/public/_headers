@@ -4,7 +4,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob: https://accounts.google.com https://www.gstatic.com; font-src 'self'; connect-src 'self' https://nklcbcpkycrhuumpbksb.supabase.co https://accounts.google.com https://*.ingest.sentry.io; frame-src https://accounts.google.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://www.gstatic.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob: https://accounts.google.com https://www.gstatic.com; font-src 'self'; connect-src 'self' https://nklcbcpkycrhuumpbksb.supabase.co https://accounts.google.com https://*.ingest.sentry.io https://cloudflareinsights.com; frame-src https://accounts.google.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
 
 https://daftar-ead.pages.dev/*
   X-Robots-Tag: noindex
