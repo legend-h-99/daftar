@@ -28,6 +28,7 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? SERVICE_KEY
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
+const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
@@ -106,8 +107,10 @@ function err(msg: string, status = 400) {
 async function rateLimit(req: Request, action: string, identifier: unknown, limit: number): Promise<Response | null> {
   const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ??
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
-  const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : 'unknown'
-  for (const key of [`${action}:ip:${ip}`, `${action}:account:${identity}`]) {
+  const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
+  const keys = [`${action}:ip:${ip}`]
+  if (identity) keys.push(`${action}:account:${identity}`)
+  for (const key of keys) {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
     const hashed = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')
     const { data, error } = await db().rpc('consume_auth_rate_limit', {
@@ -117,6 +120,14 @@ async function rateLimit(req: Request, action: string, identifier: unknown, limi
     if (data !== true) return err('Too many requests; try again shortly', 429)
   }
   return null
+}
+
+async function reserveDailyEmailSend(): Promise<boolean> {
+  if (!Number.isInteger(EMAIL_DAILY_SEND_CAP) || EMAIL_DAILY_SEND_CAP < 1) return false
+  const { data, error } = await db().rpc('consume_external_usage_budget', {
+    p_key: 'emails', p_daily_limit: EMAIL_DAILY_SEND_CAP,
+  })
+  return !error && data === true
 }
 
 function newId(prefix: string) {
@@ -225,6 +236,7 @@ function validEmailInput(email: unknown, password: unknown): email is string {
 
 async function sendVerificationEmail(email: string, token: string): Promise<boolean> {
   if (!RESEND_API_KEY) return false
+  if (!await reserveDailyEmailSend()) return false
   const link = `https://daftar1.com/verify-email?token=${encodeURIComponent(token)}`
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -241,6 +253,7 @@ async function sendVerificationEmail(email: string, token: string): Promise<bool
 
 async function sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
   if (!RESEND_API_KEY) return false
+  if (!await reserveDailyEmailSend()) return false
   const link = `https://daftar1.com/reset-password?token=${encodeURIComponent(token)}`
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -762,6 +775,12 @@ async function handleRequest(req: Request) {
   const seg = path.split('/').filter(Boolean)
 
   try {
+    // Cap all API traffic by its platform-provided client IP. Individual auth
+    // endpoints have tighter per-IP and per-identity limits below.
+    if (path !== '/health' && path !== '' && req.method !== 'OPTIONS') {
+      const limited = await rateLimit(req, 'api', null, 100)
+      if (limited) return limited
+    }
     if (path === '/health' || path === '') return json({ status: 'ok' })
     if (req.method === 'POST' && path === '/auth/otp/request') return authOtpRequest((await req.json()).phone)
     if (req.method === 'POST' && path === '/auth/otp/verify') {
@@ -802,6 +821,8 @@ async function handleRequest(req: Request) {
 
     const user = await getUser(req)
     if (!user) return err('Unauthorized', 401)
+    const accountLimited = await rateLimit(req, 'api-account', user.sub, 100)
+    if (accountLimited) return accountLimited
 
     if (path === '/auth/me' && req.method === 'GET') return authMe(user.sub as string)
     if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
@@ -836,4 +857,3 @@ Deno.serve(async (req: Request) => {
   Object.entries(corsFor(req)).forEach(([key, value]) => { headers[key] = value })
   return new Response(response.body, { status: response.status, headers })
 })
-
