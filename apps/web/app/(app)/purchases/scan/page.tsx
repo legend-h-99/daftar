@@ -1,62 +1,16 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Camera, ScanLine } from "lucide-react";
-import { apiPost, ApiError } from "@/lib/api";
-import { OcrDraft } from "@/lib/types";
-import PurchaseForm from "@/components/PurchaseForm";
+import { ArrowLeft, ArrowRight, FileText, ListChecks } from "lucide-react";
 import { useLanguage } from "@/lib/language";
 
-/**
- * OCR flow: photograph/upload a purchase invoice → the backend extracts a
- * draft → the user reviews and edits EVERY line (with per-field confidence)
- * → only their confirmation saves anything.
- */
+/** Safe fallback while invoice OCR is unavailable: no invoice image is uploaded. */
 export default function ScanPurchasePage() {
   const { language } = useLanguage();
   const en = language === "en";
-  const [draft, setDraft] = useState<OcrDraft | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [scanUnavailable, setScanUnavailable] = useState(false);
-
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setScanning(true);
-    setError(null);
-    setScanUnavailable(false);
-
-    const imageBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    setPreview(imageBase64);
-
-    try {
-      const result = await apiPost<OcrDraft>("/purchases/scan", { imageBase64 });
-      setDraft(result);
-    } catch (err) {
-      const unavailable = err instanceof ApiError && err.status === 501;
-      setScanUnavailable(unavailable);
-      setError(unavailable
-        ? en
-          ? "Automatic invoice reading is unavailable right now. Enter the purchase details manually instead."
-          : "قراءة الفاتورة تلقائيًا غير متاحة حاليًا. يمكنك إدخال الشراء يدويًا."
-        : err instanceof ApiError
-          ? err.message
-          : en ? "Could not read the invoice" : "تعذر قراءة الفاتورة");
-    } finally {
-      setScanning(false);
-    }
-  }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
         <Link
           href="/purchases"
@@ -66,74 +20,47 @@ export default function ScanPurchasePage() {
           {en ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
         </Link>
         <div>
-          <h1 className="text-xl font-extrabold text-gray-900">{en ? "Scan purchase invoice" : "تصوير فاتورة شراء"}</h1>
+          <h1 className="text-xl font-extrabold text-gray-900">
+            {en ? "Enter a purchase from its invoice" : "أدخل الشراء من الفاتورة"}
+          </h1>
           <p className="text-xs text-gray-500">
-            {en ? "We read the invoice and fill in the details for you to review" : "نقرأ الفاتورة ونعبّي البيانات — وأنت تراجع وتعتمد"}
+            {en ? "A simple alternative while automatic reading is unavailable" : "طريقة بديلة وبسيطة إلى أن تتوفر القراءة التلقائية"}
           </p>
         </div>
       </div>
 
-      {!draft && (
-        <label
-          className={`flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-14 text-center transition-colors ${
-            scanning
-              ? "border-brand-300 bg-brand-50"
-              : "border-gray-300 bg-white active:bg-gray-50"
-          }`}
-        >
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFile}
-            className="hidden"
-            disabled={scanning}
-          />
-          <span className="rounded-full bg-brand-50 p-4 text-brand-700">
-            {scanning ? (
-              <ScanLine className="h-7 w-7 animate-pulse motion-reduce:animate-none" />
-            ) : (
-              <Camera className="h-7 w-7" />
-            )}
-          </span>
-          <p className="font-bold text-gray-800">
-            {scanning ? (en ? "Reading invoice..." : "جاري قراءة الفاتورة...") : (en ? "Take a photo or choose an image" : "صوّر الفاتورة أو اختر صورة")}
-          </p>
-          <p className="text-sm text-gray-500">
-            {en ? "Nothing is saved until you review the details and press Save" : "ما ينحفظ شي إلا بعد ما تراجع البيانات وتضغط حفظ"}
-          </p>
-        </label>
-      )}
-
-      {error && (
-        <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
-          <p>{error}</p>
-          {scanUnavailable && (
-            <Link href="/purchases/new" className="mt-2 inline-flex font-bold underline underline-offset-2">
-              {en ? "Enter purchase manually" : "إدخال الشراء يدويًا"}
-            </Link>
-          )}
+      <section className="rounded-2xl border border-brand-100 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+          <FileText className="h-5 w-5" aria-hidden="true" />
         </div>
-      )}
+        <h2 className="font-bold text-gray-900">
+          {en ? "Automatic invoice reading is currently off" : "قراءة الفاتورة آليًا غير مفعّلة حاليًا"}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-gray-600">
+          {en
+            ? "Keep the invoice open as a reference and enter the supplier, date, items, quantities, and unit prices. Your photo stays on your device; this page does not upload it."
+            : "افتح الفاتورة بجانبك وأدخل اسم المورد والتاريخ والأصناف والكميات وسعر الوحدة. تبقى الصورة على جهازك؛ هذه الصفحة لا ترفعها للخادم."}
+        </p>
+      </section>
 
-      {draft && (
-        <>
-          {draft.provider === "mock" && (
-            <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-            {en ? "Demo mode: these are sample details, not values read from your image. Review and edit them before saving." : "وضع تجريبي: هذه بيانات توضيحية وليست قراءة فعلية للصورة — راجعها وعدّلها قبل الحفظ"}
-            </div>
-          )}
-          {preview && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={preview}
-              alt={en ? "Invoice image" : "صورة الفاتورة"}
-              className="max-h-44 w-full rounded-lg border border-gray-100 object-cover"
-            />
-          )}
-          <PurchaseForm draft={draft} source="OCR" />
-        </>
-      )}
+      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <h2 className="mb-3 flex items-center gap-2 font-bold text-gray-900">
+          <ListChecks className="h-5 w-5 text-brand-700" aria-hidden="true" />
+          {en ? "What to enter" : "البيانات المطلوبة"}
+        </h2>
+        <ul className="flex flex-col gap-2 text-sm text-gray-600">
+          <li>{en ? "Supplier and invoice date" : "المورد وتاريخ الفاتورة"}</li>
+          <li>{en ? "Each item and its quantity" : "كل صنف وكميته"}</li>
+          <li>{en ? "Unit price; the total updates automatically" : "سعر الوحدة؛ والإجمالي يُحسب تلقائيًا"}</li>
+        </ul>
+      </section>
+
+      <Link
+        href="/purchases/new"
+        className="motion-press flex min-h-12 items-center justify-center rounded-2xl bg-brand-700 px-5 py-3 text-sm font-bold text-white"
+      >
+        {en ? "Enter purchase manually" : "إدخال الشراء يدويًا"}
+      </Link>
     </div>
   );
 }
