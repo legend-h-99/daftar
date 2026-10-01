@@ -66,8 +66,8 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               scriptSrc,
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
+              "style-src 'self' 'unsafe-inline' https://accounts.google.com",
+              "img-src 'self' data: blob: https://accounts.google.com https://www.gstatic.com",
               "font-src 'self'",
               connectSrc,
               "frame-src https://accounts.google.com",

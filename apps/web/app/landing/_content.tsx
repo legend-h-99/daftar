@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CurrentMonth from "./_current-month";
 import {
   FileText,
   Wallet,
@@ -176,7 +177,7 @@ function LedgerPreview() {
             <div className="flex items-center justify-between">
               <span className="text-sm font-extrabold text-[#101914]">فواتير اليوم</span>
               <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-                أغسطس 2026
+                <CurrentMonth />
               </span>
             </div>
             <ul className="mt-3">
@@ -302,7 +303,7 @@ export default function LandingContent() {
       <section className="border-y border-gray-100 bg-white">
         <div className="mx-auto grid w-full max-w-5xl grid-cols-3 gap-4 px-5 py-10 text-center">
           {[
-            { num: "500+", label: "محل يستخدم دفتر" },
+            { num: "0", label: "ريال رسوم اشتراك" },
             { num: "10×", label: "أسرع من الورقة والقلم" },
             { num: "<10 ث", label: "لمعرفة ربحك الشهري" },
           ].map(({ num, label }) => (
@@ -492,7 +493,7 @@ export default function LandingContent() {
             ابدأ تتابع حساباتك اليوم — مجانًا
           </h2>
           <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-gray-600 sm:text-base">
-            أكثر من ٥٠٠ محل يستخدم دفتر لمعرفة ربحه الحقيقي آخر كل شهر. دورك الآن.
+            سجّل محلك في أقل من دقيقة، واعرف ربحك الحقيقي آخر كل شهر.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
@@ -504,7 +505,7 @@ export default function LandingContent() {
             </Link>
             <a
               href="#how"
-              className="text-sm font-semibold text-gray-500 underline-offset-2 hover:text-brand-700 hover:underline"
+              className="inline-flex min-h-11 items-center px-3 text-sm font-semibold text-gray-500 underline-offset-2 hover:text-brand-700 hover:underline"
             >
               كيف يشتغل؟
             </a>
@@ -522,9 +523,14 @@ export default function LandingContent() {
           <p className="text-xs text-gray-500">
             دفتر — تطبيق محاسبة للمشاريع الصغيرة · صنع في السعودية، للسعودية.
           </p>
-          <p className="text-xs text-gray-400">
-            عربي أولًا · جوال أولًا · بدون مصطلحات محاسبية
-          </p>
+          <nav aria-label="روابط الموقع" className="flex items-center gap-1 text-xs font-semibold text-gray-500">
+            <Link href="/privacy" className="inline-flex min-h-11 items-center px-3 hover:text-brand-700">
+              إشعار الخصوصية
+            </Link>
+            <Link href="/login" className="inline-flex min-h-11 items-center px-3 hover:text-brand-700">
+              تسجيل الدخول
+            </Link>
+          </nav>
         </div>
       </footer>
 

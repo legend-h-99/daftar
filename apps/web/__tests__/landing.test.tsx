@@ -100,16 +100,16 @@ describe("صفحة الـ Landing", () => {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   describe("قسم الإحصاءات", () => {
-    it("يعرض '500+' و '10×' و '<10 ث'", () => {
+    it("يعرض '0' و '10×' و '<10 ث'", () => {
       render(<LandingPage />);
-      expect(screen.getByText("500+")).toBeInTheDocument();
+      expect(screen.getByText("0")).toBeInTheDocument();
       expect(screen.getByText("10×")).toBeInTheDocument();
       expect(screen.getByText("<10 ث")).toBeInTheDocument();
     });
 
     it("يعرض تسميات الإحصاءات الثلاثة", () => {
       render(<LandingPage />);
-      expect(screen.getByText("محل يستخدم دفتر")).toBeInTheDocument();
+      expect(screen.getByText("ريال رسوم اشتراك")).toBeInTheDocument();
       expect(screen.getByText("أسرع من الورقة والقلم")).toBeInTheDocument();
       expect(screen.getByText("لمعرفة ربحك الشهري")).toBeInTheDocument();
     });
@@ -355,11 +355,11 @@ describe("صفحة الـ Landing", () => {
       ).toBeInTheDocument();
     });
 
-    it("يعرض وعد الهوية العربية في الـ footer", () => {
+    it("يربط الـ footer بإشعار الخصوصية وتسجيل الدخول", () => {
       render(<LandingPage />);
-      expect(
-        screen.getByText(/عربي أولًا/),
-      ).toBeInTheDocument();
+      const footer = document.querySelector("footer")!;
+      expect(within(footer).getByRole("link", { name: "إشعار الخصوصية" })).toHaveAttribute("href", "/privacy");
+      expect(within(footer).getByRole("link", { name: "تسجيل الدخول" })).toHaveAttribute("href", "/login");
     });
   });
 

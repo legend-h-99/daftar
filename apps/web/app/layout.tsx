@@ -15,12 +15,21 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://daftar1.com"),
   title: "دفتر - إدارة حسابات محلك بسهولة",
   description: "دفتر يساعدك تتابع مبيعاتك ومصاريفك وفواتيرك بكل سهولة، خاص بأصحاب المشاريع الصغيرة.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "دفتر",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "دفتر",
+    locale: "ar_SA",
+  },
+  twitter: {
+    card: "summary_large_image",
   },
   formatDetection: {
     telephone: false,

@@ -9,6 +9,7 @@ import { setToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
+import AuthBrand from "@/components/AuthBrand";
 import { Business, User } from "@/lib/types";
 
 function ResetPasswordContent() {
@@ -61,10 +62,14 @@ function ResetPasswordContent() {
 
   return (
     <main
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background text-foreground px-6"
+      className="relative flex min-h-screen flex-col items-center overflow-hidden bg-background text-foreground px-6 py-12"
       dir={language === "ar" ? "rtl" : "ltr"}
     >
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-border bg-accent/40" />
+
+      <div className="relative z-10">
+        <AuthBrand />
+      </div>
 
       <div className="relative z-10 w-full max-w-sm animate-slide-up rounded-2xl border border-border bg-card p-8 shadow-sm">
         {!token ? (
@@ -119,7 +124,7 @@ function ResetPasswordContent() {
                     autoComplete="new-password"
                     dir="ltr"
                     placeholder={language === "ar" ? "8 أحرف على الأقل" : "At least 8 characters"}
-                    className={cn(fieldClass, "py-3 text-left pe-10")}
+                    className={cn(fieldClass, "py-3 text-left pr-11")}
                     minLength={8}
                     required
                   />
@@ -129,7 +134,7 @@ function ResetPasswordContent() {
                     aria-pressed={showPassword}
                     aria-controls="password"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 end-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground"
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

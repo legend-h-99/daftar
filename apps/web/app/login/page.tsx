@@ -275,7 +275,7 @@ export default function LoginPage() {
                         ? language === "ar" ? "8 أحرف على الأقل" : "At least 8 characters"
                         : "••••••••"
                     }
-                    className={cn(fieldClass, "py-3 text-left pe-10")}
+                    className={cn(fieldClass, "py-3 text-left pr-11")}
                     minLength={emailMode === "register" ? 8 : undefined}
                     required
                   />
@@ -285,7 +285,7 @@ export default function LoginPage() {
                     aria-pressed={showPassword}
                     aria-controls="password"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 end-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground"
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

@@ -7,6 +7,7 @@ import { apiPost, ApiError } from "@/lib/api";
 import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
+import AuthBrand from "@/components/AuthBrand";
 
 export default function ForgotPasswordPage() {
   const { language } = useLanguage();
@@ -42,7 +43,8 @@ export default function ForgotPasswordPage() {
     >
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-border bg-accent/40" />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-12">
+      <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col px-6 py-12">
+        <AuthBrand />
         <div
           className="motion-surface animate-slide-up rounded-2xl border border-border bg-card p-6 shadow-sm"
         >
