@@ -4,7 +4,8 @@ import { Trash2 } from "lucide-react";
 import { formatSAR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
-import { Material, MaterialUnit, UNIT_LABELS } from "@/lib/types";
+import { Material, MaterialUnit, UNIT_LABELS, UNIT_LABELS_EN } from "@/lib/types";
+import { useLanguage } from "@/lib/language";
 
 /** القيمة المميِّزة لخيار «صنف جديد» في قائمة اختيار الصنف. */
 export const NEW_MATERIAL = "__new__";
@@ -25,7 +26,7 @@ export function emptyRow(): RowState {
   return { name: "", unit: "KG", quantity: "", unitPrice: "" };
 }
 
-function confidenceBadge(confidence?: number) {
+function confidenceBadge(confidence: number | undefined, en: boolean) {
   if (confidence === undefined) return null;
   const pct = Math.round(confidence * 100);
   const tone =
@@ -36,7 +37,7 @@ function confidenceBadge(confidence?: number) {
         : "bg-red-50 text-red-600";
   return (
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tone}`}>
-      دقة القراءة {pct}%
+      {en ? `${pct}% confidence` : `دقة القراءة ${pct}%`}
     </span>
   );
 }
@@ -55,26 +56,29 @@ export default function PurchaseRow({
   onChange: (patch: Partial<RowState>) => void;
   onRemove: () => void;
 }) {
+  const { language } = useLanguage();
+  const en = language === "en";
+  const unitLabels = en ? UNIT_LABELS_EN : UNIT_LABELS;
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3.5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <select
-          aria-label="اختر الصنف"
+          aria-label={en ? "Choose an item" : "اختر الصنف"}
           value={row.materialId ?? NEW_MATERIAL}
           onChange={(e) => onSelect(e.target.value)}
           className={purchaseInputClass}
         >
-          <option value={NEW_MATERIAL}>صنف جديد (يُضاف للمخزون)</option>
+          <option value={NEW_MATERIAL}>{en ? "New item (added to stock)" : "صنف جديد (يُضاف للمخزون)"}</option>
           {materials.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.name} — {UNIT_LABELS[m.unit]}
+              {m.name} — {unitLabels[m.unit]}
             </option>
           ))}
         </select>
         <button
           type="button"
           onClick={onRemove}
-          aria-label="حذف السطر"
+          aria-label={en ? "Remove row" : "حذف السطر"}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
         >
           <Trash2 className="h-4 w-4" />
@@ -84,19 +88,19 @@ export default function PurchaseRow({
       {!row.materialId && (
         <div className="grid grid-cols-2 gap-2.5">
           <input
-            aria-label="اسم الصنف"
+            aria-label={en ? "Item name" : "اسم الصنف"}
             value={row.name}
             onChange={(e) => onChange({ name: e.target.value })}
-            placeholder="اسم الصنف"
+            placeholder={en ? "Item name" : "اسم الصنف"}
             className={purchaseInputClass}
           />
           <select
-            aria-label="الوحدة"
+            aria-label={en ? "Unit" : "الوحدة"}
             value={row.unit}
             onChange={(e) => onChange({ unit: e.target.value as MaterialUnit })}
             className={purchaseInputClass}
           >
-            {(Object.entries(UNIT_LABELS) as [MaterialUnit, string][]).map(
+            {(Object.entries(unitLabels) as [MaterialUnit, string][]).map(
               ([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -109,9 +113,9 @@ export default function PurchaseRow({
 
       <div className="grid grid-cols-2 gap-2.5">
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">الكمية</label>
+            <label className="mb-1 block text-xs text-muted-foreground">{en ? "Quantity" : "الكمية"}</label>
           <input
-            aria-label="الكمية"
+            aria-label={en ? "Quantity" : "الكمية"}
             type="number"
             inputMode="decimal"
             min={0}
@@ -124,10 +128,10 @@ export default function PurchaseRow({
         </div>
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
-            سعر الوحدة (ر.س)
+            {en ? "Unit price (SAR)" : "سعر الوحدة (ر.س)"}
           </label>
           <input
-            aria-label="سعر الوحدة"
+            aria-label={en ? "Unit price" : "سعر الوحدة"}
             type="number"
             inputMode="decimal"
             min={0}
@@ -141,10 +145,10 @@ export default function PurchaseRow({
       </div>
 
       <div className="flex items-center justify-between">
-        {confidenceBadge(row.confidence) ?? <span />}
+        {confidenceBadge(row.confidence, en) ?? <span />}
         <span className="text-xs font-bold text-muted-foreground">
-          الإجمالي:{" "}
-          {formatSAR((Number(row.quantity) || 0) * (Number(row.unitPrice) || 0))}
+          {en ? "Total:" : "الإجمالي:"}{" "}
+          {formatSAR((Number(row.quantity) || 0) * (Number(row.unitPrice) || 0), language)}
         </span>
       </div>
     </div>

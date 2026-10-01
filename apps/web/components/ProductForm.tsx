@@ -10,12 +10,15 @@ import { formatSAR } from "@/lib/format";
 import { Material, Product, RecipeItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
+import { useLanguage } from "@/lib/language";
 
 interface ProductFormProps {
   product?: Product;
 }
 
 export default function ProductForm({ product }: ProductFormProps) {
+  const { language } = useLanguage();
+  const en = language === "en";
   const router = useRouter();
   const isEdit = !!product;
 
@@ -42,7 +45,7 @@ export default function ProductForm({ product }: ProductFormProps) {
   // product stays linked to stock (and sales can consume it automatically).
   useEffect(() => {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
-      setError(err instanceof ApiError ? err.message : "تعذر تحميل المواد الخام");
+      setError(err instanceof ApiError ? err.message : en ? "Could not load ingredients" : "تعذر تحميل المواد الخام");
     });
   }, []);
 
@@ -59,7 +62,7 @@ export default function ProductForm({ product }: ProductFormProps) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("اكتب اسم المنتج");
+      setError(en ? "Enter a product name" : "اكتب اسم المنتج");
       return;
     }
     setError(null);
@@ -86,7 +89,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       router.push("/products");
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر حفظ المنتج");
+      setError(err instanceof ApiError ? err.message : en ? "Could not save product" : "تعذر حفظ المنتج");
     } finally {
       setSaving(false);
     }
@@ -105,7 +108,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       router.push("/products");
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر حذف المنتج");
+      setError(err instanceof ApiError ? err.message : en ? "Could not delete product" : "تعذر حذف المنتج");
       setDeleting(false);
     }
   }
@@ -114,19 +117,19 @@ export default function ProductForm({ product }: ProductFormProps) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div>
         <label htmlFor="product-name" className="mb-1.5 block text-sm font-semibold text-gray-700">
-          اسم المنتج
+          {en ? "Product name" : "اسم المنتج"}
         </label>
         <input
           id="product-name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="مثال: كيك شوكولاتة"
+          onChange={(e) => { setName(e.target.value); setError(null); }}
+          placeholder={en ? "e.g. Chocolate cake" : "مثال: كيك شوكولاتة"}
           className={cn(fieldClass, "py-3.5")}
         />
       </div>
 
       <RecipeItemTable
-        title="المواد الخام"
+        title={en ? "Ingredients" : "المواد الخام"}
         type="RAW"
         items={rawItems}
         onChange={setRawItems}
@@ -134,7 +137,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       />
 
       <RecipeItemTable
-        title="التغليف"
+        title={en ? "Packaging" : "التغليف"}
         type="PACKAGING"
         items={packagingItems}
         onChange={setPackagingItems}
@@ -143,8 +146,8 @@ export default function ProductForm({ product }: ProductFormProps) {
 
       <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
         <label htmlFor="product-overhead" className="mb-1.5 block text-sm font-semibold text-gray-700">
-          تكاليف تشغيل إضافية{" "}
-          <span className="font-normal text-gray-500">(اختياري)</span>
+          {en ? "Additional operating costs" : "تكاليف تشغيل إضافية"}{" "}
+          <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
         </label>
         <input
           id="product-overhead"
@@ -162,14 +165,14 @@ export default function ProductForm({ product }: ProductFormProps) {
       <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <label className="text-sm font-semibold text-gray-700">
-            نسبة الربح %
+            {en ? "Profit margin %" : "نسبة الربح %"}
           </label>
           <span className="text-sm font-bold text-brand-700">
             {profitMargin}%
           </span>
         </div>
         <input
-          aria-label="نسبة الربح بالنسبة المئوية"
+          aria-label={en ? "Profit margin percentage" : "نسبة الربح بالنسبة المئوية"}
           type="range"
           min={0}
           max={90}
@@ -179,7 +182,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           className="w-full accent-brand-600"
         />
         <input
-          aria-label="نسبة الربح بالنسبة المئوية"
+          aria-label={en ? "Profit margin percentage" : "نسبة الربح بالنسبة المئوية"}
           type="number"
           inputMode="decimal"
           min={0}
@@ -192,13 +195,13 @@ export default function ProductForm({ product }: ProductFormProps) {
 
       <div className="rounded-lg bg-brand-900 p-5 text-white shadow-sm">
         <div className="mb-3 flex items-center justify-between text-sm text-brand-100">
-          <span>سعر التكلفة</span>
-          <span className="font-semibold">{formatSAR(result.totalCost)}</span>
+          <span>{en ? "Cost" : "سعر التكلفة"}</span>
+          <span className="font-semibold">{formatSAR(result.totalCost, language)}</span>
         </div>
         <div className="border-t border-brand-700 pt-3">
-          <p className="mb-1 text-xs text-brand-200">سعر البيع المقترح</p>
+          <p className="mb-1 text-xs text-brand-200">{en ? "Suggested selling price" : "سعر البيع المقترح"}</p>
           <p className="text-3xl font-extrabold">
-            {formatSAR(result.sellingPrice)}
+            {formatSAR(result.sellingPrice, language)}
           </p>
         </div>
       </div>
@@ -214,7 +217,7 @@ export default function ProductForm({ product }: ProductFormProps) {
         disabled={saving}
         className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition active:bg-brand-800 disabled:opacity-60"
       >
-        {saving ? "جاري الحفظ..." : "حفظ"}
+        {saving ? (en ? "Saving..." : "جاري الحفظ...") : (en ? "Save" : "حفظ")}
       </button>
 
       {isEdit && (
@@ -222,7 +225,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           type="button"
           onClick={handleDelete}
           disabled={deleting}
-          aria-label={deletingConfirm ? "اضغط مرة ثانية لتأكيد الحذف" : "حذف المنتج"}
+          aria-label={deletingConfirm ? (en ? "Press again to confirm deletion" : "اضغط مرة ثانية لتأكيد الحذف") : (en ? "Delete product" : "حذف المنتج")}
           className={`flex w-full items-center justify-center gap-1.5 rounded-lg border py-3 text-sm font-semibold transition active:bg-red-50 disabled:opacity-60 ${
             deletingConfirm
               ? "border-red-500 bg-red-500 text-white"
@@ -230,7 +233,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           }`}
         >
           <Trash2 className="h-4 w-4" />
-          {deleting ? "جاري الحذف..." : deletingConfirm ? "اضغط مرة ثانية للتأكيد" : "حذف المنتج"}
+          {deleting ? (en ? "Deleting..." : "جاري الحذف...") : deletingConfirm ? (en ? "Press again to confirm" : "اضغط مرة ثانية للتأكيد") : (en ? "Delete product" : "حذف المنتج")}
         </button>
       )}
     </form>

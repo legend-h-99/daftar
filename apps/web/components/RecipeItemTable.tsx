@@ -7,9 +7,11 @@ import {
   RecipeItem,
   RecipeItemType,
   UNIT_LABELS,
+  UNIT_LABELS_EN,
 } from "@/lib/types";
 import { formatSAR } from "@/lib/format";
 import { lineCost } from "@/lib/calc";
+import { useLanguage } from "@/lib/language";
 
 const UNIT_OPTIONS: MaterialUnit[] = ["KG", "GRAM", "LITER", "ML", "PIECE"];
 const FREE_ENTRY = "__free__";
@@ -34,6 +36,9 @@ export default function RecipeItemTable({
   onChange,
   materials = [],
 }: RecipeItemTableProps) {
+  const { language } = useLanguage();
+  const en = language === "en";
+  const unitLabels = en ? UNIT_LABELS_EN : UNIT_LABELS;
   function updateItem(index: number, patch: Partial<RecipeItem>) {
     const next = items.map((item, i) =>
       i === index ? { ...item, ...patch } : item,
@@ -73,12 +78,12 @@ export default function RecipeItemTable({
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         <span className="text-xs font-semibold text-gray-500">
-          {formatSAR(subtotal)}
+          {formatSAR(subtotal, language)}
         </span>
       </div>
 
       {items.length === 0 && (
-        <p className="mb-3 text-xs text-gray-500">لا توجد عناصر بعد</p>
+        <p className="mb-3 text-xs text-gray-500">{en ? "No items yet" : "لا توجد عناصر بعد"}</p>
       )}
 
       <div className="flex flex-col gap-3">
@@ -90,31 +95,31 @@ export default function RecipeItemTable({
             <div className="mb-2 flex items-center gap-2">
               {materials.length > 0 ? (
                 <select
-                  aria-label="اختر المادة من المخزون"
+                  aria-label={en ? "Choose an ingredient from stock" : "اختر المادة من المخزون"}
                   value={item.materialId ?? FREE_ENTRY}
                   onChange={(e) => selectMaterial(index, e.target.value)}
                   className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500"
                 >
-                  <option value={FREE_ENTRY}>✏️ إدخال حر (بدون ربط بالمخزون)</option>
+                  <option value={FREE_ENTRY}>{en ? "✏️ Custom entry (not linked to stock)" : "✏️ إدخال حر (بدون ربط بالمخزون)"}</option>
                   {materials.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} — {UNIT_LABELS[m.unit]} ({formatSAR(m.unitPrice)})
+                      {m.name} — {unitLabels[m.unit]} ({formatSAR(m.unitPrice, language)})
                     </option>
                   ))}
                 </select>
               ) : (
                 <input
-                  aria-label="اسم المادة"
+                  aria-label={en ? "Ingredient name" : "اسم المادة"}
                   value={item.name}
                   onChange={(e) => updateItem(index, { name: e.target.value })}
-                  placeholder="اسم المادة"
+                  placeholder={en ? "Ingredient name" : "اسم المادة"}
                   className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500"
                 />
               )}
               <button
                 type="button"
                 onClick={() => removeItem(index)}
-                aria-label="حذف"
+                aria-label={en ? "Remove" : "حذف"}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
               >
                 <Trash2 className="h-4 w-4" />
@@ -123,10 +128,10 @@ export default function RecipeItemTable({
 
             {!item.materialId && materials.length > 0 && (
               <input
-                aria-label="اسم المادة"
+                aria-label={en ? "Ingredient name" : "اسم المادة"}
                 value={item.name}
                 onChange={(e) => updateItem(index, { name: e.target.value })}
-                placeholder="اسم المادة"
+                placeholder={en ? "Ingredient name" : "اسم المادة"}
                 className="mb-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500"
               />
             )}
@@ -134,15 +139,15 @@ export default function RecipeItemTable({
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="mb-1 block text-[11px] font-medium text-gray-500">
-                  الوحدة
+                  {en ? "Unit" : "الوحدة"}
                 </label>
                 {item.materialId ? (
                   <div className="w-full rounded-lg border border-gray-100 bg-gray-100 px-2 py-2 text-sm text-gray-600">
-                    {UNIT_LABELS[item.unit]}
+                    {unitLabels[item.unit]}
                   </div>
                 ) : (
                   <select
-                    aria-label="الوحدة"
+                    aria-label={en ? "Unit" : "الوحدة"}
                     value={item.unit}
                     onChange={(e) =>
                       updateItem(index, { unit: e.target.value as MaterialUnit })
@@ -151,7 +156,7 @@ export default function RecipeItemTable({
                   >
                     {UNIT_OPTIONS.map((u) => (
                       <option key={u} value={u}>
-                        {UNIT_LABELS[u]}
+                        {unitLabels[u]}
                       </option>
                     ))}
                   </select>
@@ -159,18 +164,18 @@ export default function RecipeItemTable({
               </div>
               <div className="flex-1">
                 <label className="mb-1 block text-[11px] font-medium text-gray-500">
-                  السعر
+                  {en ? "Price" : "السعر"}
                 </label>
                 {item.materialId ? (
                   <div
                     className="w-full rounded-lg border border-gray-100 bg-gray-100 px-2 py-2 text-sm text-gray-600"
-                    title="السعر مسحوب من المخزون ويتحدث تلقائيًا"
+                    title={en ? "Price comes from stock and updates automatically" : "السعر مسحوب من المخزون ويتحدث تلقائيًا"}
                   >
                     {item.unitPrice}
                   </div>
                 ) : (
                   <input
-                    aria-label="السعر"
+                    aria-label={en ? "Price" : "السعر"}
                     type="number"
                     inputMode="decimal"
                     min={0}
@@ -185,10 +190,10 @@ export default function RecipeItemTable({
               </div>
               <div className="flex-1">
                 <label className="mb-1 block text-[11px] font-medium text-gray-500">
-                  الكمية المستخدمة
+                  {en ? "Quantity used" : "الكمية المستخدمة"}
                 </label>
                 <input
-                  aria-label="الكمية المستخدمة"
+                  aria-label={en ? "Quantity used" : "الكمية المستخدمة"}
                   type="number"
                   inputMode="decimal"
                   min={0}
@@ -207,12 +212,12 @@ export default function RecipeItemTable({
             <div className="mt-2 flex items-center justify-between text-xs font-semibold text-gray-500">
               {item.materialId ? (
                 <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">
-                  📦 من المخزون
+                  📦 {en ? "From stock" : "من المخزون"}
                 </span>
               ) : (
                 <span />
               )}
-              <span>التكلفة: {formatSAR(lineCost(item))}</span>
+              <span>{en ? "Cost:" : "التكلفة:"} {formatSAR(lineCost(item), language)}</span>
             </div>
           </div>
         ))}
@@ -224,7 +229,7 @@ export default function RecipeItemTable({
         className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-brand-300 py-2.5 text-sm font-semibold text-brand-700 active:bg-brand-50"
       >
         <Plus className="h-4 w-4" />
-        إضافة
+        {en ? "Add" : "إضافة"}
       </button>
     </div>
   );

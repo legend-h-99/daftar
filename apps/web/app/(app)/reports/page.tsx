@@ -2,15 +2,16 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
 import {
   formatSAR,
   formatMonthLabel,
   percentOf,
 } from "@/lib/format";
-import { DashboardSummary, Expense, EXPENSE_CATEGORY_LABELS } from "@/lib/types";
+import { DashboardSummary, Expense, EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_LABELS_EN } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
+import { useLanguage } from "@/lib/language";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import CostBar from "@/components/reports/CostBar";
@@ -23,6 +24,8 @@ interface ReportsPageData {
 }
 
 export default function ReportsPage() {
+  const { language } = useLanguage();
+  const en = language === "en";
   const {
     month,
     data,
@@ -40,7 +43,7 @@ export default function ReportsPage() {
       ]);
       return { summary, expenses };
     },
-    errorMessage: (err) => err instanceof ApiError ? err.message : "تعذر تحميل البيانات",
+    errorMessage: (err) => err instanceof ApiError ? err.message : en ? "Could not load report data" : "تعذر تحميل البيانات",
   });
 
   const summary = data?.summary ?? null;
@@ -68,29 +71,29 @@ export default function ReportsPage() {
       <div className="flex items-center gap-3">
         <Link
           href="/dashboard"
-          aria-label="رجوع"
+          aria-label={en ? "Back" : "رجوع"}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
-          <ArrowRight className="h-5 w-5" />
+          {en ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
         </Link>
         <div className="flex flex-1 items-center justify-between">
-          <h1 className="text-xl font-extrabold text-gray-900">التقارير</h1>
+          <h1 className="text-xl font-extrabold text-gray-900">{en ? "Reports" : "التقارير"}</h1>
           <div className="flex items-center gap-1">
             <button
               onClick={previousMonth}
               className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-              aria-label="الشهر السابق"
+              aria-label={en ? "Previous month" : "الشهر السابق"}
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
             <span className="min-w-[80px] text-center text-sm font-medium text-gray-600">
-              {formatMonthLabel(month)}
+              {formatMonthLabel(month, language)}
             </span>
             <button
               onClick={nextMonth}
               disabled={isCurrentMonth}
               className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 active:bg-gray-100 disabled:opacity-30"
-              aria-label="الشهر التالي"
+              aria-label={en ? "Next month" : "الشهر التالي"}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -100,7 +103,7 @@ export default function ReportsPage() {
 
       <div aria-live="polite">
         {loading && (
-          <div role="status" aria-label="جاري تحميل التقرير" className="flex flex-col gap-3">
+          <div role="status" aria-label={en ? "Loading report" : "جاري تحميل التقرير"} className="flex flex-col gap-3">
             <Skeleton className="h-28 rounded-2xl" />
             <Skeleton className="h-44 rounded-2xl" />
             <Skeleton className="h-40 rounded-2xl" />
@@ -114,7 +117,7 @@ export default function ReportsPage() {
               onClick={reload}
               className="text-xs font-semibold text-red-700 underline underline-offset-2"
             >
-              حاول مرة ثانية
+              {en ? "Try again" : "حاول مرة ثانية"}
             </button>
           </Alert>
         )}
@@ -133,7 +136,7 @@ export default function ReportsPage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-500">
-                    صافي الربح · {formatMonthLabel(month)}
+                    {en ? "Net profit" : "صافي الربح"} · {formatMonthLabel(month, language)}
                   </span>
                   <span
                     className={`rounded-xl p-2 ${
@@ -148,19 +151,19 @@ export default function ReportsPage() {
                     isProfit ? "text-brand-700" : "text-red-600"
                   }`}
                 >
-                  {formatSAR(summary.netProfit)}
+                  {formatSAR(summary.netProfit, language)}
                 </span>
                 <span className="text-sm text-gray-500">
                   {isProfit
-                    ? `هامش الربح ${marginPct}% من المبيعات`
-                    : `التكاليف تتجاوز المبيعات بـ ${formatSAR(Math.abs(summary.netProfit))}`}
+                    ? en ? `${marginPct}% profit margin` : `هامش الربح ${marginPct}% من المبيعات`
+                    : en ? `Costs exceed sales by ${formatSAR(Math.abs(summary.netProfit), language)}` : `التكاليف تتجاوز المبيعات بـ ${formatSAR(Math.abs(summary.netProfit), language)}`}
                 </span>
               </div>
 
               {/* Bar chart */}
               <div className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
                 <h2 className="mb-4 text-sm font-bold text-gray-900">
-                  مقارنة بصرية
+                  {en ? "Visual comparison" : "مقارنة بصرية"}
                 </h2>
                 <CostBar
                   sales={summary.totalSales}
@@ -174,18 +177,18 @@ export default function ReportsPage() {
               {/* Expense breakdown by category */}
               {expenseByCategory.length > 0 && (
                 <div className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
-                  <h2 className="mb-3 text-sm font-bold text-gray-900">
-                    تفصيل المصاريف
+                    <h2 className="mb-3 text-sm font-bold text-gray-900">
+                    {en ? "Expense breakdown" : "تفصيل المصاريف"}
                   </h2>
                   <div className="flex flex-col gap-2.5">
                     {expenseByCategory.map(({ category, amount, pct }) => (
                       <div key={category}>
                         <div className="mb-1 flex items-center justify-between text-sm">
                           <span className="font-medium text-gray-700">
-                            {EXPENSE_CATEGORY_LABELS[category]}
+                            {en ? EXPENSE_CATEGORY_LABELS_EN[category] : EXPENSE_CATEGORY_LABELS[category]}
                           </span>
                           <span className="font-semibold text-gray-900">
-                            {formatSAR(amount)}
+                            {formatSAR(amount, language)}
                             <span className="mr-1.5 text-xs font-normal text-gray-400">
                               {pct}%
                             </span>

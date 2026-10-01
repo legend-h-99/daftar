@@ -2,10 +2,11 @@
 
 import { ChangeEvent, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Camera, ScanLine } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, ScanLine } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { OcrDraft } from "@/lib/types";
 import PurchaseForm from "@/components/PurchaseForm";
+import { useLanguage } from "@/lib/language";
 
 /**
  * OCR flow: photograph/upload a purchase invoice → the backend extracts a
@@ -13,16 +14,20 @@ import PurchaseForm from "@/components/PurchaseForm";
  * → only their confirmation saves anything.
  */
 export default function ScanPurchasePage() {
+  const { language } = useLanguage();
+  const en = language === "en";
   const [draft, setDraft] = useState<OcrDraft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scanUnavailable, setScanUnavailable] = useState(false);
 
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setScanning(true);
     setError(null);
+    setScanUnavailable(false);
 
     const imageBase64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -36,7 +41,15 @@ export default function ScanPurchasePage() {
       const result = await apiPost<OcrDraft>("/purchases/scan", { imageBase64 });
       setDraft(result);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر قراءة الفاتورة");
+      const unavailable = err instanceof ApiError && err.status === 501;
+      setScanUnavailable(unavailable);
+      setError(unavailable
+        ? en
+          ? "Automatic invoice reading is unavailable right now. Enter the purchase details manually instead."
+          : "قراءة الفاتورة تلقائيًا غير متاحة حاليًا. يمكنك إدخال الشراء يدويًا."
+        : err instanceof ApiError
+          ? err.message
+          : en ? "Could not read the invoice" : "تعذر قراءة الفاتورة");
     } finally {
       setScanning(false);
     }
@@ -47,15 +60,15 @@ export default function ScanPurchasePage() {
       <div className="flex items-center gap-3">
         <Link
           href="/purchases"
-          aria-label="رجوع"
+          aria-label={en ? "Back" : "رجوع"}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
-          <ArrowRight className="h-5 w-5" />
+          {en ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
         </Link>
         <div>
-          <h1 className="text-xl font-extrabold text-gray-900">تصوير فاتورة شراء</h1>
+          <h1 className="text-xl font-extrabold text-gray-900">{en ? "Scan purchase invoice" : "تصوير فاتورة شراء"}</h1>
           <p className="text-xs text-gray-500">
-            نقرأ الفاتورة ونعبّي البيانات — وأنت تراجع وتعتمد
+            {en ? "We read the invoice and fill in the details for you to review" : "نقرأ الفاتورة ونعبّي البيانات — وأنت تراجع وتعتمد"}
           </p>
         </div>
       </div>
@@ -84,33 +97,37 @@ export default function ScanPurchasePage() {
             )}
           </span>
           <p className="font-bold text-gray-800">
-            {scanning ? "جاري قراءة الفاتورة..." : "صوّر الفاتورة أو اختر صورة"}
+            {scanning ? (en ? "Reading invoice..." : "جاري قراءة الفاتورة...") : (en ? "Take a photo or choose an image" : "صوّر الفاتورة أو اختر صورة")}
           </p>
           <p className="text-sm text-gray-500">
-            ما ينحفظ شي إلا بعد ما تراجع البيانات وتضغط حفظ
+            {en ? "Nothing is saved until you review the details and press Save" : "ما ينحفظ شي إلا بعد ما تراجع البيانات وتضغط حفظ"}
           </p>
         </label>
       )}
 
       {error && (
-        <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
-          {error}
-        </p>
+        <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+          <p>{error}</p>
+          {scanUnavailable && (
+            <Link href="/purchases/new" className="mt-2 inline-flex font-bold underline underline-offset-2">
+              {en ? "Enter purchase manually" : "إدخال الشراء يدويًا"}
+            </Link>
+          )}
+        </div>
       )}
 
       {draft && (
         <>
           {draft.provider === "mock" && (
             <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-              وضع تجريبي: هذه بيانات توضيحية وليست قراءة فعلية للصورة — راجعها
-              وعدّلها قبل الحفظ
+            {en ? "Demo mode: these are sample details, not values read from your image. Review and edit them before saving." : "وضع تجريبي: هذه بيانات توضيحية وليست قراءة فعلية للصورة — راجعها وعدّلها قبل الحفظ"}
             </div>
           )}
           {preview && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={preview}
-              alt="صورة الفاتورة"
+              alt={en ? "Invoice image" : "صورة الفاتورة"}
               className="max-h-44 w-full rounded-lg border border-gray-100 object-cover"
             />
           )}

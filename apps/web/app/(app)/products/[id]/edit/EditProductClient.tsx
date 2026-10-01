@@ -6,8 +6,11 @@ import { apiGet, ApiError } from "@/lib/api";
 import { Product } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
+import { useLanguage } from "@/lib/language";
 
 export default function EditProductClient({ productId }: { productId: string }) {
+  const { language } = useLanguage();
+  const en = language === "en";
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,21 +22,21 @@ export default function EditProductClient({ productId }: { productId: string }) 
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : "تعذر تحميل المنتج");
+          setError(err instanceof ApiError ? err.message : en ? "Could not load product" : "تعذر تحميل المنتج");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, en]);
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-xl font-extrabold text-gray-900">
-          حاسبة تكلفة المنتج
+          {en ? "Product cost calculator" : "حاسبة تكلفة المنتج"}
         </h1>
-        <p className="text-sm text-gray-500">عدّل مكونات منتجك وسعره</p>
+        <p className="text-sm text-gray-500">{en ? "Edit your product ingredients and price" : "عدّل مكونات منتجك وسعره"}</p>
       </div>
 
       {error && (
