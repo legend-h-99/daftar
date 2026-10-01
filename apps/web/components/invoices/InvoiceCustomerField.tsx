@@ -5,6 +5,7 @@ import { UserPlus, X } from "lucide-react";
 import { Customer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
+import { useLanguage } from "@/lib/language";
 
 /** حقل اختيار الزبون: بحث + قائمة مقترحة + إنشاء زبون جديد بالكتابة. */
 export default function InvoiceCustomerField({
@@ -22,6 +23,8 @@ export default function InvoiceCustomerField({
   onSelect: (customer: Customer) => void;
   onClear: () => void;
 }) {
+  const { language } = useLanguage();
+  const en = language === "en";
   const [showList, setShowList] = useState(false);
 
   const filtered = useMemo(() => {
@@ -33,10 +36,10 @@ export default function InvoiceCustomerField({
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
       <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-        الزبون <span className="font-normal text-gray-500">(اختياري)</span>
+        {en ? "Customer" : "الزبون"} <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
       </label>
       <div className="relative">
-        <UserPlus className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+        <UserPlus className={`pointer-events-none absolute ${en ? "left-3.5" : "right-3.5"} top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500`} />
         <input
           value={query}
           onChange={(e) => {
@@ -44,15 +47,15 @@ export default function InvoiceCustomerField({
             setShowList(true);
           }}
           onFocus={() => setShowList(true)}
-          placeholder="اكتب اسم الزبون أو اختر من القائمة"
-          className={cn(fieldClass, "pr-10")}
+          placeholder={en ? "Enter a customer name or choose from the list" : "اكتب اسم الزبون أو اختر من القائمة"}
+          className={cn(fieldClass, en ? "pl-10" : "pr-10")}
         />
         {query && (
           <button
             type="button"
             onClick={onClear}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-            aria-label="مسح"
+            className={`absolute ${en ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 text-gray-500`}
+            aria-label={en ? "Clear" : "مسح"}
           >
             <X className="h-4 w-4" />
           </button>
@@ -68,7 +71,7 @@ export default function InvoiceCustomerField({
                   onSelect(c);
                   setShowList(false);
                 }}
-                className="w-full px-3 py-2.5 text-right text-sm text-gray-700 active:bg-gray-50"
+                className={`w-full px-3 py-2.5 text-sm text-gray-700 active:bg-gray-50 ${en ? "text-left" : "text-right"}`}
               >
                 {c.name}
               </button>
@@ -78,7 +81,7 @@ export default function InvoiceCustomerField({
       )}
       {!selected && query.trim() && (
         <p className="mt-1.5 text-xs text-gray-500">
-          سيتم إضافة &quot;{query.trim()}&quot; كزبون جديد
+          {en ? `“${query.trim()}” will be added as a new customer` : <>سيتم إضافة &quot;{query.trim()}&quot; كزبون جديد</>}
         </p>
       )}
     </div>

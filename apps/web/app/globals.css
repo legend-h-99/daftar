@@ -119,8 +119,23 @@ body {
   border-radius: inherit;
 }
 
-:where(input, textarea, select):focus-visible {
+  :where(input, textarea, select):focus-visible {
   outline: none;
+}
+
+/* Keep native form controls readable in dark mode, including browsers that
+   apply their own light autofill surface over utility-class backgrounds. */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color: var(--foreground);
+  background-color: var(--input);
+}
+
+html.dark input:focus,
+html.dark textarea:focus,
+html.dark select:focus {
+  background-color: var(--background);
 }
 
 @keyframes page-enter {

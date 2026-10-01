@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import { InvoiceItem, Product } from "@/lib/types";
 import { formatSAR } from "@/lib/format";
+import { useLanguage } from "@/lib/language";
 
 /** محرّر أصناف الفاتورة: منتقي منتج + صفوف قابلة للتعديل (سعر/كمية/حذف). */
 export default function InvoiceItemsEditor({
@@ -20,18 +21,20 @@ export default function InvoiceItemsEditor({
   onRemove: (index: number) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const { language } = useLanguage();
+  const en = language === "en";
 
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-gray-900">الأصناف</h3>
+        <h3 className="text-sm font-bold text-gray-900">{en ? "Items" : "الأصناف"}</h3>
         <button
           type="button"
           onClick={() => setShowPicker((v) => !v)}
           className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700"
         >
           <Search className="h-3.5 w-3.5" />
-          اختر منتج
+          {en ? "Choose a product" : "اختر منتج"}
         </button>
       </div>
 
@@ -39,7 +42,7 @@ export default function InvoiceItemsEditor({
         <ul className="mb-3 flex max-h-48 flex-col divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-100">
           {products.length === 0 && (
             <li className="px-3 py-2.5 text-sm text-gray-500">
-              لا يوجد منتجات مضافة بعد
+              {en ? "No products have been added yet" : "لا يوجد منتجات مضافة بعد"}
             </li>
           )}
           {products.map((p) => (
@@ -61,7 +64,7 @@ export default function InvoiceItemsEditor({
       )}
 
       {items.length === 0 ? (
-        <p className="text-xs text-gray-500">لم تضف أي صنف بعد</p>
+        <p className="text-xs text-gray-500">{en ? "No items added yet" : "لم تضف أي صنف بعد"}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {items.map((item, index) => (
@@ -78,7 +81,7 @@ export default function InvoiceItemsEditor({
                 <button
                   type="button"
                   onClick={() => onRemove(index)}
-                  aria-label="حذف"
+                  aria-label={en ? "Remove" : "حذف"}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -88,7 +91,7 @@ export default function InvoiceItemsEditor({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1">
                   <label className="text-[11px] font-medium text-gray-500">
-                    سعر الوحدة
+                    {en ? "Unit price" : "سعر الوحدة"}
                   </label>
                   <input
                     type="number"
@@ -131,7 +134,7 @@ export default function InvoiceItemsEditor({
               </div>
 
               <div className="mt-2 text-left text-xs font-semibold text-gray-500">
-                الإجمالي: {formatSAR(item.unitPrice * item.quantity)}
+                {en ? "Total:" : "الإجمالي:"} {formatSAR(item.unitPrice * item.quantity, language)}
               </div>
             </div>
           ))}

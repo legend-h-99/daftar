@@ -52,7 +52,9 @@ export default function TopBar({ businessName }: TopBarProps) {
           <button
             type="button"
             onClick={toggleTheme}
-            aria-label={resolvedTheme === "dark" ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"}
+            aria-label={language === "en"
+              ? resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+              : resolvedTheme === "dark" ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"}
             className="motion-press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
           >
             {resolvedTheme === "dark" ? (

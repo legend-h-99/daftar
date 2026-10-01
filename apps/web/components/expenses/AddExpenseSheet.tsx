@@ -2,11 +2,13 @@
 
 import { FormEvent, useState } from "react";
 import { apiPost, ApiError } from "@/lib/api";
-import { currentDateStr } from "@/lib/format";
 import {
   EXPENSE_CATEGORY_LABELS,
+  EXPENSE_CATEGORY_LABELS_EN,
   ExpenseCategory,
 } from "@/lib/types";
+import { useLanguage } from "@/lib/language";
+import { currentDateStr } from "@/lib/format";
 import BottomSheet from "@/components/BottomSheet";
 import { ErrorAlert, Field, fieldClass } from "@/components/ui/form-field";
 
@@ -25,20 +27,22 @@ export default function AddExpenseSheet({
 }) {
   const [category, setCategory] = useState<ExpenseCategory>("INGREDIENTS");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(currentDateStr);
+  const [date, setDate] = useState(() => currentDateStr());
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const en = language === "en";
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     const value = Number(amount);
     if (!value || value <= 0) {
-      setFormError("أدخل مبلغ صحيح");
+      setFormError(en ? "Enter a valid amount" : "أدخل مبلغ صحيح");
       return;
     }
     if (!date) {
-      setFormError("اختر التاريخ");
+      setFormError(en ? "Choose a date" : "اختر التاريخ");
       return;
     }
     setSaving(true);
@@ -53,31 +57,31 @@ export default function AddExpenseSheet({
       onSaved();
       onClose();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "تعذر إضافة المصروف");
+      setFormError(err instanceof ApiError ? err.message : en ? "Could not add expense" : "تعذر إضافة المصروف");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <BottomSheet title="مصروف جديد" onClose={onClose}>
+    <BottomSheet title={en ? "New expense" : "مصروف جديد"} onClose={onClose}>
       <form onSubmit={handleAdd} className="flex flex-col gap-4">
-        <Field label="الفئة" htmlFor="expense-category">
+        <Field label={en ? "Category" : "الفئة"} htmlFor="expense-category">
           <select
             id="expense-category"
             value={category}
-            onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+            onChange={(e) => { setCategory(e.target.value as ExpenseCategory); setFormError(null); }}
             className={fieldClass}
           >
             {CATEGORY_OPTIONS.map(([value, label]) => (
               <option key={value} value={value}>
-                {label}
+                {en ? EXPENSE_CATEGORY_LABELS_EN[value] : label}
               </option>
             ))}
           </select>
         </Field>
 
-        <Field label="المبلغ" htmlFor="expense-amount">
+        <Field label={en ? "Amount" : "المبلغ"} htmlFor="expense-amount">
           <input
             id="expense-amount"
             type="number"
@@ -85,28 +89,28 @@ export default function AddExpenseSheet({
             min={0}
             step="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => { setAmount(e.target.value); setFormError(null); }}
             placeholder="0.00"
             className={fieldClass}
           />
         </Field>
 
-        <Field label="التاريخ" htmlFor="expense-date">
+        <Field label={en ? "Date" : "التاريخ"} htmlFor="expense-date">
           <input
             id="expense-date"
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => { setDate(e.target.value); setFormError(null); }}
             className={fieldClass}
           />
         </Field>
 
-        <Field label="ملاحظة" htmlFor="expense-note" hint="(اختياري)">
+        <Field label={en ? "Note" : "ملاحظة"} htmlFor="expense-note" hint={en ? "(optional)" : "(اختياري)"}>
           <input
             id="expense-note"
             value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="مثال: فاتورة كهرباء شهر ٧"
+            onChange={(e) => { setNote(e.target.value); setFormError(null); }}
+            placeholder={en ? "e.g. July electricity bill" : "مثال: فاتورة كهرباء شهر ٧"}
             className={fieldClass}
           />
         </Field>
@@ -118,7 +122,7 @@ export default function AddExpenseSheet({
           disabled={saving}
           className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
         >
-          {saving ? "جاري الحفظ..." : "حفظ"}
+          {saving ? (en ? "Saving..." : "جاري الحفظ...") : (en ? "Save" : "حفظ")}
         </button>
       </form>
     </BottomSheet>

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { DEMO_MODE } from "@/lib/demo-api";
 import { Customer, Invoice, InvoiceItem, Product } from "@/lib/types";
@@ -13,10 +13,13 @@ import { fieldClass } from "@/components/ui/form-field";
 import InvoiceCustomerField from "@/components/invoices/InvoiceCustomerField";
 import InvoiceItemsEditor from "@/components/invoices/InvoiceItemsEditor";
 import InvoiceSummary from "@/components/invoices/InvoiceSummary";
+import { useLanguage } from "@/lib/language";
 
 export default function NewInvoicePage() {
   const router = useRouter();
   const { business } = useBusiness();
+  const { language } = useLanguage();
+  const en = language === "en";
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,24 +37,27 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     apiGet<Customer[]>("/customers").then(setCustomers).catch((err) => {
-      setError(err instanceof ApiError ? err.message : "تعذر تحميل العملاء");
+      setError(err instanceof ApiError ? err.message : en ? "Could not load customers" : "تعذر تحميل العملاء");
     });
     apiGet<Product[]>("/products").then(setProducts).catch((err) => {
-      setError(err instanceof ApiError ? err.message : "تعذر تحميل المنتجات");
+      setError(err instanceof ApiError ? err.message : en ? "Could not load products" : "تعذر تحميل المنتجات");
     });
-  }, []);
+  }, [en]);
 
   function selectCustomer(c: Customer) {
+    setError(null);
     setSelectedCustomer(c);
     setCustomerQuery(c.name);
   }
 
   function clearCustomer() {
+    setError(null);
     setSelectedCustomer(null);
     setCustomerQuery("");
   }
 
   function addProductLine(product: Product) {
+    setError(null);
     setItems((prev) => [
       ...prev,
       {
@@ -64,6 +70,7 @@ export default function NewInvoicePage() {
   }
 
   function updateItem(index: number, patch: Partial<InvoiceItem>) {
+    setError(null);
     setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item)),
     );
@@ -83,7 +90,7 @@ export default function NewInvoicePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (items.length === 0) {
-      setError("أضف صنف واحد على الأقل");
+      setError(en ? "Add at least one item" : "أضف صنف واحد على الأقل");
       return;
     }
     setError(null);
@@ -111,7 +118,7 @@ export default function NewInvoicePage() {
       });
       router.push(DEMO_MODE ? "/invoices?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر إنشاء الفاتورة");
+      setError(err instanceof ApiError ? err.message : en ? "Could not create invoice" : "تعذر إنشاء الفاتورة");
     } finally {
       setSaving(false);
     }
@@ -122,12 +129,12 @@ export default function NewInvoicePage() {
       <div className="flex items-center gap-3">
         <Link
           href="/invoices"
-          aria-label="رجوع"
+          aria-label={en ? "Back" : "رجوع"}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
-          <ArrowRight className="h-5 w-5" />
+          {en ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
         </Link>
-        <h1 className="text-xl font-extrabold text-gray-900">فاتورة جديدة</h1>
+        <h1 className="text-xl font-extrabold text-gray-900">{en ? "New invoice" : "فاتورة جديدة"}</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -136,6 +143,7 @@ export default function NewInvoicePage() {
           query={customerQuery}
           selected={selectedCustomer}
           onQueryChange={(value) => {
+            setError(null);
             setCustomerQuery(value);
             setSelectedCustomer(null);
           }}
@@ -154,13 +162,13 @@ export default function NewInvoicePage() {
         {/* Due date */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            تاريخ الاستحقاق{" "}
-            <span className="font-normal text-gray-500">(اختياري)</span>
+            {en ? "Due date" : "تاريخ الاستحقاق"}{" "}
+            <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
           </label>
           <input
             type="date"
             value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
+            onChange={(e) => { setDueDate(e.target.value); setError(null); }}
             className={fieldClass}
           />
         </div>
@@ -168,11 +176,11 @@ export default function NewInvoicePage() {
         {/* Notes */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            ملاحظات <span className="font-normal text-gray-500">(اختياري)</span>
+            {en ? "Notes" : "ملاحظات"} <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
           </label>
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => { setNotes(e.target.value); setError(null); }}
             rows={2}
             className={cn(fieldClass, "resize-none")}
           />
@@ -196,7 +204,7 @@ export default function NewInvoicePage() {
           disabled={saving}
           className="w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition active:bg-brand-800 disabled:opacity-60"
         >
-          {saving ? "جاري الحفظ..." : "حفظ الفاتورة"}
+            {saving ? (en ? "Saving..." : "جاري الحفظ...") : (en ? "Save invoice" : "حفظ الفاتورة")}
         </button>
       </form>
     </div>

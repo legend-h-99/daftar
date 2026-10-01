@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
-import { currentDateStr, formatSAR } from "@/lib/format";
+import { formatSAR } from "@/lib/format";
 import { Material, OcrDraft, PurchaseSource } from "@/lib/types";
 import PurchaseRow, {
   emptyRow,
@@ -12,6 +12,8 @@ import PurchaseRow, {
   purchaseInputClass,
   RowState,
 } from "@/components/purchases/PurchaseRow";
+import { useLanguage } from "@/lib/language";
+import { currentDateStr } from "@/lib/format";
 
 /**
  * Shared purchase entry form. Used empty for manual entry, or pre-filled
@@ -25,6 +27,8 @@ export default function PurchaseForm({
   draft?: OcrDraft;
   source: PurchaseSource;
 }) {
+  const { language } = useLanguage();
+  const en = language === "en";
   const router = useRouter();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [supplierName, setSupplierName] = useState(draft?.supplierName ?? "");
@@ -48,9 +52,9 @@ export default function PurchaseForm({
 
   useEffect(() => {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
-      setError(err instanceof ApiError ? err.message : "تعذر تحميل المواد الخام");
+      setError(err instanceof ApiError ? err.message : en ? "Could not load ingredients" : "تعذر تحميل المواد الخام");
     });
-  }, []);
+  }, [en]);
 
   const total = useMemo(
     () =>
@@ -62,6 +66,7 @@ export default function PurchaseForm({
   );
 
   function updateRow(index: number, patch: Partial<RowState>) {
+    setError(null);
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
 
@@ -97,7 +102,7 @@ export default function PurchaseForm({
         unitPrice: Number(r.unitPrice) || 0,
       }));
     if (items.length === 0) {
-      setError("أضف صنف واحد على الأقل بكمية صحيحة");
+      setError(en ? "Add at least one item with a valid quantity" : "أضف صنف واحد على الأقل بكمية صحيحة");
       return;
     }
     setSaving(true);
@@ -111,7 +116,7 @@ export default function PurchaseForm({
       });
       router.push("/inventory?purchaseUpdated=1");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "تعذر حفظ فاتورة الشراء");
+      setError(err instanceof ApiError ? err.message : en ? "Could not save purchase" : "تعذر حفظ فاتورة الشراء");
       setSaving(false);
     }
   }
@@ -121,25 +126,25 @@ export default function PurchaseForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            المورد <span className="font-normal text-gray-500">(اختياري)</span>
+            {en ? "Supplier" : "المورد"} <span className="font-normal text-gray-500">{en ? "(optional)" : "(اختياري)"}</span>
           </label>
           <input
-            aria-label="اسم المورد"
+            aria-label={en ? "Supplier name" : "اسم المورد"}
             value={supplierName}
-            onChange={(e) => setSupplierName(e.target.value)}
-            placeholder="اسم المورد"
+            onChange={(e) => { setSupplierName(e.target.value); setError(null); }}
+            placeholder={en ? "Supplier name" : "اسم المورد"}
             className={purchaseInputClass}
           />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            التاريخ
+            {en ? "Date" : "التاريخ"}
           </label>
           <input
-            aria-label="تاريخ فاتورة الشراء"
+            aria-label={en ? "Purchase date" : "تاريخ فاتورة الشراء"}
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => { setDate(e.target.value); setError(null); }}
             className={purchaseInputClass}
           />
         </div>
@@ -160,16 +165,16 @@ export default function PurchaseForm({
 
       <button
         type="button"
-        onClick={() => setRows((prev) => [...prev, emptyRow()])}
+        onClick={() => { setError(null); setRows((prev) => [...prev, emptyRow()]); }}
         className="motion-press flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-3 text-sm font-semibold text-gray-500 active:bg-gray-50"
       >
         <Plus className="h-4 w-4" />
-        إضافة صنف
+        {en ? "Add item" : "إضافة صنف"}
       </button>
 
       <div className="flex items-center justify-between rounded-lg bg-brand-900 px-4 py-3.5 text-white">
-        <span className="text-sm text-brand-100">إجمالي فاتورة الشراء</span>
-        <span className="text-lg font-extrabold">{formatSAR(total)}</span>
+        <span className="text-sm text-brand-100">{en ? "Purchase total" : "إجمالي فاتورة الشراء"}</span>
+        <span className="text-lg font-extrabold">{formatSAR(total, language)}</span>
       </div>
 
       {error && (
@@ -183,7 +188,7 @@ export default function PurchaseForm({
         disabled={saving}
         className="motion-press w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white active:bg-brand-800 disabled:opacity-60"
       >
-        {saving ? "جاري الحفظ..." : "حفظ وتحديث المخزون"}
+        {saving ? (en ? "Saving..." : "جاري الحفظ...") : (en ? "Save and update stock" : "حفظ وتحديث المخزون")}
       </button>
     </form>
   );

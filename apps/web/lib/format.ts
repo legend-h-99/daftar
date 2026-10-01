@@ -63,12 +63,12 @@ export function currentMonthStr(): string {
   return `${now.getFullYear()}-${month}`;
 }
 
-/** Returns today's calendar date in the browser's local timezone for date inputs. */
-export function currentDateStr(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+/** Local calendar date for date inputs; ISO UTC slicing can shift a day near midnight. */
+export function currentDateStr(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function shiftMonth(month: string, delta: number): string {

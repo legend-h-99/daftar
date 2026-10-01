@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { formatSAR, percentOf } from "@/lib/format";
 import { DashboardSummary } from "@/lib/types";
+import { useLanguage } from "@/lib/language";
 
 /** قائمة الأرباح والخسائر: مبيعات ناقص تكاليف = صافي الربح. */
 export default function ProfitLossStatement({
@@ -15,12 +16,14 @@ export default function ProfitLossStatement({
 }) {
   const totalCosts = summary.costOfGoodsSold + summary.operatingExpenses;
   const isProfit = summary.netProfit >= 0;
+  const { language } = useLanguage();
+  const en = language === "en";
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-bold text-foreground">
-          قائمة الأرباح والخسائر
+          {en ? "Profit and loss statement" : "قائمة الأرباح والخسائر"}
         </h2>
       </div>
 
@@ -30,16 +33,16 @@ export default function ProfitLossStatement({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent">
             <TrendingUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
           </span>
-          المبيعات
+          {en ? "Sales" : "المبيعات"}
         </span>
         <span className="text-base font-extrabold text-primary">
-          {formatSAR(summary.totalSales)}
+          {formatSAR(summary.totalSales, language)}
         </span>
       </div>
 
       <div className="px-4 pt-3 pb-1">
         <span className="text-xs font-semibold text-muted-foreground">
-          التكاليف
+          {en ? "Costs" : "التكاليف"}
         </span>
       </div>
 
@@ -49,13 +52,13 @@ export default function ProfitLossStatement({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
             <ShoppingCart className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" aria-hidden="true" />
           </span>
-          تكلفة المخزون المباع
+          {en ? "Cost of goods sold" : "تكلفة المخزون المباع"}
           <span className="text-xs text-amber-600 dark:text-amber-400">
             {percentOf(summary.costOfGoodsSold, summary.totalSales)}%
           </span>
         </span>
         <span className="font-semibold text-amber-700 dark:text-amber-400">
-          ({formatSAR(summary.costOfGoodsSold)})
+          ({formatSAR(summary.costOfGoodsSold, language)})
         </span>
       </div>
 
@@ -65,21 +68,21 @@ export default function ProfitLossStatement({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-100 dark:bg-red-950">
             <TrendingDown className="h-3.5 w-3.5 text-red-600 dark:text-red-400" aria-hidden="true" />
           </span>
-          المصاريف التشغيلية
+          {en ? "Operating expenses" : "المصاريف التشغيلية"}
           <span className="text-xs text-red-500 dark:text-red-400">
             {percentOf(summary.operatingExpenses, summary.totalSales)}%
           </span>
         </span>
         <span className="font-semibold text-red-600 dark:text-red-400">
-          ({formatSAR(summary.operatingExpenses)})
+          ({formatSAR(summary.operatingExpenses, language)})
         </span>
       </div>
 
       {/* Total costs subtotal */}
       <div className="flex items-center justify-between bg-muted/50 px-4 py-2.5">
-        <span className="text-xs font-semibold text-muted-foreground">إجمالي التكاليف</span>
+        <span className="text-xs font-semibold text-muted-foreground">{en ? "Total costs" : "إجمالي التكاليف"}</span>
         <span className="text-sm font-bold text-foreground">
-          ({formatSAR(totalCosts)})
+          ({formatSAR(totalCosts, language)})
         </span>
       </div>
 
@@ -100,14 +103,14 @@ export default function ProfitLossStatement({
               aria-hidden="true"
             />
           </span>
-          صافي الربح
+          {en ? "Net profit" : "صافي الربح"}
         </span>
         <span
           className={`text-lg font-extrabold ${
             isProfit ? "text-primary" : "text-red-600 dark:text-red-400"
           }`}
         >
-          {formatSAR(summary.netProfit)}
+          {formatSAR(summary.netProfit, language)}
         </span>
       </div>
     </div>
