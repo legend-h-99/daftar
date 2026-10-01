@@ -3,7 +3,7 @@ import { FileText, ShoppingCart, Wallet, ArrowUpLeft } from "lucide-react";
 import { useLanguage } from "@/lib/language";
 
 const LINKS = [
-  { href: "/invoices", label: "الفواتير", icon: FileText, color: "text-primary bg-accent" },
+  { href: "/invoices/list", label: "الفواتير", icon: FileText, color: "text-primary bg-accent" },
   { href: "/purchases", label: "المشتريات", icon: ShoppingCart, color: "text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950" },
   { href: "/expenses", label: "المصاريف", icon: Wallet, color: "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950" },
 ];

@@ -54,9 +54,9 @@ export default function AppLayout({
 
   return (
     <BusinessProvider value={{ user, business, refresh }}>
-      <div className="min-h-screen bg-[#f7f8f7]">
+      <div className="min-h-screen bg-[#f7f8f7] print:bg-white">
         <TopBar businessName={business?.name} />
-        <PageMotion className="mx-auto max-w-md px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4">{children}</PageMotion>
+        <PageMotion className="mx-auto max-w-md px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 print:max-w-none print:p-0">{children}</PageMotion>
         <BottomNav />
       </div>
     </BusinessProvider>

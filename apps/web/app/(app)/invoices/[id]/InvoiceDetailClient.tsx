@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, CheckCircle2, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
+import { MessageCircle, CheckCircle2, Trash2, ArrowRight, ArrowLeft, Printer } from "lucide-react";
 import Link from "next/link";
 import { apiGet, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { fieldClass } from "@/components/ui/form-field";
@@ -10,6 +10,7 @@ import { formatSAR, formatDate, normalizeSaudiPhone } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import StatusBadge from "@/components/StatusBadge";
+import ZatcaQr from "@/components/invoices/ZatcaQr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
@@ -72,7 +73,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     }
     setDeletingId(false);
     apiDelete(`/invoices/${invoice.id}`)
-      .then(() => router.replace("/invoices"))
+      .then(() => router.replace("/invoices/list"))
       .catch((err) => setError(err instanceof ApiError ? err.message : en ? "Could not delete the invoice" : "تعذر حذف الفاتورة"));
   }
 
@@ -126,9 +127,9 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <Link
-          href="/invoices"
+          href="/invoices/list"
           aria-label={en ? "Back" : "رجوع"}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
@@ -148,12 +149,22 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm print:border-0 print:p-0 print:shadow-none">
+        <p className="mb-3 hidden text-center text-lg font-extrabold print:block">
+          {business?.vatEnabled
+            ? (en ? "Simplified Tax Invoice" : "فاتورة ضريبية مبسطة")
+            : (en ? "Invoice" : "فاتورة")}
+        </p>
         <div className="mb-4 flex items-start justify-between">
           <div>
             <p className="text-lg font-extrabold text-gray-900">
               {businessName}
             </p>
+            {business?.vatEnabled && business.vatNumber && (
+              <p className="text-xs text-gray-500">
+                {en ? "VAT No." : "الرقم الضريبي"}: <bdi dir="ltr">{business.vatNumber}</bdi>
+              </p>
+            )}
             <p className="text-xs text-gray-500">
               {en ? `Invoice #${invoice.number}` : `فاتورة رقم ${invoice.number}`}
             </p>
@@ -234,10 +245,22 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             {invoice.notes}
           </p>
         )}
+        {business?.vatEnabled && business.vatNumber && (
+          <ZatcaQr
+            label={en ? "ZATCA invoice QR code" : "رمز QR للفاتورة (هيئة الزكاة والضريبة)"}
+            fields={{
+              sellerName: business.name,
+              vatNumber: business.vatNumber,
+              timestamp: new Date(invoice.issueDate ?? invoice.createdAt ?? Date.now()).toISOString(),
+              total: invoice.total,
+              vatAmount: invoice.vatAmount,
+            }}
+          />
+        )}
       </div>
 
       {invoice.status !== "PAID" && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 print:hidden">
           <button
             type="button"
             onClick={markAsPaid}
@@ -291,7 +314,15 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 print:hidden">
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50"
+        >
+          <Printer className="h-4 w-4" />
+          {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
+        </button>
         <a
           href={waHref}
           target="_blank"

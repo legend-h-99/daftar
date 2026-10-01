@@ -71,7 +71,8 @@ displays it on the OTP screen behind a "وضع تجريبي" badge.
 The production web app is served from [daftar1.com](https://daftar1.com/) via
 Cloudflare Pages. The configured backend and database are hosted by Supabase.
 The GitHub Pages and Koyeb workflows are retained only as manual legacy/demo
-options; pushes to `main` do not deploy to them. Cloudflare Pages pull request
+options; pushes to `main` do not deploy to them. The unused, unrouted Cloudflare
+Worker is disconnected from Git deployments. Cloudflare Pages pull request
 builds are used to preview web changes before release.
 
 Before releasing a change, verify the Cloudflare Pages preview and the

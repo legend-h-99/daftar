@@ -28,7 +28,7 @@ export default function TopBar({ businessName }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <header className="print:hidden sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex max-w-md items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <span

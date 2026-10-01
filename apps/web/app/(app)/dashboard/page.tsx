@@ -255,7 +255,7 @@ export default function DashboardPage() {
 
               {summary.unpaidInvoicesCount > summary.unpaidInvoicesLimitedTo && (
                 <div className="mt-2 text-center">
-                  <Link href="/invoices" className="text-xs text-brand-700 underline">
+                  <Link href="/invoices/list" className="text-xs text-brand-700 underline">
                     {language === "ar" ? "عرض جميع الفواتير" : "View all invoices"} ({summary.unpaidInvoicesCount})
                   </Link>
                 </div>

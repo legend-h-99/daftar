@@ -29,6 +29,7 @@ const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? SERVICE_KEY
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
+const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
@@ -130,6 +131,14 @@ async function reserveDailyEmailSend(): Promise<boolean> {
   return !error && data === true
 }
 
+async function reserveDailySmsSend(): Promise<boolean> {
+  if (!Number.isInteger(SMS_DAILY_SEND_CAP) || SMS_DAILY_SEND_CAP < 1) return false
+  const { data, error } = await db().rpc('consume_external_usage_budget', {
+    p_key: 'sms', p_daily_limit: SMS_DAILY_SEND_CAP,
+  })
+  return !error && data === true
+}
+
 function newId(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
 }
@@ -197,28 +206,49 @@ async function authDemoLogin(phone: string) {
   return json({ accessToken, user: { id: userId, phone: normalized, businessId: bizId }, hasBusiness: true, business: { id: bizId, ...store, vatEnabled: true } })
 }
 
-async function authOtpRequest(_phone: string) {
-  // Phone sign-in is unavailable until an SMS delivery provider is configured.
-  // Never create a code that only the requester can retrieve from the API.
-  return err('Phone verification is temporarily unavailable', 503)
+async function authOtpRequest(phoneInput: unknown) {
+  if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
+  const phone = normalizePhone(phoneInput)
+  if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
+  if (!await reserveDailySmsSend()) return err('Phone verification is temporarily unavailable', 503)
+
+  const { error } = await db().auth.signInWithOtp({
+    phone,
+    options: { shouldCreateUser: true },
+  })
+  if (error) {
+    // Keep provider details and phone numbers out of the public response/logs.
+    return err('Phone verification is temporarily unavailable', 503)
+  }
+  return json({ sent: true })
 }
 
-async function authOtpVerify(phone: string, code: string) {
-  const normalized = normalizePhone(phone)
-  const supabase = db()
-  const { data: otp } = await supabase.from('OtpCode').select('*').eq('phone', normalized).eq('consumed', false).gte('expiresAt', new Date().toISOString()).order('createdAt', { ascending: false }).limit(1).single()
-  if (!otp) return err('Invalid or expired verification code')
-  if (otp.code !== code) {
-    const attempts = (otp.attempts || 0) + 1
-    if (attempts >= 5) await supabase.from('OtpCode').update({ consumed: true, attempts }).eq('id', otp.id)
-    else await supabase.from('OtpCode').update({ attempts }).eq('id', otp.id)
-    return err('Invalid or expired verification code')
+async function authOtpVerify(phoneInput: unknown, code: unknown) {
+  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+    return err('Invalid or expired verification code', 400)
   }
-  await supabase.from('OtpCode').update({ consumed: true }).eq('id', otp.id)
-  const { data: existing } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
-  const userId = existing?.id ?? newId('user')
-  if (!existing) await supabase.from('User').insert({ id: userId, phone: normalized })
-  const user = existing ?? { id: userId, phone: normalized, businessId: null }
+  const normalized = normalizePhone(phoneInput)
+  if (!/^\+9665\d{8}$/.test(normalized)) return err('Invalid or expired verification code', 400)
+  const supabase = db()
+  const { data: verification, error: verificationError } = await supabase.auth.verifyOtp({
+    phone: normalized,
+    token: code,
+    type: 'sms',
+  })
+  if (verificationError || !verification.user) return err('Invalid or expired verification code', 401)
+  let { data: user } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
+  if (!user) {
+    const { data: created, error } = await supabase
+      .from('User').insert({ id: newId('user'), phone: normalized }).select('*').single()
+    if (error) {
+      // A concurrent first sign-in may have won the unique-phone insert.
+      const { data: raced } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
+      if (!raced) return err('Could not create account', 500)
+      user = raced
+    } else {
+      user = created
+    }
+  }
   const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
 }
@@ -868,7 +898,11 @@ async function handleRequest(req: Request) {
       if (limited) return limited
     }
     if (path === '/health' || path === '') return json({ status: 'ok' })
-    if (req.method === 'POST' && path === '/auth/otp/request') return authOtpRequest((await req.json()).phone)
+    if (req.method === 'POST' && path === '/auth/otp/request') {
+      const body = await req.json()
+      const limited = await rateLimit(req, 'otp-request', body.phone, 3)
+      return limited ?? await authOtpRequest(body.phone)
+    }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       const body = await req.json()
       return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)

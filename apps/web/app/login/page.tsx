@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Languages, Mail, Lock, User, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Languages, Mail, Lock, User, Eye, EyeOff, CheckCircle2, Smartphone } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
 const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
+// Keep the UI hidden until a real SMS provider is enabled in Supabase Auth.
+const PHONE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_PHONE_LOGIN_ENABLED === "true";
 
 const DEMO_STORES = [
   { phone: "0500000001", name: "مطبخ أم سلطان",       city: "الرياض" },
@@ -42,6 +44,9 @@ export default function LoginPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailLoading, setEmailLoading] = useState(false);
   const [registerSuccess, setRegisterSuccess] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneLoading, setPhoneLoading] = useState(false);
 
   async function enterDemo(phoneNumber: string) {
     if (!DEMO_MODE) {
@@ -67,6 +72,41 @@ export default function LoginPage() {
     }
     setToken(DEMO_TOKEN);
     router.replace("/dashboard");
+  }
+
+  async function handlePhoneSubmit(e: FormEvent) {
+    e.preventDefault();
+    setPhoneError(null);
+
+    const digits = phone.replace(/\D/g, "");
+    const localDigits = digits.startsWith("966") ? digits.slice(3) : digits.startsWith("0") ? digits.slice(1) : digits;
+    if (!/^5\d{8}$/.test(localDigits)) {
+      setPhoneError(language === "ar" ? "أدخل رقم جوال سعودي صحيحًا، مثل 05xxxxxxxx" : "Enter a valid Saudi mobile number, e.g. 05xxxxxxxx");
+      return;
+    }
+
+    const normalizedPhone = `+966${localDigits}`;
+    setPhoneLoading(true);
+    try {
+      const result = await apiPost<{ sent: boolean; devCode?: string }>(
+        "/auth/otp/request", { phone: normalizedPhone }, { auth: false },
+      );
+      sessionStorage.setItem("daftar_otp_flow", JSON.stringify({
+        phone: normalizedPhone,
+        devCode: result.devCode ?? "",
+      }));
+      router.replace("/otp");
+    } catch (err) {
+      setPhoneError(err instanceof ApiError && err.status === 503
+        ? language === "ar"
+          ? "الدخول بالجوال غير مفعّل بعد. يلزم إعداد مزود رسائل SMS أولًا."
+          : "Phone sign-in is not enabled yet. An SMS provider must be configured first."
+        : err instanceof ApiError
+          ? err.message
+          : language === "ar" ? "تعذر إرسال رمز التحقق، حاول مرة أخرى" : "Could not send the verification code. Please try again.");
+    } finally {
+      setPhoneLoading(false);
+    }
   }
 
   async function handleEmailSubmit(e: FormEvent) {
@@ -181,6 +221,42 @@ export default function LoginPage() {
           <div className="p-6 pb-4">
             <GoogleSignInButton />
           </div>
+
+          {PHONE_LOGIN_ENABLED && <form onSubmit={handlePhoneSubmit} className="px-6 pb-5">
+            <label htmlFor="phone" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+              <Smartphone className="h-3.5 w-3.5 text-primary" />
+              {language === "ar" ? "الدخول برقم الجوال" : "Sign in with mobile"}
+            </label>
+            <div className="flex gap-2" dir="ltr">
+              <input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => { setPhone(e.target.value); setPhoneError(null); }}
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="05xxxxxxxx"
+                className={cn(fieldClass, "min-w-0 flex-1 py-3 text-left")}
+                aria-invalid={!!phoneError}
+                aria-describedby={phoneError ? "phone-error" : undefined}
+                required
+              />
+              <button
+                type="submit"
+                disabled={phoneLoading || emailLoading}
+                className="shrink-0 rounded-xl bg-brand-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {phoneLoading
+                  ? (language === "ar" ? "جاري..." : "Sending...")
+                  : (language === "ar" ? "إرسال الرمز" : "Send code")}
+              </button>
+            </div>
+            {phoneError && (
+              <p id="phone-error" role="alert" className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-sm font-medium text-red-600 dark:bg-red-950 dark:text-red-300">
+                {phoneError}
+              </p>
+            )}
+          </form>}
 
           {/* Divider */}
           <div className="flex items-center gap-3 px-6 pb-4">

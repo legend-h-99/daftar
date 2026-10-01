@@ -130,7 +130,7 @@ export default function PurchasesPage() {
           description={
             SCAN_ENABLED
               ? (language === "ar" ? "سجّل مشترياتك يدويًا أو صوّر فاتورة الشراء" : "Record purchases manually or scan the supplier invoice.")
-              : (language === "ar" ? "سجّل مشترياتك من الموردين عشان تعرف تكلفتك" : "Record supplier purchases to track your costs.")
+              : (language === "ar" ? "سجّل مشترياتك يدويًا، واستخدم الفاتورة بجانبك لإدخال الأصناف والكميات والأسعار." : "Enter purchases manually with the invoice beside you for the items, quantities, and prices.")
           }
           actionLabel={language === "ar" ? "تسجيل شراء" : "Record purchase"}
           actionHref="/purchases/new"

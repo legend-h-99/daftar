@@ -7,7 +7,7 @@ import { useLanguage } from "@/lib/language";
 
 const TABS = [
   { href: "/dashboard", label: { ar: "الرئيسية", en: "Home" }, icon: Home },
-  { href: "/invoices", label: { ar: "الفواتير", en: "Invoices" }, icon: FileText },
+  { href: "/invoices/list", label: { ar: "الفواتير", en: "Invoices" }, icon: FileText },
   { href: "/purchases", label: { ar: "المشتريات", en: "Purchases" }, icon: ShoppingCart },
   { href: "/expenses", label: { ar: "المصاريف", en: "Expenses" }, icon: Wallet },
   { href: "/inventory", label: { ar: "المخزون", en: "Stock" }, icon: Boxes },
@@ -18,7 +18,7 @@ export default function BottomNav() {
   const { language } = useLanguage();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background">
+    <nav className="print:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background">
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {TABS.map(({ href, label, icon: Icon }) => {
           const active =
