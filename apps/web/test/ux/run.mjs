@@ -95,7 +95,7 @@ await scenario('reports links distinct and usable at mobile width',{},async(page
  const boxes=await links.evaluateAll(es=>es.map(e=>({y:e.getBoundingClientRect().y,height:e.getBoundingClientRect().height,position:getComputedStyle(e).position})));
  assert(boxes[0].y<boxes[1].y && boxes[1].y<boxes[2].y);assert(boxes.every(b=>b.position==='static'&&b.height>=44));
  await section.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'reports-mobile.png'),fullPage:true});
- await links.first().click();await page.waitForFunction(()=>/\/invoices\/?$/.test(location.pathname));
+ await links.first().click();await page.waitForFunction(()=>/\/invoices\/list\/?$/.test(location.pathname));
  assert.equal(await page.locator('nav a[aria-current=page]').innerText(),'الفواتير');
 });
 await scenario('reports error recovery',{},async(page,context)=>{
