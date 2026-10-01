@@ -73,7 +73,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     }
     setDeletingId(false);
     apiDelete(`/invoices/${invoice.id}`)
-      .then(() => router.replace("/invoices"))
+      .then(() => router.replace("/invoices/list"))
       .catch((err) => setError(err instanceof ApiError ? err.message : en ? "Could not delete the invoice" : "تعذر حذف الفاتورة"));
   }
 
@@ -129,7 +129,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between print:hidden">
         <Link
-          href="/invoices"
+          href="/invoices/list"
           aria-label={en ? "Back" : "رجوع"}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >

@@ -367,7 +367,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
           name: /عرض جميع الفواتير.*10/,
         });
         expect(link).toBeInTheDocument();
-        expect(link).toHaveAttribute("href", "/invoices");
+        expect(link).toHaveAttribute("href", "/invoices/list");
       });
     });
 

@@ -116,7 +116,7 @@ export default function NewInvoicePage() {
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
       });
-      router.push(DEMO_MODE ? "/invoices?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
+      router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : en ? "Could not create invoice" : "تعذر إنشاء الفاتورة");
     } finally {
@@ -128,7 +128,7 @@ export default function NewInvoicePage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <Link
-          href="/invoices"
+          href="/invoices/list"
           aria-label={en ? "Back" : "رجوع"}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600"
         >
