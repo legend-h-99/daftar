@@ -519,7 +519,11 @@ async function handleInventory(req: Request, user: Record<string, unknown>, sub?
   if (sub === 'adjust') {
     if (req.method !== 'POST') return err('Method not allowed', 405)
     const body = await req.json()
-    const { materialId, newQty, note } = body
+    const { materialId, newQty, note } = body ?? {}
+    if (typeof materialId !== 'string' || !validAmount(newQty, true) ||
+        (note != null && (typeof note !== 'string' || note.length > MAX_TEXT_LENGTH))) {
+      return err('Invalid stock adjustment', 400)
+    }
     const { data: mat, error: matErr } = await supabase.from('Material').select('*').eq('id', materialId).eq('businessId', bizId).single()
     if (matErr || !mat) return err('Material not found', 404)
     const delta = (newQty as number) - (mat.stockQty as number)
@@ -607,6 +611,66 @@ async function foreignKeysBelongToBusiness(
   return true
 }
 
+// ── INPUT VALIDATION ─────────────────────────────────────────────────────────
+// The browser validates too, but the API is callable directly, so every money
+// field and enum is re-checked here.
+
+const MAX_AMOUNT = 100_000_000
+const MAX_TEXT_LENGTH = 2000
+const MAX_PAGE_SIZE = 200
+const EXPENSE_CATEGORIES = ['RENT', 'SALARIES', 'INGREDIENTS', 'PACKAGING', 'MARKETING', 'DELIVERY', 'UTILITIES', 'OTHER']
+const INVOICE_STATUSES = ['PAID', 'UNPAID', 'PARTIAL']
+
+function validAmount(value: unknown, allowZero = false): value is number {
+  return typeof value === 'number' && Number.isFinite(value) &&
+    (allowZero ? value >= 0 : value > 0) && value <= MAX_AMOUNT
+}
+
+function validDate(value: unknown): boolean {
+  return typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value))
+}
+
+function hasOversizedText(row: Record<string, unknown>): boolean {
+  return Object.values(row).some(v => typeof v === 'string' && v.length > MAX_TEXT_LENGTH)
+}
+
+function validateExpense(body: Record<string, unknown>, isCreate: boolean): string | null {
+  if ((isCreate || 'amount' in body) && !validAmount(body.amount)) return 'Invalid amount'
+  if ((isCreate || 'category' in body) && !EXPENSE_CATEGORIES.includes(body.category as string)) return 'Invalid category'
+  if ((isCreate || 'date' in body) && !validDate(body.date)) return 'Invalid date'
+  if (body.note != null && typeof body.note !== 'string') return 'Invalid note'
+  return null
+}
+
+/**
+ * Keeps paidAmount consistent with status: PAID → total, UNPAID → 0,
+ * PARTIAL → strictly between 0 and total. Totals themselves are immutable
+ * after creation (they are computed from items by create_invoice_with_inventory).
+ */
+async function normalizeInvoiceUpdate(
+  supabase: ReturnType<typeof db>, id: string, bizId: string, body: Record<string, unknown>,
+): Promise<Response | null> {
+  if (['number', 'subtotal', 'vatAmount', 'total', 'issueDate'].some(key => key in body)) return err('Field cannot be changed', 400)
+  if ('status' in body && !INVOICE_STATUSES.includes(body.status as string)) return err('Invalid status', 400)
+  if ('dueDate' in body && body.dueDate != null && !validDate(body.dueDate)) return err('Invalid due date', 400)
+  if (!('status' in body) && !('paidAmount' in body)) return null
+  const { data: invoice } = await supabase.from('Invoice').select('total,status,paidAmount').eq('id', id).eq('businessId', bizId).maybeSingle()
+  if (!invoice) return err('Not found', 404)
+  const total = invoice.total as number
+  const status = (body.status as string | undefined) ?? (invoice.status as string)
+  if (status === 'PAID') {
+    body.paidAmount = total
+  } else if (status === 'UNPAID') {
+    body.paidAmount = 0
+  } else {
+    const paid = 'paidAmount' in body ? body.paidAmount : invoice.paidAmount
+    if (!validAmount(paid) || paid >= total) return err('Partial payment must be above zero and below the total', 400)
+    body.paidAmount = paid
+  }
+  body.status = status
+  return null
+}
+
 function hasImmutableFields(row: Record<string, unknown>): boolean {
   return ['id', 'businessId', 'createdAt', 'updatedAt', 'invoiceId', 'purchaseId'].some(key => key in row)
 }
@@ -672,7 +736,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   try { body = await req.json() } catch { return err('Invalid invoice', 400) }
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
       (body.customerId != null && typeof body.customerId !== 'string') ||
-      (body.status != null && !['PAID', 'UNPAID', 'PARTIAL'].includes(body.status as string)) ||
+      (body.status != null && !['PAID', 'UNPAID'].includes(body.status as string)) ||
       (body.dueDate != null && typeof body.dueDate !== 'string') ||
       (body.notes != null && typeof body.notes !== 'string') ||
       !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) return err('Invalid invoice', 400)
@@ -686,7 +750,15 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
     console.error('Invoice transaction failed', error.code, error.message)
     return err(error.message.includes('not found') ? error.message : 'Could not create invoice', 400)
   }
-  return json(data, 201)
+  // The transaction always stores paidAmount = 0; an invoice created as PAID
+  // must count its full total as collected, or it never shows up in sales.
+  const created = data as Record<string, unknown> | null
+  if (body.status === 'PAID' && created?.id) {
+    const { data: paid } = await db().from('Invoice').update({ paidAmount: created.total })
+      .eq('id', created.id as string).eq('businessId', user.businessId as string).select('paidAmount').single()
+    if (paid) created.paidAmount = paid.paidAmount
+  }
+  return json(created, 201)
 }
 
 async function handleCrud(req: Request, user: Record<string, unknown>, table: string, id?: string, url?: URL) {
@@ -703,8 +775,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     }
     const month = url?.searchParams.get('month') ?? null
     const range = monthRange(month)
-    const page = parseInt(url?.searchParams.get('page') ?? '1')
-    const limit = parseInt(url?.searchParams.get('limit') ?? '100')
+    const page = Math.max(1, Number.parseInt(url?.searchParams.get('page') ?? '1', 10) || 1)
+    const limit = Math.min(Math.max(Number.parseInt(url?.searchParams.get('limit') ?? '100', 10) || 100, 1), MAX_PAGE_SIZE)
     let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range((page - 1) * limit, page * limit - 1)
     if (range) {
       if (table === 'Expense') {
@@ -720,6 +792,11 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   if (req.method === 'POST') {
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record', 400)
+    if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Expense') {
+      const invalid = validateExpense(body, true)
+      if (invalid) return err(invalid, 400)
+    }
     const items = body.items
     if (items != null && (!Array.isArray(items) || !['Invoice', 'Purchase'].includes(table) || items.length > 100)) return err('Invalid items', 400)
     delete body.items
@@ -751,6 +828,15 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   if ((req.method === 'PATCH' || req.method === 'PUT') && id) {
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record update', 400)
+    if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Expense') {
+      const invalid = validateExpense(body, false)
+      if (invalid) return err(invalid, 400)
+    }
+    if (table === 'Invoice') {
+      const invalid = await normalizeInvoiceUpdate(supabase, id, bizId, body)
+      if (invalid) return invalid
+    }
     if (!await foreignKeysBelongToBusiness(supabase, table, body, bizId)) return err('Related record not found', 404)
     const { data, error } = await supabase.from(table).update(body).eq('id', id).eq('businessId', bizId).select(sel).single()
     if (error || !data) return err('Not found', 404)
