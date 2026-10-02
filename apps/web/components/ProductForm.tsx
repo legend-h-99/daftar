@@ -117,6 +117,11 @@ export default function ProductForm({ product }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {!allItems.some(item => item.materialId) && (
+        <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          {en ? "This recipe is not linked to inventory. Its cost is counted as zero in dashboard profit, even if you enter a cost here." : "هذه الوصفة غير مرتبطة بالمخزون. تُحسب تكلفة المنتج صفراً في ربح لوحة التحكم، حتى لو أدخلت تكلفة هنا."}
+        </p>
+      )}
       <div>
         <label htmlFor="product-name" className="mb-1.5 block text-sm font-semibold text-gray-700">
           {en ? "Product name" : "اسم المنتج"}
@@ -184,8 +189,8 @@ export default function ProductForm({ product }: ProductFormProps) {
           aria-label={en ? "Profit margin percentage" : "نسبة الربح بالنسبة المئوية"}
           type="range"
           min={0}
-          max={90}
-          step={1}
+          max={MAX_MARGIN}
+          step="any"
           value={profitMargin}
           onChange={(e) => setProfitMargin(Number(e.target.value))}
           className="w-full accent-brand-600"
@@ -196,6 +201,7 @@ export default function ProductForm({ product }: ProductFormProps) {
           inputMode="decimal"
           min={0}
           max={MAX_MARGIN}
+          step="any"
           value={profitMargin}
           onChange={(e) => setProfitMargin(Math.min(Math.max(Number(e.target.value) || 0, 0), MAX_MARGIN))}
           className={cn(fieldClass, "mt-2 py-2.5 text-center")}

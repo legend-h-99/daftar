@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.2'
 import * as bcrypt from 'https://esm.sh/bcryptjs@3.0.3'
 
 const CORS = {
@@ -124,12 +124,16 @@ async function rateLimit(
     return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: 60 })
   }))
   if (outcomes.some(o => o.error)) return err('Authentication temporarily unavailable', 503)
-  if (outcomes.some(o => o.data !== true)) return err('Too many requests; try again shortly', 429)
+  if (outcomes.some(o => o.data !== true)) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
   return null
 }
 
 // Saudi VAT registration numbers are 15 digits that start and end with 3.
 const VAT_NUMBER_PATTERN = /^3\d{13}3$/
+
+function invalidBusinessName(value: unknown): boolean {
+  return typeof value !== 'string' || !value.trim() || value.trim().length > 100
+}
 
 function invalidVatNumber(value: unknown): boolean {
   return value != null && (typeof value !== 'string' || !VAT_NUMBER_PATTERN.test(value))
@@ -342,14 +346,14 @@ async function authEmailRegister(body: Record<string, unknown>) {
 }
 
 async function authEmailLogin(body: Record<string, unknown>) {
-  if (typeof body.email !== 'string' || typeof body.password !== 'string') return err('Invalid credentials', 401)
+  const invalid = () => err('Invalid credentials', 401, 'INVALID_CREDENTIALS')
+  if (typeof body.email !== 'string' || typeof body.password !== 'string') return invalid()
   const supabase = db()
   const email = body.email.trim().toLowerCase()
   const { data: user } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
-  const invalid = () => err('Invalid credentials', 401)
   const passwordMatches = Boolean(user?.passwordHash) && await bcrypt.compare(body.password, user.passwordHash!)
   if (!passwordMatches) return invalid()
-  if (!user.emailVerified) return err('Please verify your email address first', 403)
+  if (!user.emailVerified) return err('Please verify your email address first', 403, 'EMAIL_NOT_VERIFIED')
   const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
   return json({
     accessToken,
@@ -445,6 +449,10 @@ async function handleBusiness(req: Request, user: Record<string, unknown>) {
     const allowed = ['name', 'city', 'vatEnabled', 'vatNumber']
     if (Object.keys(body).some(key => !allowed.includes(key))) return err('Field cannot be changed', 400)
     if (invalidVatNumber(body.vatNumber)) return err('Invalid VAT number', 400, 'INVALID_VAT_NUMBER')
+    if ('name' in body) {
+      if (invalidBusinessName(body.name)) return err('Business name is required', 400, 'INVALID_BUSINESS_NAME')
+      body.name = body.name.trim()
+    }
     const { data, error } = await supabase.from('Business').update(body).eq('id', bizId).select().single()
     if (error || !data) return err('Business not found', 404)
     return json(data)
@@ -459,12 +467,13 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
   if (invalidVatNumber(body.vatNumber) || (body.vatEnabled === true && !body.vatNumber)) {
     return err('Invalid VAT number', 400, 'INVALID_VAT_NUMBER')
   }
+  if (invalidBusinessName(body.name)) return err('Business name is required', 400, 'INVALID_BUSINESS_NAME')
   const supabase = db()
   const userId = user.sub as string
   const bizId = newId('biz')
   const ownerPhone = (user.phone as string | undefined) ?? null
   const { data: business, error } = await supabase.from('Business').insert({
-    id: bizId, ownerPhone, name: body.name, city: body.city,
+    id: bizId, ownerPhone, name: body.name.trim(), city: body.city,
     vatEnabled: body.vatEnabled ?? false, vatNumber: body.vatNumber ?? null,
   }).select().single()
   if (error) return err('Could not save record', 400)
@@ -507,7 +516,7 @@ async function handleDashboard(user: Record<string, unknown>) {
 async function handleDashboardSummary(user: Record<string, unknown>, month: string | null) {
   const supabase = db()
   const bizId = user.businessId as string
-  const empty = { totalSales: 0, totalPurchases: 0, costOfGoodsSold: 0, operatingExpenses: 0, totalExpenses: 0, netProfit: 0, unpaidInvoices: [], unpaidInvoicesCount: 0, unpaidInvoicesTotal: 0, unpaidInvoicesLimitedTo: 5, lowStock: [] }
+  const empty = { totalSales: 0, totalPurchases: 0, costOfGoodsSold: 0, operatingExpenses: 0, totalExpenses: 0, netProfit: 0, cashFlow: 0, unpaidInvoices: [], unpaidInvoicesCount: 0, unpaidInvoicesTotal: 0, unpaidInvoicesLimitedTo: 5, lowStock: [] }
   if (!bizId) return json(empty)
 
   const range = monthRange(month)
@@ -515,15 +524,24 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   let invQ = supabase.from('Invoice').select('id,number,total,paidAmount,status,dueDate,createdAt,customer:Customer(name)').eq('businessId', bizId)
   if (range) invQ = invQ.gte('createdAt', range.start).lt('createdAt', range.end)
 
-  let purQ = supabase.from('Purchase').select('total,createdAt').eq('businessId', bizId)
-  if (range) purQ = purQ.gte('createdAt', range.start).lt('createdAt', range.end)
+  let purQ = supabase.from('Purchase').select('total,date').eq('businessId', bizId)
+  if (range) purQ = purQ.gte('date', range.start).lt('date', range.end)
+
+  // Buying stock is not the same as consuming it in a sale. Preserve the
+  // historical movement cost; only legacy movements need the current-price fallback.
+  let cogsQ = supabase.from('StockMovement').select('qty,costAmount,material:Material(unitPrice)')
+    .eq('businessId', bizId).eq('type', 'SALE')
+  if (range) cogsQ = cogsQ.gte('createdAt', range.start).lt('createdAt', range.end)
 
   let expQ = supabase.from('Expense').select('amount,date').eq('businessId', bizId)
   if (range) expQ = expQ.gte('date', range.start.slice(0, 10)).lt('date', range.end.slice(0, 10))
 
   const matQ = supabase.from('Material').select('id,name,unit,stockQty,reorderLevel').eq('businessId', bizId).gt('reorderLevel', 0)
 
-  const [invRes, purRes, expRes, matRes] = await Promise.all([invQ, purQ, expQ, matQ])
+  const [invRes, purRes, expRes, matRes, cogsRes] = await Promise.all([invQ, purQ, expQ, matQ, cogsQ])
+  if ([invRes, purRes, expRes, matRes, cogsRes].some(result => result.error)) {
+    return err('Could not load report', 503)
+  }
 
   const invoices = (invRes.data ?? []) as Record<string, unknown>[]
   const purchases = (purRes.data ?? []) as Record<string, unknown>[]
@@ -533,8 +551,15 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   const totalSales = invoices.filter(i => i.status === 'PAID' || i.status === 'PARTIAL').reduce((s, i) => s + ((i.paidAmount as number) ?? 0), 0)
   const totalPurchases = purchases.reduce((s, p) => s + ((p.total as number) ?? 0), 0)
   const operatingExpenses = expenses.reduce((s, e) => s + (e.amount as number), 0)
-  const totalExpenses = totalPurchases + operatingExpenses
+  const costOfGoodsSold = ((cogsRes.data ?? []) as Record<string, unknown>[]).reduce((sum, movement) => {
+    const material = movement.material as Record<string, unknown> | null
+    return sum + (movement.costAmount != null
+      ? Number(movement.costAmount)
+      : Math.abs(Number(movement.qty)) * Number(material?.unitPrice ?? 0))
+  }, 0)
+  const totalExpenses = costOfGoodsSold + operatingExpenses
   const netProfit = totalSales - totalExpenses
+  const cashFlow = totalSales - totalPurchases - operatingExpenses
 
   const unpaidAll = invoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL')
   const unpaidInvoices = unpaidAll.slice(0, 5).map(i => ({
@@ -547,7 +572,7 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
     .filter(mat => (mat.stockQty as number) <= (mat.reorderLevel as number))
     .map(mat => ({ id: mat.id, name: mat.name, unit: mat.unit, stockQty: mat.stockQty, reorderLevel: mat.reorderLevel }))
 
-  return json({ totalSales, totalPurchases, costOfGoodsSold: totalPurchases, operatingExpenses, totalExpenses, netProfit, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
+  return json({ totalSales, totalPurchases, costOfGoodsSold, operatingExpenses, totalExpenses, netProfit, cashFlow, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
 }
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────
@@ -799,15 +824,9 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
     if (shortage) return err(error.message, 409, 'INSUFFICIENT_STOCK', { material: shortage[1] })
     return err(error.message.includes('not found') ? error.message : 'Could not create invoice', 400)
   }
-  // The transaction always stores paidAmount = 0; an invoice created as PAID
-  // must count its full total as collected, or it never shows up in sales.
-  const created = data as Record<string, unknown> | null
-  if (body.status === 'PAID' && created?.id) {
-    const { data: paid } = await db().from('Invoice').update({ paidAmount: created.total })
-      .eq('id', created.id as string).eq('businessId', user.businessId as string).select('paidAmount').single()
-    if (paid) created.paidAmount = paid.paidAmount
-  }
-  return json(created, 201)
+  // Apply invoice_paid_amount_atomic before deploying this version: paidAmount
+  // is now part of the same transaction as the invoice and stock movements.
+  return json(data, 201)
 }
 
 async function handleCrud(req: Request, user: Record<string, unknown>, table: string, id?: string, url?: URL) {

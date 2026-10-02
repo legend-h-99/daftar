@@ -76,6 +76,20 @@ function localizedApiError(data: { code?: unknown; material?: unknown }): string
       ? "الرقم الضريبي يجب أن يكون 15 رقماً يبدأ بـ 3 وينتهي بـ 3"
       : "The VAT number must be 15 digits that start and end with 3.";
   }
+  if (data.code === "INVALID_CREDENTIALS") {
+    return ar ? "البريد الإلكتروني أو كلمة المرور غير صحيحة" : "Incorrect email or password.";
+  }
+  if (data.code === "EMAIL_NOT_VERIFIED") {
+    return ar
+      ? "أكّد بريدك الإلكتروني أولاً من الرابط الذي أرسلناه إليك"
+      : "Confirm your email first using the link we sent you.";
+  }
+  if (data.code === "RATE_LIMITED") {
+    return ar ? "محاولات كثيرة، انتظر دقيقة ثم حاول مرة أخرى" : "Too many attempts. Wait a minute and try again.";
+  }
+  if (data.code === "INVALID_BUSINESS_NAME") {
+    return ar ? "أدخل اسم المحل (100 حرف كحد أقصى)" : "Enter your business name (up to 100 characters).";
+  }
   if (data.code === "INSUFFICIENT_STOCK") {
     const material = typeof data.material === "string" ? data.material : "";
     return ar

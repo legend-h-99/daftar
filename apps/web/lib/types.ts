@@ -259,6 +259,7 @@ export interface DashboardSummary {
   operatingExpenses: number;
   totalExpenses: number;
   netProfit: number;
+  cashFlow: number;
   unpaidInvoices: UnpaidInvoiceSummary[];
   unpaidInvoicesCount: number;
   unpaidInvoicesTotal: number;
