@@ -175,6 +175,32 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       ).toBeInTheDocument();
     });
 
+    it("يرفض رقماً ضريبياً لا يطابق الصيغة ولا يرسل الطلب", async () => {
+      const user = userEvent.setup();
+      renderWithToken();
+      await advanceToStep2(user);
+      await user.click(screen.getByRole("switch"));
+      await user.type(screen.getByLabelText(/الرقم الضريبي/), "ABC123");
+      await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
+      expect(
+        screen.getByText("الرقم الضريبي يجب أن يكون 15 رقماً يبدأ بـ 3 وينتهي بـ 3"),
+      ).toBeInTheDocument();
+      expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+    });
+
+    it("يقبل الرقم الضريبي بالأرقام العربية ويرسله بالأرقام اللاتينية", async () => {
+      const user = userEvent.setup();
+      vi.mocked(apiPost).mockResolvedValue({ accessToken: "tok", business: { id: "b1", name: "المحل", vatEnabled: true } });
+      renderWithToken();
+      await advanceToStep2(user);
+      await user.click(screen.getByRole("switch"));
+      await user.type(screen.getByLabelText(/الرقم الضريبي/), "٣٠٠٠٠٠٠٠٠٠٠٠٠٠٣");
+      await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
+      await waitFor(() =>
+        expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", expect.objectContaining({ vatNumber: "300000000000003" })),
+      );
+    });
+
     it("زر الرجوع يعيد للخطوة الأولى", async () => {
       const user = userEvent.setup();
       renderWithToken();
@@ -241,13 +267,13 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
         expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
       );
       await user.click(screen.getByRole("switch"));
-      await user.type(screen.getByLabelText(/الرقم الضريبي/), "3000000000003");
+      await user.type(screen.getByLabelText(/الرقم الضريبي/), "300000000000003");
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", {
           name: "مطعم السلام",
           vatEnabled: true,
-          vatNumber: "3000000000003",
+          vatNumber: "300000000000003",
           city: "الرياض",
         }),
       );

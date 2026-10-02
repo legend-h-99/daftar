@@ -28,8 +28,9 @@ const t = {
     vatSettings: "إعدادات الضريبة",
     vatQuestion: "مسجل في ضريبة القيمة المضافة؟",
     vatNumber: "الرقم الضريبي",
-    vatNumberPlaceholder: "3xxxxxxxxxxxxx03",
+    vatNumberPlaceholder: "3XXXXXXXXXXXXX3",
     vatRequired: "أدخل الرقم الضريبي أو أوقف تفعيل الضريبة",
+    vatInvalid: "الرقم الضريبي يجب أن يكون 15 رقماً يبدأ بـ 3 وينتهي بـ 3",
     back: "رجوع",
     save: "حفظ والمتابعة",
     saving: "جاري الحفظ...",
@@ -50,14 +51,22 @@ const t = {
     vatSettings: "Tax Settings",
     vatQuestion: "Registered for VAT?",
     vatNumber: "VAT number",
-    vatNumberPlaceholder: "3xxxxxxxxxxxxx03",
+    vatNumberPlaceholder: "3XXXXXXXXXXXXX3",
     vatRequired: "Enter your VAT number or disable VAT",
+    vatInvalid: "The VAT number must be 15 digits that start and end with 3.",
     back: "Back",
     save: "Save & Continue",
     saving: "Saving...",
     saveError: "Could not save business details",
   },
 };
+
+// Saudi VAT registration numbers are 15 digits that start and end with 3.
+const VAT_NUMBER_PATTERN = /^3\d{13}3$/;
+
+function toLatinDigits(value: string): string {
+  return value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -88,8 +97,13 @@ export default function OnboardingPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (vatEnabled && !vatNumber.trim()) {
+    const normalizedVat = toLatinDigits(vatNumber).replace(/\s/g, "");
+    if (vatEnabled && !normalizedVat) {
       setError(tx.vatRequired);
+      return;
+    }
+    if (vatEnabled && !VAT_NUMBER_PATTERN.test(normalizedVat)) {
+      setError(tx.vatInvalid);
       return;
     }
     setError(null);
@@ -100,7 +114,7 @@ export default function OnboardingPage() {
         {
           name: name.trim(),
           vatEnabled,
-          vatNumber: vatEnabled ? vatNumber.trim() : undefined,
+          vatNumber: vatEnabled ? normalizedVat : undefined,
           city: city.trim() || undefined,
         },
       );
