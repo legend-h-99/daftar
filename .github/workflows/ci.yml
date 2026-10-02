@@ -34,6 +34,9 @@ jobs:
       - name: Test web
         run: pnpm --filter web test -- --run
 
+      - name: Generate Prisma client
+        run: pnpm --filter api exec prisma generate
+
       - name: Test API
         run: pnpm --filter api test --runInBand
 
