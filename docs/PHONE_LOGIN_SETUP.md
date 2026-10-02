@@ -1,7 +1,9 @@
 # تفعيل الدخول برقم الجوال
 
-الواجهة والخادم يدعمان رمز تحقق عبر Supabase Auth. لا يظهر خيار الجوال في
-صفحة الدخول حتى يُفعّل متغير الواجهة `NEXT_PUBLIC_PHONE_LOGIN_ENABLED=true`.
+الواجهة والخادم يدعمان رمز تحقق عبر Supabase Auth. دخول الجوال متوقف افتراضيًا؛
+لا يظهر خيار الجوال في صفحة الويب ولا يقبل الخادم طلبات OTP إلا بعد ضبط
+`NEXT_PUBLIC_PHONE_LOGIN_ENABLED=true` للواجهة و`PHONE_LOGIN_ENABLED=true`
+لسرّ Supabase Edge Function. لا تضبط متغير الخادم حاليًا.
 
 ## إعداد SMS
 

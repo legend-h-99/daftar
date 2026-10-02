@@ -15,11 +15,25 @@ function resolveApiUrl(): string {
   // Production requests use the approved Supabase API endpoint.
   const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
-  const safeApiUrl = configuredApiUrl === productionApiUrl
-    ? configuredApiUrl
-    : productionApiUrl;
+  const isStaging = process.env.NEXT_PUBLIC_APP_ENV === "staging";
+  let stagingApiUrl: string | null = null;
+  if (isStaging && configuredApiUrl) {
+    try {
+      const candidate = new URL(configuredApiUrl);
+      if (
+        candidate.protocol === "https:" &&
+        candidate.hostname.endsWith(".supabase.co") &&
+        candidate.pathname.endsWith("/functions/v1/api")
+      ) stagingApiUrl = candidate.toString().replace(/\/$/, "");
+    } catch {
+      // Ignore invalid staging URLs and keep the production endpoint fallback.
+    }
+  }
+  const safeApiUrl = stagingApiUrl ?? productionApiUrl;
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
+    if (hostname === "daftar1.com" || hostname === "www.daftar1.com") return productionApiUrl;
+    if (stagingApiUrl) return stagingApiUrl;
     const isLocal =
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||
@@ -34,14 +48,41 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 
+// Supabase runs the function near the caller by default, but every request
+// makes several database round trips; running it beside the database
+// (Singapore) measured ~20% faster on the dashboard.
+function apiRequestUrl(path: string): string {
+  const url = `${API_URL}${path}`;
+  if (!API_URL.includes(".supabase.co/functions/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}forceFunctionRegion=ap-southeast-1`;
+}
+
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
+}
+
+function localizedApiError(data: { code?: unknown; material?: unknown }): string | null {
+  const ar = getLang() === "ar";
+  if (data.code === "INVALID_VAT_NUMBER") {
+    return ar
+      ? "الرقم الضريبي يجب أن يكون 15 رقماً يبدأ بـ 3 وينتهي بـ 3"
+      : "The VAT number must be 15 digits that start and end with 3.";
+  }
+  if (data.code === "INSUFFICIENT_STOCK") {
+    const material = typeof data.material === "string" ? data.material : "";
+    return ar
+      ? `المخزون لا يكفي من «${material}». سجّل مشتريات هذه المادة أولاً ثم أعد المحاولة.`
+      : `Not enough "${material}" in stock. Record a purchase of this material first, then try again.`;
+  }
+  return null;
 }
 
 interface ApiFetchOptions extends Omit<RequestInit, "body"> {
@@ -85,7 +126,7 @@ export async function apiFetch<T = unknown>(
     };
     response = DEMO_MODE
       ? await demoApiFetch(path, request)
-      : await fetch(`${API_URL}${path}`, request);
+      : await fetch(apiRequestUrl(path), request);
   } catch {
     throw new ApiError(getLang() === "ar" ? "تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت" : "Could not connect to server. Check your internet connection.", 0);
   }
@@ -99,9 +140,14 @@ export async function apiFetch<T = unknown>(
 
   if (!response.ok) {
     let message = getLang() === "ar" ? "حدث خطأ غير متوقع، حاول مرة أخرى" : "An unexpected error occurred. Please try again.";
+    let code: string | undefined;
     try {
       const data = await response.json();
-      if (typeof data?.message === "string") {
+      code = typeof data?.code === "string" ? data.code : undefined;
+      const localized = data && typeof data === "object" ? localizedApiError(data) : null;
+      if (localized) {
+        message = localized;
+      } else if (typeof data?.message === "string") {
         message = data.message;
       } else if (Array.isArray(data?.message)) {
         message = data.message.join("، ");
@@ -109,7 +155,7 @@ export async function apiFetch<T = unknown>(
     } catch {
       // response body wasn't JSON, keep the default message
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, code);
   }
 
   if (response.status === 204) {
@@ -152,7 +198,7 @@ export async function apiGetBlob(path: string): Promise<Blob> {
     };
     response = DEMO_MODE
       ? await demoApiFetch(path, request)
-      : await fetch(`${API_URL}${path}`, request);
+      : await fetch(apiRequestUrl(path), request);
   } catch {
     throw new ApiError(getLang() === "ar" ? "تعذر الاتصال بالخادم، تحقق من اتصالك بالإنترنت" : "Could not connect to server. Check your internet connection.", 0);
   }

@@ -30,6 +30,9 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
+// Phone sign-in stays off unless it is deliberately enabled in the Edge Function.
+// This server-side gate also protects native clients that do not use the web flag.
+const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
@@ -50,9 +53,11 @@ function normalizePhone(phone: string): string {
   return `+966${digits}`
 }
 
+let dbClient: ReturnType<typeof createClient> | null = null
 function db() {
   if (!SUPABASE_URL || !SERVICE_KEY) throw new Error('Database configuration missing')
-  return createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+  dbClient ??= createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+  return dbClient
 }
 
 async function signJwt(payload: Record<string, unknown>): Promise<string> {
@@ -89,38 +94,45 @@ async function getUser(req: Request) {
   const claims = await verifyJwt(auth.slice(7))
   if (!claims) return null
   const supabase = db()
-  if (typeof claims.jti === 'string') {
-    const { data: revoked } = await supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti).maybeSingle()
-    if (revoked) return null
-  }
-  const { data: account } = await supabase.from('User').select('id,phone,email,googleId,businessId').eq('id', claims.sub).maybeSingle()
-  if (!account) return null
+  const [{ data: revoked }, { data: account }] = await Promise.all([
+    supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId').eq('id', claims.sub).maybeSingle(),
+  ])
+  if (revoked || !account) return null
   return { ...claims, phone: account.phone, email: account.email, googleId: account.googleId, businessId: account.businessId }
 }
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 }
-function err(msg: string, status = 400) {
-  return json({ message: msg, statusCode: status }, status)
+// `code` lets the web app show a localized message instead of this English text.
+function err(msg: string, status = 400, code?: string, extra: Record<string, unknown> = {}) {
+  return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
 }
 
-async function rateLimit(req: Request, action: string, identifier: unknown, limit: number): Promise<Response | null> {
+async function rateLimit(
+  req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
+): Promise<Response | null> {
   const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ??
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
-  const keys = [`${action}:ip:${ip}`]
+  const keys = includeIp ? [`${action}:ip:${ip}`] : []
   if (identity) keys.push(`${action}:account:${identity}`)
-  for (const key of keys) {
+  const outcomes = await Promise.all(keys.map(async key => {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
     const hashed = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')
-    const { data, error } = await db().rpc('consume_auth_rate_limit', {
-      p_key: hashed, p_limit: limit, p_window_seconds: 60,
-    })
-    if (error) return err('Authentication temporarily unavailable', 503)
-    if (data !== true) return err('Too many requests; try again shortly', 429)
-  }
+    return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: 60 })
+  }))
+  if (outcomes.some(o => o.error)) return err('Authentication temporarily unavailable', 503)
+  if (outcomes.some(o => o.data !== true)) return err('Too many requests; try again shortly', 429)
   return null
+}
+
+// Saudi VAT registration numbers are 15 digits that start and end with 3.
+const VAT_NUMBER_PATTERN = /^3\d{13}3$/
+
+function invalidVatNumber(value: unknown): boolean {
+  return value != null && (typeof value !== 'string' || !VAT_NUMBER_PATTERN.test(value))
 }
 
 async function reserveDailyEmailSend(): Promise<boolean> {
@@ -335,7 +347,8 @@ async function authEmailLogin(body: Record<string, unknown>) {
   const email = body.email.trim().toLowerCase()
   const { data: user } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
   const invalid = () => err('Invalid credentials', 401)
-  if (!user?.passwordHash || !await bcrypt.compare(body.password, user.passwordHash)) return invalid()
+  const passwordMatches = Boolean(user?.passwordHash) && await bcrypt.compare(body.password, user.passwordHash!)
+  if (!passwordMatches) return invalid()
   if (!user.emailVerified) return err('Please verify your email address first', 403)
   const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
   return json({
@@ -431,6 +444,7 @@ async function handleBusiness(req: Request, user: Record<string, unknown>) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return err('Invalid business update')
     const allowed = ['name', 'city', 'vatEnabled', 'vatNumber']
     if (Object.keys(body).some(key => !allowed.includes(key))) return err('Field cannot be changed', 400)
+    if (invalidVatNumber(body.vatNumber)) return err('Invalid VAT number', 400, 'INVALID_VAT_NUMBER')
     const { data, error } = await supabase.from('Business').update(body).eq('id', bizId).select().single()
     if (error || !data) return err('Business not found', 404)
     return json(data)
@@ -442,6 +456,9 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
   if (req.method !== 'POST') return err('Method not allowed', 405)
   if (user.businessId) return err('Business already set up', 409)
   const body = await req.json()
+  if (invalidVatNumber(body.vatNumber) || (body.vatEnabled === true && !body.vatNumber)) {
+    return err('Invalid VAT number', 400, 'INVALID_VAT_NUMBER')
+  }
   const supabase = db()
   const userId = user.sub as string
   const bizId = newId('biz')
@@ -778,6 +795,8 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   })
   if (error) {
     console.error('Invoice transaction failed', error.code, error.message)
+    const shortage = /^Insufficient stock: (.*)$/.exec(error.message)
+    if (shortage) return err(error.message, 409, 'INSUFFICIENT_STOCK', { material: shortage[1] })
     return err(error.message.includes('not found') ? error.message : 'Could not create invoice', 400)
   }
   // The transaction always stores paidAmount = 0; an invoice created as PAID
@@ -899,11 +918,13 @@ async function handleRequest(req: Request) {
     }
     if (path === '/health' || path === '') return json({ status: 'ok' })
     if (req.method === 'POST' && path === '/auth/otp/request') {
+      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
       const body = await req.json()
       const limited = await rateLimit(req, 'otp-request', body.phone, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
+      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
       const body = await req.json()
       return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
     }
@@ -941,7 +962,8 @@ async function handleRequest(req: Request) {
 
     const user = await getUser(req)
     if (!user) return err('Unauthorized', 401)
-    const accountLimited = await rateLimit(req, 'api-account', user.sub, 100)
+    // The per-IP cap already ran above; this adds only the per-account cap.
+    const accountLimited = await rateLimit(req, 'api-account', user.sub, 100, { includeIp: false })
     if (accountLimited) return accountLimited
 
     if (path === '/auth/me' && req.method === 'GET') return authMe(user.sub as string)
@@ -954,17 +976,24 @@ async function handleRequest(req: Request) {
     if (path === '/purchases/summary' && req.method === 'GET') return handlePurchasesSummary(user)
     if (path === '/purchases/scan' && req.method === 'POST') return err('ميزة المسح غير متاحة في هذه النسخة', 501)
     if (seg[0] === 'invoices' && seg[2] === 'pdf') return err('تحميل PDF غير متاح حالياً', 501)
-    if (seg[0] === 'invoices') return handleInvoice(req, user, seg[1], url)
-    if (seg[0] === 'expenses') return handleCrud(req, user, 'Expense', seg[1], url)
-    if (seg[0] === 'products') return handleProduct(req, user, seg[1], url)
-    if (seg[0] === 'purchases') return handlePurchase(req, user, seg[1], url)
-    if (seg[0] === 'customers') return handleCrud(req, user, 'Customer', seg[1], url)
-    if (seg[0] === 'suppliers') return handleCrud(req, user, 'Supplier', seg[1], url)
-    if (seg[0] === 'materials') return handleCrud(req, user, 'Material', seg[1], url)
-    if (seg[0] === 'stock-movements') return handleCrud(req, user, 'StockMovement', seg[1], url)
+    if (seg[0] === 'invoices') return await handleInvoice(req, user, seg[1], url)
+    if (seg[0] === 'expenses') return await handleCrud(req, user, 'Expense', seg[1], url)
+    if (seg[0] === 'products') return await handleProduct(req, user, seg[1], url)
+    if (seg[0] === 'purchases') return await handlePurchase(req, user, seg[1], url)
+    if (seg[0] === 'customers') return await handleCrud(req, user, 'Customer', seg[1], url)
+    if (seg[0] === 'suppliers') return await handleCrud(req, user, 'Supplier', seg[1], url)
+    if (seg[0] === 'materials') return await handleCrud(req, user, 'Material', seg[1], url)
+    if (seg[0] === 'stock-movements') return await handleCrud(req, user, 'StockMovement', seg[1], url)
 
     return err('Not found', 404)
   } catch (e) {
+    // Request.json() errors cross the Deno fetch runtime boundary. Match the
+    // stable error name/message instead of relying on realm-specific instanceof.
+    const errorName = e && typeof e === 'object' && 'name' in e ? e.name : undefined
+    const errorMessage = e instanceof Error ? e.message : String(e)
+    if (errorName === 'SyntaxError' || /not valid JSON|Unexpected end of JSON input/i.test(errorMessage)) {
+      return err('Invalid request body', 400)
+    }
     console.error(e)
     return err('Server error', 500)
   }
