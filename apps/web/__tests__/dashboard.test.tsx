@@ -94,6 +94,7 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
     operatingExpenses: 500,
     totalExpenses: 500,
     netProfit: 2_500,
+    cashFlow: 2_500,
     unpaidInvoices: [],
     unpaidInvoicesCount: 0,
     unpaidInvoicesTotal: 0,
@@ -148,7 +149,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
       );
       expect(screen.getByText("تكلفة البيع")).toBeInTheDocument();
       expect(screen.getByText("مصاريف")).toBeInTheDocument();
-      expect(screen.getByText(/صافي الربح/)).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: /الربح من المبيعات/ })).toBeInTheDocument();
     });
 
     it("يعرض الأرقام المنسّقة بالريال السعودي", async () => {
@@ -160,7 +161,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
       await waitFor(() =>
         expect(screen.getByText("5,000.00 ر.س")).toBeInTheDocument(),
       );
-      expect(screen.getByText("2,500.00 ر.س")).toBeInTheDocument();
+      expect(screen.getAllByText("2,500.00 ر.س")).toHaveLength(2);
     });
 
     it("يعرض صافي الربح السالب", async () => {
@@ -173,6 +174,15 @@ describe("صفحة الرئيسية (Dashboard)", () => {
         expect(screen.getByText("-1,200.00 ر.س")).toBeInTheDocument(),
       );
     });
+  });
+
+  it("يعرض ربح المبيعات والتدفق النقدي المختلفين والتنبيه", async () => {
+    vi.mocked(apiGet).mockResolvedValue(makeSummary({ totalSales: 30, totalPurchases: 100, operatingExpenses: 2, costOfGoodsSold: 4, netProfit: 24, cashFlow: -72 }));
+    render(<DashboardPage />);
+    await waitFor(() => expect(screen.getByText("24.00 ر.س")).toBeInTheDocument());
+    expect(screen.getByText("-72.00 ر.س")).toBeInTheDocument();
+    expect(screen.getByText("النقد الداخل والخارج")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("تُحسب تكلفته صفراً");
   });
 
   describe("حالة الخطأ", () => {

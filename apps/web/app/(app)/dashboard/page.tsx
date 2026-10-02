@@ -130,14 +130,14 @@ export default function DashboardPage() {
               ];
               return (
                 <section
-                  aria-label={`${language === "ar" ? "صافي الربح" : "Net profit"} ${formatSAR(summary.netProfit, language)}`}
+                  aria-label={`${language === "ar" ? "الربح من المبيعات" : "Profit from sales"} ${formatSAR(summary.netProfit, language)}`}
                   className={`animate-fade-up rounded-lg border p-5 shadow-sm ${
                     positive ? "border-brand-100 bg-brand-50" : "border-red-100 bg-red-50"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-500">
-                      {language === "ar" ? "صافي الربح" : "Net profit"} · {formatMonthLabel(month, language)}
+                      {language === "ar" ? "الربح من المبيعات" : "Profit from sales"} · {formatMonthLabel(month, language)}
                     </span>
                     <span
                       className={`rounded-xl p-2 ${
@@ -173,6 +173,15 @@ export default function DashboardPage() {
                 </section>
               );
             })()}
+
+            <section aria-label={language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"} className="rounded-lg border bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-gray-500">{language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"}</h2>
+              <p className="mt-2 text-3xl font-bold">{formatSAR(summary.cashFlow ?? (summary.totalSales - summary.totalPurchases - summary.operatingExpenses), language)}</p>
+              <p className="mt-3 text-xs text-gray-500">{language === "ar" ? "المبيعات − كل المشتريات − المصاريف" : "Sales − all purchases − expenses"}</p>
+            </section>
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="note">
+              {language === "ar" ? "المبيعات هنا هي المبالغ المحصلة. المنتج الذي لا ترتبط وصفته بالمخزون تُحسب تكلفته صفراً في الربح من المبيعات." : "Sales here are collected payments. Products with recipes not linked to inventory have zero cost in profit from sales."}
+            </p>
 
             {/* Low stock alert */}
             {summary.lowStock && summary.lowStock.length > 0 && (

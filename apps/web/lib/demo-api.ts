@@ -242,6 +242,7 @@ function dashboardSummary(): DashboardSummary {
     operatingExpenses,
     totalExpenses,
     netProfit: totalSales - totalExpenses,
+    cashFlow: totalSales - totalPurchases - operatingExpenses,
     unpaidInvoices,
     unpaidInvoicesCount: unpaidInvoices.length,
     unpaidInvoicesTotal: unpaidInvoices.reduce(

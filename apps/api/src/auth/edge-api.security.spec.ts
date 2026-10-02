@@ -89,6 +89,64 @@ function signedJwt(secret: string, claims: Record<string, unknown>, includeJti =
 }
 
 describe('deployed Supabase API security', () => {
+  it('returns the atomic paid invoice without a second payment write', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    database.rpc.mockImplementation(async (name: string) => name === 'create_invoice_with_inventory'
+      ? { data: { id: 'invoice-1', total: 30, paidAmount: 30, status: 'PAID' }, error: null }
+      : { data: true, error: null });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/invoices', 'POST', {
+      status: 'PAID', items: [{ name: 'Cake', unitPrice: 15, quantity: 2 }],
+    }, token));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ total: 30, paidAmount: 30 });
+    expect(database.from).not.toHaveBeenCalledWith('Invoice');
+  });
+
+  it('DSH-02: returns profit from sales and cash flow separately', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    const rows: Record<string, unknown[]> = {
+      Invoice: [{ total: 30, paidAmount: 30, status: 'PAID' }],
+      Purchase: [{ total: 100 }], Expense: [{ amount: 2 }], Material: [],
+      StockMovement: [
+        { qty: -0.4, costAmount: 4, material: { unitPrice: 999 } },
+        { qty: -0.1, costAmount: null, material: { unitPrice: 10 } },
+      ],
+    };
+    database.from.mockImplementation((table: string) => {
+      if (!(table in rows)) return original(table);
+      const query: any = { data: rows[table], error: null };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      totalSales: 30, totalPurchases: 100, costOfGoodsSold: 5,
+      operatingExpenses: 2, totalExpenses: 7, netProfit: 23, cashFlow: -72,
+    });
+  });
+
+  it('fails the report explicitly when a database query fails instead of showing zero balances', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string) => {
+      if (['User', 'TokenBlacklist'].includes(table)) return original(table);
+      const query: any = { data: null, error: { message: 'private database detail' } };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('private database detail');
+  });
+
   it('routes both the production and candidate function prefixes', async () => {
     const { handler } = edgeApi();
     const candidate = await handler(new Request('https://project.supabase.co/functions/v1/api-candidate/health'));
