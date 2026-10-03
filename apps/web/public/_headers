@@ -17,3 +17,7 @@ https://daftar-ead.pages.dev/*
 
 /opengraph-image
   Content-Type: image/png
+
+# Build output under /_next/static is content-hashed; a changed file gets a new name.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
