@@ -25,7 +25,7 @@ export default function CostBar({
     <div className="flex flex-col gap-2">
       {/* Sales bar */}
       <div className="flex items-center gap-2">
-        <span className={`w-16 shrink-0 text-xs text-gray-400 ${en ? "text-left" : "text-right"}`}>{en ? "Sales" : "مبيعات"}</span>
+        <span className={`w-16 shrink-0 text-xs text-gray-500 ${en ? "text-left" : "text-right"}`}>{en ? "Sales" : "مبيعات"}</span>
         <div className="flex h-7 flex-1 overflow-hidden rounded-lg bg-gray-100">
           <div
             className="flex items-center justify-end rounded-lg bg-brand-500 px-2 transition-all"
@@ -40,7 +40,7 @@ export default function CostBar({
 
       {/* Cost of goods sold bar */}
       <div className="flex items-center gap-2">
-        <span className={`w-16 shrink-0 text-xs text-gray-400 ${en ? "text-left" : "text-right"}`}>{en ? "Cost of sales" : "تكلفة البيع"}</span>
+        <span className={`w-16 shrink-0 text-xs text-gray-500 ${en ? "text-left" : "text-right"}`}>{en ? "Cost of sales" : "تكلفة البيع"}</span>
         <div className="flex h-7 flex-1 overflow-hidden rounded-lg bg-gray-100">
           <div
             className="flex items-center justify-end rounded-lg bg-amber-400 px-2 transition-all"
@@ -55,7 +55,7 @@ export default function CostBar({
 
       {/* Operating expenses bar */}
       <div className="flex items-center gap-2">
-        <span className={`w-16 shrink-0 text-xs text-gray-400 ${en ? "text-left" : "text-right"}`}>{en ? "Expenses" : "مصاريف"}</span>
+        <span className={`w-16 shrink-0 text-xs text-gray-500 ${en ? "text-left" : "text-right"}`}>{en ? "Expenses" : "مصاريف"}</span>
         <div className="flex h-7 flex-1 overflow-hidden rounded-lg bg-gray-100">
           <div
             className="flex items-center justify-end rounded-lg bg-red-400 px-2 transition-all"

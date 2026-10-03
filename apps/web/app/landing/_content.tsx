@@ -132,7 +132,7 @@ function Logo() {
 function CellIcon({ val }: { val: boolean | string }) {
   if (val === true)  return <span className="text-brand-700 font-bold text-lg">✓</span>;
   if (val === false) return <span className="text-red-400 font-bold text-lg">✗</span>;
-  return <span className="text-gray-400 text-sm">{val}</span>;
+  return <span className="text-gray-500 text-sm">{val}</span>;
 }
 
 function DirectionalNumber({ children }: { children: React.ReactNode }) {
@@ -428,7 +428,7 @@ export default function LandingContent() {
 
         <div className="mt-10 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
           <table className="w-full table-fixed text-center text-xs">
-            <thead className="bg-white text-gray-400">
+            <thead className="bg-white text-gray-500">
               <tr>
                 <th scope="col" className="px-3 py-3 text-right font-semibold">الميزة</th>
                 <th scope="col" className="px-3 py-3 font-extrabold text-brand-700">دفتر</th>
@@ -449,7 +449,7 @@ export default function LandingContent() {
           </table>
         </div>
 
-        <p className="mt-3 text-center text-xs text-gray-400">
+        <p className="mt-3 text-center text-xs text-gray-500">
           * QuickBooks يتفوق في المحاسبة المتقدمة للشركات الكبيرة — وهذا ليس جمهورنا.
         </p>
       </section>
@@ -510,7 +510,7 @@ export default function LandingContent() {
               كيف يشتغل؟
             </a>
           </div>
-          <p className="mt-5 text-xs text-gray-400">
+          <p className="mt-5 text-xs text-gray-500">
             دفتر مجاني للبدء، ومصمم عربيًا للمشاريع الصغيرة في السعودية.
           </p>
         </div>
