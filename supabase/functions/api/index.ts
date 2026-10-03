@@ -55,10 +55,24 @@ function normalizePhone(phone: string): string {
   return `+966${digits}`
 }
 
+// Right after a cold start the API gateway has answered 401 to some of the
+// first concurrent calls, although every call carries the same service key.
+// A 401 means the request was rejected before it ran, so one retry is safe
+// even for writes; any other status is returned as is.
+async function gatewayRetryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init)
+  if (response.status !== 401) return response
+  console.warn('Database gateway answered 401; retrying once')
+  return fetch(input, init)
+}
+
 let dbClient: ReturnType<typeof createClient> | null = null
 function db() {
   if (!SUPABASE_URL || !SERVICE_KEY) throw new Error('Database configuration missing')
-  dbClient ??= createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+  dbClient ??= createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false },
+    global: { fetch: gatewayRetryFetch },
+  })
   return dbClient
 }
 
