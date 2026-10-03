@@ -834,6 +834,30 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
 }
 
+async function createMaterial(supabase: ReturnType<typeof db>, bizId: string, body: Record<string, unknown>) {
+  const allowed = ['name', 'unit', 'purchasePrice', 'purchaseQty', 'vatRate', 'initialQty', 'reorderLevel']
+  if (Object.keys(body).some(key => !allowed.includes(key)) ||
+      typeof body.name !== 'string' || !body.name.trim() ||
+      !['KG', 'GRAM', 'LITER', 'ML', 'PIECE'].includes(body.unit as string) ||
+      !validAmount(body.purchasePrice, true) || !validAmount(body.purchaseQty) ||
+      !validAmount(body.initialQty ?? 0, true) ||
+      !validAmount(body.vatRate ?? 0, true) || Number(body.vatRate ?? 0) > 100 ||
+      (body.reorderLevel != null && !validAmount(body.reorderLevel, true)) ||
+      !Number.isFinite(Number(body.purchasePrice) / Number(body.purchaseQty))) {
+    return err('تحقق من اسم الصنف والوحدة والسعر والكمية', 400)
+  }
+  const { data, error } = await supabase.rpc('create_material_with_opening_balance', {
+    p_business_id: bizId,
+    p_material_id: newId('material'),
+    p_body: { ...body, name: body.name.trim() },
+  })
+  if (error) {
+    console.error('Material creation failed', { code: error.code })
+    return err('تعذر حفظ الصنف، حاول مرة أخرى', 500)
+  }
+  return json(data, 201)
+}
+
 async function handleCrud(req: Request, user: Record<string, unknown>, table: string, id?: string, url?: URL) {
   const supabase = db()
   const bizId = user.businessId as string
@@ -866,6 +890,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Material') return createMaterial(supabase, bizId, body)
     if (table === 'Expense') {
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
