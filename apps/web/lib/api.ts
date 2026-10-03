@@ -185,7 +185,7 @@ export function apiGet<T = unknown>(path: string) {
   return apiFetch<T>(path, { method: "GET" });
 }
 
-export function apiPost<T = unknown>(path: string, body?: unknown, options: Pick<ApiFetchOptions, "auth"> = {}) {
+export function apiPost<T = unknown>(path: string, body?: unknown, options: Pick<ApiFetchOptions, "auth" | "headers"> = {}) {
   return apiFetch<T>(path, { ...options, method: "POST", body });
 }
 

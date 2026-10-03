@@ -4,7 +4,7 @@ import * as bcrypt from 'https://esm.sh/bcryptjs@3.0.3'
 const CORS = {
   'access-control-allow-origin': 'https://daftar-ead.pages.dev',
   'access-control-allow-credentials': 'true',
-  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info, idempotency-key',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
 }
 
@@ -812,11 +812,16 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
       (body.dueDate != null && typeof body.dueDate !== 'string') ||
       (body.notes != null && typeof body.notes !== 'string') ||
       !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) return err('Invalid invoice', 400)
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) {
+    return err('Invalid idempotency key', 400, 'INVALID_IDEMPOTENCY_KEY')
+  }
   const { data, error } = await db().rpc('create_invoice_with_inventory', {
     p_business_id: user.businessId as string, p_customer_id: (body.customerId as string | undefined) ?? null,
     p_status: (body.status as string | undefined) ?? 'UNPAID',
     p_due_date: (body.dueDate as string | undefined) ?? null,
     p_notes: (body.notes as string | undefined) ?? null, p_items: body.items,
+    p_idempotency_key: idempotencyKey,
   })
   if (error) {
     console.error('Invoice transaction failed', error.code, error.message)
@@ -826,7 +831,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   }
   // Apply invoice_paid_amount_atomic before deploying this version: paidAmount
   // is now part of the same transaction as the invoice and stock movements.
-  return json(data, 201)
+  return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
 }
 
 async function handleCrud(req: Request, user: Record<string, unknown>, table: string, id?: string, url?: URL) {
@@ -912,7 +917,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   }
 
   if (req.method === 'DELETE' && id) {
-    await supabase.from(table).delete().eq('id', id).eq('businessId', bizId)
+    const { data: deleted } = await supabase.from(table).delete().eq('id', id).eq('businessId', bizId).select('id')
+    if (!deleted?.length) return err('Not found', 404)
     return new Response(null, { status: 204, headers: CORS })
   }
 
