@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -34,6 +34,9 @@ export default function NewInvoicePage() {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Reused when saving is retried, so a request whose response was lost
+  // returns the original invoice instead of creating a duplicate.
+  const idempotencyKey = useRef(crypto.randomUUID());
 
   useEffect(() => {
     apiGet<Customer[]>("/customers").then(setCustomers).catch((err) => {
@@ -115,9 +118,11 @@ export default function NewInvoicePage() {
         status: "UNPAID",
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
-      });
+      }, { headers: { "Idempotency-Key": idempotencyKey.current } });
       router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
+      // A 4xx answer means nothing was saved; the next attempt is a new invoice.
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) idempotencyKey.current = crypto.randomUUID();
       setError(err instanceof ApiError ? err.message : en ? "Could not create invoice" : "تعذر إنشاء الفاتورة");
     } finally {
       setSaving(false);

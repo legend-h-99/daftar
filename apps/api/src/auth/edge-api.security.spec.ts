@@ -327,3 +327,98 @@ describe('deployed Supabase API security', () => {
     expect(await response.text()).not.toContain('private database detail');
   });
 });
+
+describe('deleting records', () => {
+  function withInvoices(rows: Array<{ id: string; businessId: string }>) {
+    const api = edgeApi();
+    api.user.businessId = 'business-a';
+    const original = api.database.from.getMockImplementation()!;
+    api.database.from.mockImplementation((table: string) => {
+      if (table !== 'Invoice') return original(table);
+      const filters: Array<[string, unknown]> = [];
+      let deleting = false;
+      const run = () => {
+        const matches = rows.filter(row => filters.every(([field, value]) => (row as Record<string, unknown>)[field] === value));
+        if (deleting) for (const row of matches) rows.splice(rows.indexOf(row), 1);
+        return { data: matches, error: null };
+      };
+      const query: any = {
+        delete: () => { deleting = true; return query; },
+        eq: (field: string, value: unknown) => { filters.push([field, value]); return query; },
+        select: () => query,
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(run()).then(resolve, reject),
+      };
+      return query;
+    });
+    const token = signedJwt(api.secret, { sub: api.user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    return { ...api, rows, token };
+  }
+
+  it("returns 404 and keeps the record when deleting another business's invoice", async () => {
+    const { handler, rows, token } = withInvoices([{ id: 'invoice-b', businessId: 'business-b' }]);
+    const response = await handler(request('/invoices/invoice-b', 'DELETE', undefined, token));
+    expect(response.status).toBe(404);
+    expect(rows).toEqual([{ id: 'invoice-b', businessId: 'business-b' }]);
+  });
+
+  it('returns 204 and removes the record when deleting your own invoice', async () => {
+    const { handler, rows, token } = withInvoices([{ id: 'invoice-a', businessId: 'business-a' }]);
+    const response = await handler(request('/invoices/invoice-a', 'DELETE', undefined, token));
+    expect(response.status).toBe(204);
+    expect(rows).toEqual([]);
+  });
+});
+
+describe('creating invoices idempotently', () => {
+  function invoiceApi() {
+    const api = edgeApi();
+    api.user.businessId = 'business-a';
+    api.database.rpc.mockImplementation(async (name: string) => name === 'create_invoice_with_inventory'
+      ? { data: { id: 'invoice-1', number: 7, total: 30, paidAmount: 0, status: 'UNPAID' }, error: null }
+      : { data: true, error: null });
+    const token = signedJwt(api.secret, { sub: api.user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    return { ...api, token };
+  }
+
+  function createInvoice(handler: Handler, token: string, key?: string) {
+    const req = request('/invoices', 'POST', { items: [{ name: 'Cake', unitPrice: 15, quantity: 2 }] }, token);
+    if (key) req.headers.set('Idempotency-Key', key);
+    return handler(req);
+  }
+
+  it('passes the Idempotency-Key header to the invoice transaction', async () => {
+    const { handler, database, token } = invoiceApi();
+    const response = await createInvoice(handler, token, 'checkout-7f3a9c2e');
+    expect(response.status).toBe(201);
+    expect(database.rpc).toHaveBeenCalledWith('create_invoice_with_inventory',
+      expect.objectContaining({ p_idempotency_key: 'checkout-7f3a9c2e' }));
+  });
+
+  it('lets the deployed site send the Idempotency-Key header across origins', async () => {
+    const { handler } = invoiceApi();
+    const response = await handler(new Request('https://project.supabase.co/functions/v1/api/invoices', {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://daftar1.com', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type, idempotency-key' },
+    }));
+    const allowed = (response.headers.get('Access-Control-Allow-Headers') ?? '').split(',').map(h => h.trim().toLowerCase());
+    expect(allowed).toContain('idempotency-key');
+  });
+
+  it('answers a retried key with the original invoice and 200 instead of creating another', async () => {
+    const { handler, database, token } = invoiceApi();
+    database.rpc.mockImplementation(async (name: string) => name === 'create_invoice_with_inventory'
+      ? { data: { id: 'invoice-1', number: 7, total: 30, paidAmount: 0, status: 'UNPAID', replayed: true }, error: null }
+      : { data: true, error: null });
+    const response = await createInvoice(handler, token, 'checkout-7f3a9c2e');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: 'invoice-1', number: 7 });
+  });
+
+  it('rejects a malformed Idempotency-Key before touching the database', async () => {
+    const { handler, database, token } = invoiceApi();
+    const response = await createInvoice(handler, token, 'x'.repeat(300));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
+    expect(database.rpc).not.toHaveBeenCalledWith('create_invoice_with_inventory', expect.anything());
+  });
+});
