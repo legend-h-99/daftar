@@ -24,10 +24,10 @@ export default function ProductForm({ product }: ProductFormProps) {
 
   const [name, setName] = useState(product?.name || "");
   const [rawItems, setRawItems] = useState<RecipeItem[]>(
-    product?.recipeItems.filter((i) => i.type === "RAW") || [],
+    product?.recipeItems?.filter((i) => i.type === "RAW") || [],
   );
   const [packagingItems, setPackagingItems] = useState<RecipeItem[]>(
-    product?.recipeItems.filter((i) => i.type === "PACKAGING") || [],
+    product?.recipeItems?.filter((i) => i.type === "PACKAGING") || [],
   );
   const [overheadCost, setOverheadCost] = useState<number>(
     product?.overheadCost || 0,

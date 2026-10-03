@@ -655,3 +655,24 @@ describe('database requests rejected by the gateway', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('reading a product for editing', () => {
+  it('returns the product with its recipe items, which the edit form needs', async () => {
+    const api = edgeApi();
+    api.user.businessId = 'business-a';
+    const original = api.database.from.getMockImplementation()!;
+    const selects: string[] = [];
+    api.database.from.mockImplementation((table: string) => {
+      if (table !== 'Product') return original(table);
+      const q: any = {};
+      q.select = jest.fn((columns: string) => { selects.push(columns); return q; });
+      q.eq = jest.fn(() => q);
+      q.single = jest.fn(async () => ({ data: { id: 'p-1', recipeItems: [] }, error: null }));
+      return q;
+    });
+    const token = signedJwt(api.secret, { sub: api.user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await api.handler(request('/products/p-1', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(selects[0]).toMatch(/recipeItems:RecipeItem\(\*\)/);
+  });
+});

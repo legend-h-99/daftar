@@ -663,7 +663,8 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
 const TABLE_SELECTS: Record<string, string> = {
   Invoice: '*, items:InvoiceItem(*), customer:Customer(name,phone)',
   Purchase: '*, items:PurchaseItem(*), supplier:Supplier(name)',
-  Product: '*',
+  // The edit form rebuilds the recipe from these items.
+  Product: '*, recipeItems:RecipeItem(*)',
   Expense: '*',
   Customer: '*',
   Supplier: '*',
