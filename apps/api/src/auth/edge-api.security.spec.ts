@@ -104,49 +104,6 @@ describe('deployed Supabase API security', () => {
     expect(database.from).not.toHaveBeenCalledWith('Invoice');
   });
 
-  it('DSH-02: returns profit from sales and cash flow separately', async () => {
-    const { handler, database, user, secret } = edgeApi();
-    user.businessId = 'business-1';
-    const original = database.from.getMockImplementation()!;
-    const rows: Record<string, unknown[]> = {
-      Invoice: [{ total: 30, paidAmount: 30, status: 'PAID' }],
-      Purchase: [{ total: 100 }], Expense: [{ amount: 2 }], Material: [],
-      StockMovement: [
-        { qty: -0.4, costAmount: 4, material: { unitPrice: 999 } },
-        { qty: -0.1, costAmount: null, material: { unitPrice: 10 } },
-      ],
-    };
-    database.from.mockImplementation((table: string) => {
-      if (!(table in rows)) return original(table);
-      const query: any = { data: rows[table], error: null };
-      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
-      return query;
-    });
-    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
-    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      totalSales: 30, totalPurchases: 100, costOfGoodsSold: 5,
-      operatingExpenses: 2, totalExpenses: 7, netProfit: 23, cashFlow: -72,
-    });
-  });
-
-  it('fails the report explicitly when a database query fails instead of showing zero balances', async () => {
-    const { handler, database, user, secret } = edgeApi();
-    user.businessId = 'business-1';
-    const original = database.from.getMockImplementation()!;
-    database.from.mockImplementation((table: string) => {
-      if (['User', 'TokenBlacklist'].includes(table)) return original(table);
-      const query: any = { data: null, error: { message: 'private database detail' } };
-      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
-      return query;
-    });
-    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
-    const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
-    expect(response.status).toBe(503);
-    expect(await response.text()).not.toContain('private database detail');
-  });
-
   it('routes both the production and candidate function prefixes', async () => {
     const { handler } = edgeApi();
     const candidate = await handler(new Request('https://project.supabase.co/functions/v1/api-candidate/health'));
@@ -329,12 +286,12 @@ describe('deployed Supabase API security', () => {
 });
 
 describe('deleting records', () => {
-  function withInvoices(rows: Array<{ id: string; businessId: string }>) {
+  function withExpenses(rows: Array<{ id: string; businessId: string }>) {
     const api = edgeApi();
     api.user.businessId = 'business-a';
     const original = api.database.from.getMockImplementation()!;
     api.database.from.mockImplementation((table: string) => {
-      if (table !== 'Invoice') return original(table);
+      if (table !== 'Expense') return original(table);
       const filters: Array<[string, unknown]> = [];
       let deleting = false;
       const run = () => {
@@ -354,16 +311,16 @@ describe('deleting records', () => {
     return { ...api, rows, token };
   }
 
-  it("returns 404 and keeps the record when deleting another business's invoice", async () => {
-    const { handler, rows, token } = withInvoices([{ id: 'invoice-b', businessId: 'business-b' }]);
-    const response = await handler(request('/invoices/invoice-b', 'DELETE', undefined, token));
+  it("returns 404 and keeps the record when deleting another business's expense", async () => {
+    const { handler, rows, token } = withExpenses([{ id: 'expense-b', businessId: 'business-b' }]);
+    const response = await handler(request('/expenses/expense-b', 'DELETE', undefined, token));
     expect(response.status).toBe(404);
-    expect(rows).toEqual([{ id: 'invoice-b', businessId: 'business-b' }]);
+    expect(rows).toEqual([{ id: 'expense-b', businessId: 'business-b' }]);
   });
 
-  it('returns 204 and removes the record when deleting your own invoice', async () => {
-    const { handler, rows, token } = withInvoices([{ id: 'invoice-a', businessId: 'business-a' }]);
-    const response = await handler(request('/invoices/invoice-a', 'DELETE', undefined, token));
+  it('returns 204 and removes the record when deleting your own expense', async () => {
+    const { handler, rows, token } = withExpenses([{ id: 'expense-a', businessId: 'business-a' }]);
+    const response = await handler(request('/expenses/expense-a', 'DELETE', undefined, token));
     expect(response.status).toBe(204);
     expect(rows).toEqual([]);
   });
@@ -420,5 +377,241 @@ describe('creating invoices idempotently', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
     expect(database.rpc).not.toHaveBeenCalledWith('create_invoice_with_inventory', expect.anything());
+  });
+});
+
+describe('review findings 2026-10-03', () => {
+  type Result = { data: unknown; error: unknown };
+  // A chainable PostgREST stand-in: every filter returns itself, awaiting yields `result`.
+  function query(result: Result) {
+    const q: any = {};
+    for (const m of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range', 'limit', 'insert', 'update', 'delete']) q[m] = jest.fn(() => q);
+    q.single = jest.fn(async () => result);
+    q.maybeSingle = jest.fn(async () => result);
+    q.then = (resolve: (v: unknown) => unknown, reject: (r: unknown) => unknown) => Promise.resolve(result).then(resolve, reject);
+    return q;
+  }
+
+  function api(tables: Record<string, Result> = {}, settings: Record<string, string> = {}) {
+    const base = edgeApi(settings);
+    base.user.businessId = 'business-a';
+    const original = base.database.from.getMockImplementation()!;
+    const queries: Record<string, any[]> = {};
+    base.database.from.mockImplementation((table: string) => {
+      if (!(table in tables)) return original(table);
+      const q = query(tables[table]);
+      (queries[table] ??= []).push(q);
+      return q;
+    });
+    const token = signedJwt(base.secret, { sub: base.user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    return { ...base, token, queries };
+  }
+
+  function rpcReturns(database: { rpc: jest.Mock }, name: string, result: Result) {
+    database.rpc.mockImplementation(async (called: string) => called === name ? result : { data: true, error: null });
+  }
+
+  describe('1. POST to an existing record cannot rewrite it', () => {
+    it.each(['/invoices/invoice-1', '/purchases/purchase-1'])('rejects POST %s with 405 before touching the table', async path => {
+      const { handler, database, token } = api();
+      const response = await handler(request(path, 'POST', { total: 1, paidAmount: 1 }, token));
+      expect(response.status).toBe(405);
+      expect(database.from).not.toHaveBeenCalledWith('Invoice');
+      expect(database.from).not.toHaveBeenCalledWith('Purchase');
+    });
+
+    it('refuses to change an invoice idempotency key through PATCH', async () => {
+      const { handler, token, queries } = api({ Invoice: { data: { id: 'invoice-1' }, error: null } });
+      const response = await handler(request('/invoices/invoice-1', 'PATCH', { idempotencyKey: 'other-key-123' }, token));
+      expect(response.status).toBe(400);
+      expect(queries.Invoice?.some(q => q.update.mock.calls.length)).toBeFalsy();
+    });
+
+    it.each(['total', 'number'])('refuses to change a purchase %s through PATCH', async field => {
+      const { handler, token, queries } = api({ Purchase: { data: { id: 'purchase-1' }, error: null } });
+      const response = await handler(request('/purchases/purchase-1', 'PATCH', { [field]: 1 }, token));
+      expect(response.status).toBe(400);
+      expect(queries.Purchase?.some(q => q.update.mock.calls.length)).toBeFalsy();
+    });
+  });
+
+  describe('2. a database fault while checking the session is not a logout', () => {
+    it.each(['User', 'TokenBlacklist'])('answers 503, not 401, when the %s lookup fails', async table => {
+      const { handler, token } = api({ [table]: { data: null, error: { message: 'connection reset' } } });
+      const response = await handler(request('/auth/me', 'GET', undefined, token));
+      expect(response.status).toBe(503);
+    });
+  });
+
+  describe('3. browsers may cache the CORS preflight', () => {
+    it('sends Access-Control-Max-Age on preflight', async () => {
+      const { handler } = api();
+      const response = await handler(new Request('https://project.supabase.co/functions/v1/api/invoices', {
+        method: 'OPTIONS', headers: { Origin: 'https://daftar1.com' },
+      }));
+      expect(response.headers.get('Access-Control-Max-Age')).toBe('7200');
+    });
+  });
+
+  describe('4. report totals come from SQL aggregates', () => {
+    const summary = { totalSales: 30, totalPurchases: 100, costOfGoodsSold: 5, operatingExpenses: 2,
+      invoiceCount: 3, paidInvoicesCount: 1, unpaidInvoicesCount: 2, unpaidInvoicesTotal: 40, unpaidInvoices: [], lowStock: [] };
+
+    it('derives profit and cash flow from the dashboard_summary aggregate', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'dashboard_summary', { data: summary, error: null });
+      const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ totalExpenses: 7, netProfit: 23, cashFlow: -72, unpaidInvoicesCount: 2, unpaidInvoicesTotal: 40 });
+      expect(database.from).not.toHaveBeenCalledWith('Invoice');
+    });
+
+    it('fails the report with 503 when the aggregate fails', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'dashboard_summary', { data: null, error: { message: 'private detail' } });
+      const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain('private detail');
+    });
+
+    it('builds the purchases summary from the purchases_summary aggregate', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'purchases_summary', { data: { bySupplier: [{ name: 'A', count: 2, total: 9 }], byMonth: [] }, error: null });
+      const response = await handler(request('/purchases/summary', 'GET', undefined, token));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ bySupplier: [{ name: 'A', count: 2, total: 9 }], byMonth: [] });
+    });
+
+    it('pages stock movements instead of returning every row', async () => {
+      const { handler, token, queries } = api({ StockMovement: { data: [], error: null } });
+      const response = await handler(request('/inventory/movements?page=2&limit=50', 'GET', undefined, token));
+      expect(response.status).toBe(200);
+      expect(queries.StockMovement[0].range).toHaveBeenCalledWith(50, 99);
+    });
+  });
+
+  describe('5. invoice failures that may have saved are retryable server errors', () => {
+    it('answers an unclassified invoice transaction error with 500', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'create_invoice_with_inventory', { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } });
+      const response = await handler(request('/invoices', 'POST', { items: [{ name: 'Cake', unitPrice: 15, quantity: 2 }] }, token));
+      expect(response.status).toBe(500);
+    });
+
+    it('keeps rejected input as a 400', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'create_invoice_with_inventory', { data: null, error: { code: 'P0001', message: 'Invalid invoice item' } });
+      const response = await handler(request('/invoices', 'POST', { items: [{ name: 'Cake', unitPrice: 15, quantity: 2 }] }, token));
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('6. one idempotency key means one request', () => {
+    it('answers 422 when a key is reused for a different invoice', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'create_invoice_with_inventory', { data: null, error: { code: 'P0001', message: 'Idempotency key reused' } });
+      const req = request('/invoices', 'POST', { items: [{ name: 'Tea', unitPrice: 5, quantity: 1 }] }, token);
+      req.headers.set('Idempotency-Key', 'checkout-7f3a9c2e');
+      const response = await handler(req);
+      expect(response.status).toBe(422);
+      expect(await response.json()).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
+    });
+  });
+
+  describe('8. deleting an invoice reverses its stock', () => {
+    it('deletes through delete_invoice_with_inventory and answers 204', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'delete_invoice_with_inventory', { data: true, error: null });
+      const response = await handler(request('/invoices/invoice-1', 'DELETE', undefined, token));
+      expect(response.status).toBe(204);
+      expect(database.rpc).toHaveBeenCalledWith('delete_invoice_with_inventory', { p_business_id: 'business-a', p_invoice_id: 'invoice-1' });
+      expect(database.from).not.toHaveBeenCalledWith('Invoice');
+    });
+
+    it("answers 404 for an invoice outside the caller's business", async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'delete_invoice_with_inventory', { data: false, error: null });
+      const response = await handler(request('/invoices/invoice-b', 'DELETE', undefined, token));
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('9. months follow Riyadh time', () => {
+    it('passes Riyadh month boundaries to the report', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'dashboard_summary', { data: {}, error: null });
+      await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+      expect(database.rpc).toHaveBeenCalledWith('dashboard_summary', {
+        p_business_id: 'business-a',
+        p_start: '2026-09-30T21:00:00.000Z', p_end: '2026-10-31T21:00:00.000Z',
+        p_start_date: '2026-10-01', p_end_date: '2026-11-01',
+      });
+    });
+
+    it('filters invoice lists by the Riyadh month', async () => {
+      const { handler, token, queries } = api({ Invoice: { data: [], error: null } });
+      await handler(request('/invoices?month=2026-10', 'GET', undefined, token));
+      expect(queries.Invoice[0].gte).toHaveBeenCalledWith('createdAt', '2026-09-30T21:00:00.000Z');
+      expect(queries.Invoice[0].lt).toHaveBeenCalledWith('createdAt', '2026-10-31T21:00:00.000Z');
+    });
+
+    it('filters purchase lists by purchase date, like the dashboard', async () => {
+      const { handler, token, queries } = api({ Purchase: { data: [], error: null } });
+      await handler(request('/purchases?month=2026-10', 'GET', undefined, token));
+      expect(queries.Purchase[0].gte).toHaveBeenCalledWith('date', '2026-10-01');
+      expect(queries.Purchase[0].lt).toHaveBeenCalledWith('date', '2026-11-01');
+    });
+  });
+
+  describe('10. reads report database faults instead of empty data', () => {
+    it.each([
+      ['/customers', 'Customer'], ['/customers/c-1', 'Customer'], ['/inventory', 'Material'],
+      ['/inventory/movements', 'StockMovement'], ['/business', 'Business'],
+    ])('GET %s answers 503 when the query fails', async (path, table) => {
+      const { handler, token } = api({ [table]: { data: null, error: { code: '08006', message: 'connection failure' } } });
+      const response = await handler(request(path, 'GET', undefined, token));
+      expect(response.status).toBe(503);
+    });
+
+    it('still answers 404 when a single record does not exist', async () => {
+      const { handler, token } = api({ Customer: { data: null, error: { code: 'PGRST116', message: 'no rows' } } });
+      const response = await handler(request('/customers/missing', 'GET', undefined, token));
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('low-priority findings', () => {
+    it('checks a password hash even for unknown emails so timing does not reveal accounts', async () => {
+      // The spec's `import * as` binding is frozen; spy on the CommonJS module the sandbox loads.
+      const compare = jest.spyOn(require('bcryptjs'), 'compare');
+      try {
+        const { handler } = api({ User: { data: null, error: null } });
+        const response = await handler(request('/auth/email/login', 'POST', { email: 'nobody@example.invalid', password: 'wrong-password' }));
+        expect(response.status).toBe(401);
+        expect(compare).toHaveBeenCalledTimes(1);
+      } finally { compare.mockRestore(); }
+    });
+
+    it('adjusts stock through the atomic adjust_material_stock function', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'adjust_material_stock', { data: { id: 'm-1', stockQty: 7 }, error: null });
+      const response = await handler(request('/inventory/adjust', 'POST', { materialId: 'm-1', newQty: 7, note: 'جرد' }, token));
+      expect(response.status).toBe(200);
+      expect(database.rpc).toHaveBeenCalledWith('adjust_material_stock', { p_business_id: 'business-a', p_material_id: 'm-1', p_new_qty: 7, p_note: 'جرد' });
+      expect(database.from).not.toHaveBeenCalledWith('Material');
+    });
+
+    it('answers 404 when adjusting a material outside the business', async () => {
+      const { handler, database, token } = api();
+      rpcReturns(database, 'adjust_material_stock', { data: null, error: { code: 'P0001', message: 'Material not found' } });
+      const response = await handler(request('/inventory/adjust', 'POST', { materialId: 'm-x', newQty: 7 }, token));
+      expect(response.status).toBe(404);
+    });
+
+    it('orders invoice items when reading an invoice', async () => {
+      const { handler, token, queries } = api({ Invoice: { data: { id: 'invoice-1', items: [] }, error: null } });
+      await handler(request('/invoices/invoice-1', 'GET', undefined, token));
+      expect(queries.Invoice[0].order).toHaveBeenCalledWith('position', { referencedTable: 'items', ascending: true });
+    });
   });
 });

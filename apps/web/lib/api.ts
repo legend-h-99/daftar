@@ -90,6 +90,11 @@ function localizedApiError(data: { code?: unknown; material?: unknown }): string
   if (data.code === "INVALID_BUSINESS_NAME") {
     return ar ? "أدخل اسم المحل (100 حرف كحد أقصى)" : "Enter your business name (up to 100 characters).";
   }
+  if (data.code === "IDEMPOTENCY_KEY_REUSED") {
+    return ar
+      ? "تغيّرت بيانات الفاتورة بعد محاولة حفظ سابقة. أعد فتح صفحة الفاتورة وتحقق من قائمة الفواتير قبل الحفظ."
+      : "The invoice changed after an earlier save attempt. Reopen the invoice page and check your invoice list before saving.";
+  }
   if (data.code === "INSUFFICIENT_STOCK") {
     const material = typeof data.material === "string" ? data.material : "";
     return ar
@@ -117,8 +122,9 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const { body, auth = true, headers, ...rest } = options;
 
+  // Only requests with a body declare one; a bodyless GET has nothing to describe.
   const finalHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     ...(headers as Record<string, string> | undefined),
   };
 

@@ -105,6 +105,9 @@ export default function NewInvoicePage() {
           name: customerQuery.trim(),
         });
         customerId = created.id;
+        // Keep the new customer selected so a retry reuses it instead of adding another.
+        setSelectedCustomer(created);
+        setCustomers((prev) => [...prev, created]);
       }
 
       const invoice = await apiPost<Invoice>("/invoices", {
