@@ -15,6 +15,7 @@ const compiled = ts.transpileModule(source, {
 
 function edgeApi(settings: Record<string, string> = {}) {
   let handler: Handler | undefined;
+  const clientOptions: unknown[] = [];
   const revoked = new Set<string>();
   const user: { id: string; phone: string | null; email: string; googleId: string | null; businessId: string | null; passwordHash?: string; emailVerified?: boolean } = {
     id: 'user-1', phone: null, email: 'audit@example.invalid', googleId: null, businessId: null,
@@ -60,7 +61,7 @@ function edgeApi(settings: Record<string, string> = {}) {
   const sandbox = {
     exports: {},
     require: (name: string) => {
-      if (name.includes('supabase-js')) return { createClient: () => database };
+      if (name.includes('supabase-js')) return { createClient: (_url: string, _key: string, options: unknown) => { clientOptions.push(options); return database; } };
       if (name.includes('bcryptjs')) return require('bcryptjs');
       throw new Error(`Unexpected import: ${name}`);
     },
@@ -69,7 +70,7 @@ function edgeApi(settings: Record<string, string> = {}) {
   };
   runInNewContext(compiled, sandbox);
   if (!handler) throw new Error('Edge handler not registered');
-  return { handler, database, revoked, user, fetchMock, secret: env.JWT_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY };
+  return { handler, database, revoked, user, fetchMock, clientOptions, secret: env.JWT_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY };
 }
 
 function request(path: string, method = 'GET', body?: unknown, bearer?: string): Request {
@@ -613,5 +614,44 @@ describe('review findings 2026-10-03', () => {
       await handler(request('/invoices/invoice-1', 'GET', undefined, token));
       expect(queries.Invoice[0].order).toHaveBeenCalledWith('position', { referencedTable: 'items', ascending: true });
     });
+  });
+});
+
+describe('database requests rejected by the gateway', () => {
+  // A cold-started function occasionally gets 401 from the API gateway on its
+  // first concurrent calls, although every call carries the same service key.
+  async function databaseFetch() {
+    const api = edgeApi();
+    await api.handler(request('/dashboard/summary', 'GET', undefined, signedJwt(api.secret, { sub: api.user.id, exp: Math.floor(Date.now() / 1000) + 3600 })));
+    const options = api.clientOptions[0] as { global?: { fetch?: (input: string, init?: RequestInit) => Promise<Response> } };
+    return { ...api, dbFetch: options.global?.fetch };
+  }
+
+  it('retries a request once when the gateway answers 401', async () => {
+    const { dbFetch, fetchMock } = await databaseFetch();
+    expect(dbFetch).toBeDefined();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401 })).mockResolvedValueOnce(new Response('true', { status: 200 }));
+    const response = await dbFetch!('https://project.supabase.co/rest/v1/rpc/consume_auth_rate_limit', { method: 'POST', body: '{}' });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry other failures, which may already have run', async () => {
+    const { dbFetch, fetchMock } = await databaseFetch();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 500 }));
+    const response = await dbFetch!('https://project.supabase.co/rest/v1/rpc/create_invoice_with_inventory', { method: 'POST', body: '{}' });
+    expect(response.status).toBe(500);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after one retry', async () => {
+    const { dbFetch, fetchMock } = await databaseFetch();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 401 }));
+    const response = await dbFetch!('https://project.supabase.co/rest/v1/User', { method: 'GET' });
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
