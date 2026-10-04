@@ -676,3 +676,130 @@ describe('reading a product for editing', () => {
     expect(selects[0]).toMatch(/recipeItems:RecipeItem\(\*\)/);
   });
 });
+
+describe('platform admin and support', () => {
+  type Row = Record<string, unknown>;
+  const ADMIN = { id: 'user-admin', email: 'owner@example.invalid', googleId: 'g-1', emailVerified: false, phone: null, businessId: 'business-a', name: 'حسام' };
+
+  // Users are looked up by id; every other table records what was written.
+  function adminApi(options: { caller?: Row; target?: Row | null; settings?: Record<string, string> } = {}) {
+    const api = edgeApi({ ADMIN_EMAILS: 'Owner@Example.invalid', RESEND_API_KEY: 'test-delivery-key', ...options.settings });
+    const caller = { ...ADMIN, ...options.caller };
+    const target = options.target === undefined
+      ? { id: 'user-target', email: 'customer@example.invalid', googleId: null, emailVerified: true, passwordHash: 'hash', name: 'زبون' }
+      : options.target;
+    const inserts: Record<string, Row[]> = {};
+    api.database.from.mockImplementation((table: string) => {
+      const filters: Record<string, unknown> = {};
+      const q: any = {};
+      for (const m of ['select', 'update', 'gt', 'order', 'limit']) q[m] = jest.fn(() => q);
+      q.eq = jest.fn((field: string, value: unknown) => { filters[field] = value; return q; });
+      q.insert = jest.fn(async (row: Row) => { (inserts[table] ??= []).push(row); return { error: null }; });
+      const lookup = () => {
+        if (table === 'TokenBlacklist') return { data: null, error: null };
+        if (table === 'User') return { data: filters.id === caller.id ? caller : filters.id === target?.id ? target : null, error: null };
+        return { data: null, error: null };
+      };
+      q.maybeSingle = jest.fn(async () => lookup());
+      q.single = jest.fn(async () => lookup());
+      q.then = (resolve: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve);
+      return q;
+    });
+    const token = signedJwt(api.secret, { sub: caller.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    return { ...api, token, inserts };
+  }
+
+  it('hides the admin area from everyone not listed as an admin', async () => {
+    const { handler, database, token } = adminApi({ caller: { email: 'someone@example.invalid' } });
+    const response = await handler(request('/admin/overview', 'GET', undefined, token));
+    expect(response.status).toBe(404);
+    expect(database.rpc).not.toHaveBeenCalledWith('admin_overview', expect.anything());
+  });
+
+  it('requires a verified email even when the address is on the admin list', async () => {
+    const { handler, token } = adminApi({ caller: { googleId: null, emailVerified: false } });
+    const response = await handler(request('/admin/overview', 'GET', undefined, token));
+    expect(response.status).toBe(404);
+  });
+
+  it('shows the platform overview to the admin', async () => {
+    const { handler, database, token } = adminApi();
+    database.rpc.mockImplementation(async (name: string) => name === 'admin_overview'
+      ? { data: { users: 13, businesses: 12 }, error: null } : { data: true, error: null });
+    const response = await handler(request('/admin/overview', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ users: 13, businesses: 12 });
+  });
+
+  it('tells the web app who is an admin', async () => {
+    const admin = adminApi();
+    const me = await admin.handler(request('/auth/me', 'GET', undefined, admin.token));
+    expect((await me.json()).user).toMatchObject({ isAdmin: true });
+    const other = adminApi({ caller: { email: 'someone@example.invalid' } });
+    const them = await other.handler(request('/auth/me', 'GET', undefined, other.token));
+    expect((await them.json()).user).toMatchObject({ isAdmin: false });
+  });
+
+  it('searches users through admin_find_users', async () => {
+    const { handler, database, token } = adminApi();
+    database.rpc.mockImplementation(async (name: string) => name === 'admin_find_users'
+      ? { data: [{ id: 'user-target' }], error: null } : { data: true, error: null });
+    const response = await handler(request('/admin/users?q=customer', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(database.rpc).toHaveBeenCalledWith('admin_find_users', { p_query: 'customer' });
+  });
+
+  it('sends a password reset link to a user and records who sent it', async () => {
+    const { handler, token, inserts, fetchMock } = adminApi();
+    const response = await handler(request('/admin/users/user-target/password-reset', 'POST', {}, token));
+    expect(response.status).toBe(200);
+    expect(inserts.PasswordReset?.[0]).toMatchObject({ userId: 'user-target' });
+    expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.objectContaining({ body: expect.stringContaining('customer@example.invalid') }));
+    expect(inserts.AdminAuditLog?.[0]).toMatchObject({ adminUserId: 'user-admin', action: 'PASSWORD_RESET_LINK', targetUserId: 'user-target', result: 'SENT' });
+  });
+
+  it('refuses a password reset for a Google-only account', async () => {
+    const { handler, token, inserts } = adminApi({ target: { id: 'user-target', email: 'g@example.invalid', googleId: 'g-2', emailVerified: false, passwordHash: null } });
+    const response = await handler(request('/admin/users/user-target/password-reset', 'POST', {}, token));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'NO_PASSWORD_LOGIN' });
+    expect(inserts.PasswordReset).toBeUndefined();
+  });
+
+  it('sends a verification link only to an unverified email account', async () => {
+    const verified = adminApi();
+    const already = await verified.handler(request('/admin/users/user-target/verification-email', 'POST', {}, verified.token));
+    expect(already.status).toBe(409);
+    expect(await already.json()).toMatchObject({ code: 'ALREADY_VERIFIED' });
+
+    const pending = adminApi({ target: { id: 'user-target', email: 'new@example.invalid', googleId: null, emailVerified: false, passwordHash: 'hash' } });
+    const sent = await pending.handler(request('/admin/users/user-target/verification-email', 'POST', {}, pending.token));
+    expect(sent.status).toBe(200);
+    expect(pending.inserts.EmailVerification?.[0]).toMatchObject({ userId: 'user-target' });
+    expect(pending.inserts.AdminAuditLog?.[0]).toMatchObject({ action: 'VERIFICATION_LINK', result: 'SENT' });
+  });
+
+  it('answers 404 for an unknown target user', async () => {
+    const { handler, token } = adminApi({ target: null });
+    const response = await handler(request('/admin/users/nobody/password-reset', 'POST', {}, token));
+    expect(response.status).toBe(404);
+  });
+
+  it('records server errors without personal data for the overview', async () => {
+    const { handler, database, token, inserts } = adminApi({ caller: { email: 'someone@example.invalid' } });
+    database.rpc.mockImplementation(async (name: string) => name === 'dashboard_summary'
+      ? { data: null, error: { message: 'boom' } } : { data: true, error: null });
+    await handler(request('/invoices/abc123?month=2026-10', 'GET', undefined, token));
+    const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
+    expect(response.status).toBe(503);
+    expect(inserts.ApiErrorEvent).toEqual([{ method: 'GET', path: '/dashboard/summary', status: 503 }]);
+  });
+
+  it('stores ids in error paths as placeholders', async () => {
+    const { handler, token, inserts, database } = adminApi({ caller: { email: 'someone@example.invalid' } });
+    database.rpc.mockImplementation(async (name: string) => name === 'delete_invoice_with_inventory'
+      ? { data: null, error: { code: 'XX', message: 'boom' } } : { data: true, error: null });
+    await handler(request('/invoices/inv_secret_123', 'DELETE', undefined, token));
+    expect(inserts.ApiErrorEvent?.[0]).toEqual({ method: 'DELETE', path: '/invoices/:id', status: 500 });
+  });
+});
