@@ -36,6 +36,10 @@ const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ??
 // This server-side gate also protects native clients that do not use the web flag.
 const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
+// Platform admins, by sign-in email. Kept in the function's secrets, not in
+// the (public) repository or the database.
+const ADMIN_EMAILS = new Set((Deno.env.get('ADMIN_EMAILS') ?? '')
+  .split(',').map(email => email.trim().toLowerCase()).filter(Boolean))
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
   '+966500000001': { name: 'مطبخ أم سلطان', city: 'الرياض' },
@@ -116,19 +120,35 @@ async function getUser(req: Request): Promise<Record<string, unknown> | Response
   // One parallel round trip: revocation, account and the per-account rate limit.
   const [blacklist, account, limited] = await Promise.all([
     supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
-    supabase.from('User').select('id,phone,email,googleId,businessId').eq('id', claims.sub).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified').eq('id', claims.sub).maybeSingle(),
     rateLimit(req, 'api-account', claims.sub, 100, { includeIp: false }),
   ])
   if (blacklist.error || account.error) return err('Service temporarily unavailable', 503)
   if (blacklist.data || !account.data) return err('Unauthorized', 401)
   if (limited) return limited
   const row = account.data
-  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId }
+  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified }
+}
+
+// An admin's email must be on the list and proven: through Google or the
+// verification link. An unverified sign-up with the same address is not enough.
+function isAdmin(user: Record<string, unknown>): boolean {
+  return typeof user.email === 'string' && ADMIN_EMAILS.has(user.email.trim().toLowerCase()) &&
+    (Boolean(user.googleId) || user.emailVerified === true)
 }
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 }
+// A feature switched off by configuration: a 503 for the client, but not a
+// server fault, so it is kept out of the admin error log.
+const EXPECTED_HEADER = 'x-daftar-expected'
+function disabled(msg: string) {
+  const response = err(msg, 503)
+  response.headers.set(EXPECTED_HEADER, '1')
+  return response
+}
+
 // `code` lets the web app show a localized message instead of this English text.
 function err(msg: string, status = 400, code?: string, extra: Record<string, unknown> = {}) {
   return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
@@ -215,7 +235,7 @@ function currentRiyadhMonth(): string {
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 async function authGoogle(credential: string) {
-  if (!GOOGLE_CLIENT_ID) return err('Google login is not configured', 503)
+  if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
   const tokenRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`)
   if (!tokenRes.ok) return err('Invalid Google token', 401)
   const payload = await tokenRes.json()
@@ -264,7 +284,7 @@ async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
-  if (!await reserveDailySmsSend()) return err('Phone verification is temporarily unavailable', 503)
+  if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
 
   const { error } = await db().auth.signInWithOtp({
     phone,
@@ -307,11 +327,11 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
 }
 
-async function authMe(userId: string) {
-  const { data, error } = await db().from('User').select('id,phone,email,name,businessId,Business(*)').eq('id', userId).single()
+async function authMe(user: Record<string, unknown>) {
+  const { data, error } = await db().from('User').select('id,phone,email,name,businessId,Business(*)').eq('id', user.sub).single()
   if (error && error.code !== 'PGRST116') return err('Service temporarily unavailable', 503)
   if (!data) return err('User not found', 404)
-  return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, businessId: data.businessId } })
+  return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, name: data.name, businessId: data.businessId, isAdmin: isAdmin(user) } })
 }
 
 function validEmailInput(email: unknown, password: unknown): email is string {
@@ -354,7 +374,7 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
 }
 
 async function authEmailRegister(body: Record<string, unknown>) {
-  if (!RESEND_API_KEY) return err('Email registration is temporarily unavailable', 503)
+  if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
   if (!validEmailInput(body.email, body.password)) return err('Invalid email or password', 400)
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
@@ -372,16 +392,43 @@ async function authEmailRegister(body: Record<string, unknown>) {
     const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
     if (error) return err('Could not register', 500)
   }
-  await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const issued = await issueVerificationLink(userId, email)
+  if (issued === 'FAILED') return err('Could not register', 500)
+  if (issued === 'UNDELIVERED') return err('Could not send verification email', 503)
+  return json({ sent: true })
+}
+
+function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32))
-  const token = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+type LinkOutcome = 'SENT' | 'FAILED' | 'UNDELIVERED'
+
+// Replaces any pending verification link with a new one and emails it.
+async function issueVerificationLink(userId: string, email: string): Promise<LinkOutcome> {
+  const supabase = db()
+  await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const token = randomToken()
   const { error } = await supabase.from('EmailVerification').insert({
     id: newId('verification'), userId, token,
     expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
   })
-  if (error) return err('Could not register', 500)
-  if (!await sendVerificationEmail(email, token)) return err('Could not send verification email', 503)
-  return json({ sent: true })
+  if (error) return 'FAILED'
+  return await sendVerificationEmail(email, token) ? 'SENT' : 'UNDELIVERED'
+}
+
+// Replaces any pending password reset link with a new one and emails it.
+async function issuePasswordResetLink(userId: string, email: string): Promise<LinkOutcome> {
+  const supabase = db()
+  await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const token = randomToken()
+  const { error } = await supabase.from('PasswordReset').insert({
+    id: newId('reset'), userId, token,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })
+  if (error) return 'FAILED'
+  return await sendPasswordResetEmail(email, token) ? 'SENT' : 'UNDELIVERED'
 }
 
 // A real bcrypt hash (cost 12) of a random string, compared when the email has
@@ -407,7 +454,7 @@ async function authEmailLogin(body: Record<string, unknown>) {
 }
 
 async function authPasswordForgot(body: Record<string, unknown>) {
-  if (!RESEND_API_KEY) return err('Password reset is temporarily unavailable', 503)
+  if (!RESEND_API_KEY) return disabled('Password reset is temporarily unavailable')
   if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
     return err('Invalid email address', 400)
   }
@@ -419,14 +466,7 @@ async function authPasswordForgot(body: Record<string, unknown>) {
   // return the same successful response as a known password account.
   if (!user?.passwordHash || !user.email) return json({ sent: true })
 
-  await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', user.id).eq('consumed', false)
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  const token = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
-  const { error } = await supabase.from('PasswordReset').insert({
-    id: newId('reset'), userId: user.id, token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  })
-  if (error || !await sendPasswordResetEmail(email, token)) return err('Could not send password reset email', 503)
+  if (await issuePasswordResetLink(user.id, email) !== 'SENT') return err('Could not send password reset email', 503)
   return json({ sent: true })
 }
 
@@ -991,6 +1031,62 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   return err('Method not allowed', 405)
 }
 
+// ── PLATFORM ADMIN ───────────────────────────────────────────────────────────
+
+const ADMIN_LINK_ACTIONS: Record<string, { action: string; send: typeof issueVerificationLink }> = {
+  'verification-email': { action: 'VERIFICATION_LINK', send: issueVerificationLink },
+  'password-reset': { action: 'PASSWORD_RESET_LINK', send: issuePasswordResetLink },
+}
+
+async function handleAdmin(req: Request, user: Record<string, unknown>, seg: string[], url: URL) {
+  // Non-admins get the same answer as an unknown route.
+  if (!isAdmin(user)) return err('Not found', 404)
+  if (req.method === 'GET' && seg[1] === 'overview' && seg.length === 2) {
+    const { data, error } = await db().rpc('admin_overview')
+    if (error) return err('Could not load overview', 503)
+    return json(data)
+  }
+  if (req.method === 'GET' && seg[1] === 'users' && seg.length === 2) {
+    const query = (url.searchParams.get('q') ?? '').trim()
+    if (query.length < 2 || query.length > 100) return err('Enter at least 2 characters', 400)
+    const { data, error } = await db().rpc('admin_find_users', { p_query: query })
+    if (error) return err('Could not search users', 503)
+    return json(data ?? [])
+  }
+  const link = ADMIN_LINK_ACTIONS[seg[3] ?? '']
+  if (req.method === 'POST' && seg[1] === 'users' && seg[2] && link && seg.length === 4) {
+    const limited = await rateLimit(req, 'admin-link', user.sub, 20, { includeIp: false })
+    if (limited) return limited
+    if (!RESEND_API_KEY) return disabled('Email delivery is not configured')
+    const { data: target, error } = await db().from('User')
+      .select('id,email,googleId,emailVerified,passwordHash').eq('id', seg[2]).maybeSingle()
+    if (error) return err('Service temporarily unavailable', 503)
+    if (!target) return err('Not found', 404)
+    if (!target.email) return err('This account has no email address', 409, 'NO_EMAIL')
+    if (!target.passwordHash) return err('This account signs in with Google only', 409, 'NO_PASSWORD_LOGIN')
+    if (link.action === 'VERIFICATION_LINK' && target.emailVerified) return err('Email is already verified', 409, 'ALREADY_VERIFIED')
+    const result = await link.send(target.id as string, target.email as string)
+    await db().from('AdminAuditLog').insert({ adminUserId: user.sub, action: link.action, targetUserId: target.id, result })
+    if (result !== 'SENT') return err('Could not send the email', 503)
+    return json({ sent: true })
+  }
+  return err('Not found', 404)
+}
+
+// Paths keep their resource names; record ids become ':id' so the log holds no personal data.
+const PATH_WORDS = new Set(['summary', 'movements', 'adjust', 'status', 'pdf', 'scan', 'me', 'logout', 'overview', 'users',
+  'verification-email', 'password-reset', 'otp', 'request', 'verify', 'demo', 'google', 'email', 'register', 'login',
+  'password', 'forgot', 'reset'])
+function errorPath(path: string): string {
+  return path.split('/').map((part, i) => i >= 2 && part && !PATH_WORDS.has(part) ? ':id' : part).join('/').slice(0, 200)
+}
+
+async function recordServerError(req: Request, status: number) {
+  try {
+    await db().from('ApiErrorEvent').insert({ method: req.method, path: errorPath(normalizePath(new URL(req.url).pathname)), status })
+  } catch { /* never let error logging fail the request */ }
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 
 const PUBLIC_AUTH_PATHS = new Set([
@@ -1016,13 +1112,13 @@ async function handleRequest(req: Request) {
       if (limited) return limited
     }
     if (req.method === 'POST' && path === '/auth/otp/request') {
-      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
+      if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       const limited = await rateLimit(req, 'otp-request', body.phone, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
-      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
+      if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
     }
@@ -1033,12 +1129,12 @@ async function handleRequest(req: Request) {
     }
     if (req.method === 'POST' && path === '/auth/google') {
       const body = await req.json()
-      if (!GOOGLE_CLIENT_ID) return err('Google login is not configured', 503)
+      if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
       return await rateLimit(req, 'google', body.credential, 20) ?? authGoogle(body.credential)
     }
     if (req.method === 'POST' && path === '/auth/email/register') {
       const body = await req.json()
-      if (!RESEND_API_KEY) return err('Email registration is temporarily unavailable', 503)
+      if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
       return await rateLimit(req, 'email-register', body.email, 5) ?? authEmailRegister(body)
     }
     if (req.method === 'POST' && path === '/auth/email/login') {
@@ -1063,7 +1159,8 @@ async function handleRequest(req: Request) {
     if (ipLimited) return ipLimited
     if (user instanceof Response) return user
 
-    if (path === '/auth/me' && req.method === 'GET') return authMe(user.sub as string)
+    if (path === '/auth/me' && req.method === 'GET') return authMe(user)
+    if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
     if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
@@ -1098,8 +1195,9 @@ async function handleRequest(req: Request) {
 
 Deno.serve(async (req: Request) => {
   const response = await handleRequest(req)
+  if (response.status >= 500 && !response.headers.has(EXPECTED_HEADER)) await recordServerError(req, response.status)
   const headers: Record<string, string> = {}
-  response.headers.forEach((value, key) => { headers[key] = value })
+  response.headers.forEach((value, key) => { if (key !== EXPECTED_HEADER) headers[key] = value })
   Object.entries(corsFor(req)).forEach(([key, value]) => { headers[key] = value })
   return new Response(response.body, { status: response.status, headers })
 })
