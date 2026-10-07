@@ -554,8 +554,11 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   const costOfGoodsSold = ((cogsRes.data ?? []) as Record<string, unknown>[]).reduce((sum, movement) => {
     const material = movement.material as Record<string, unknown> | null
     return sum + (movement.costAmount != null
+  // Movements without a recorded costAmount fall back to the material's current price; flag it so the UI can say "estimate".
+  let costEstimated = false
       ? Number(movement.costAmount)
       : Math.abs(Number(movement.qty)) * Number(material?.unitPrice ?? 0))
+    if (movement.costAmount == null) costEstimated = true
   }, 0)
   const totalExpenses = costOfGoodsSold + operatingExpenses
   const netProfit = totalSales - totalExpenses
@@ -572,7 +575,7 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
     .filter(mat => (mat.stockQty as number) <= (mat.reorderLevel as number))
     .map(mat => ({ id: mat.id, name: mat.name, unit: mat.unit, stockQty: mat.stockQty, reorderLevel: mat.reorderLevel }))
 
-  return json({ totalSales, totalPurchases, costOfGoodsSold, operatingExpenses, totalExpenses, netProfit, cashFlow, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
+  return json({ totalSales, totalPurchases, costOfGoodsSold, costEstimated, operatingExpenses, totalExpenses, netProfit, cashFlow, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
 }
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────

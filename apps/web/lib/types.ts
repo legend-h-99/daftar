@@ -256,6 +256,8 @@ export interface DashboardSummary {
   totalSales: number;
   totalPurchases: number;
   costOfGoodsSold: number;
+  /** true when some cost came from the current material price, not the price at sale time */
+  costEstimated?: boolean;
   operatingExpenses: number;
   totalExpenses: number;
   netProfit: number;
