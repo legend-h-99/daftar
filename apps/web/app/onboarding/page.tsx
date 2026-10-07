@@ -4,7 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, MapPin, Receipt, ChevronRight, ChevronLeft } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
-import { getToken, setToken } from "@/lib/auth";
+import { track } from "@/lib/analytics";
+import { isAuthenticated, setToken } from "@/lib/auth";
 import { Business } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
@@ -82,7 +83,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) router.replace("/login");
+    if (!isAuthenticated()) router.replace("/login");
   }, [router]);
 
   function handleNextStep(e: FormEvent) {
@@ -109,7 +110,7 @@ export default function OnboardingPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiPost<{ accessToken: string; business: Business }>(
+      const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; business: Business }>(
         "/onboarding",
         {
           name: name.trim(),
@@ -118,7 +119,8 @@ export default function OnboardingPage() {
           city: city.trim() || undefined,
         },
       );
-      setToken(res.accessToken);
+      setToken(res.accessToken, res.sessionAuthenticated);
+      track("onboarding_completed", { vat_enabled: vatEnabled });
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : tx.saveError);

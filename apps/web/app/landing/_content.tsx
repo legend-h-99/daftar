@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CurrentMonth from "./_current-month";
+import LandingTracker from "./_tracker";
 import {
   FileText,
   Wallet,
@@ -229,6 +230,7 @@ function LedgerPreview() {
 export default function LandingContent() {
   return (
     <main className="min-h-screen bg-[#f7f8f7] text-[#101914]" dir="rtl" lang="ar">
+      <LandingTracker />
 
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 backdrop-blur">
@@ -255,7 +257,7 @@ export default function LandingContent() {
       <section className="mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-12 pt-10 sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
-            تطبيق محاسبة عربي للمشاريع الصغيرة في السعودية
+            للأسر المنتجة والبيع من المنزل في السعودية
           </span>
 
           <h1 className="mt-5 text-4xl font-extrabold leading-[1.12] tracking-tight sm:text-5xl">
@@ -265,7 +267,7 @@ export default function LandingContent() {
           </h1>
 
           <blockquote className="mt-5 max-w-xl border-r-4 border-brand-700 pr-4 text-base leading-relaxed text-gray-600 sm:text-lg">
-            دفتر تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة والأسر المنتجة في السعودية. سجّل المبيعات والمصاريف والفواتير، وشاهد صافي الربح من مكان واحد بدون خبرة محاسبية.
+            دفتر تطبيق محاسبة عربي مبسّط للأسر المنتجة والبيع من المنزل في السعودية. سجّل مبيعاتك ومصاريفك ومكوّنات منتجاتك، وشاهد كم ربحت فعلاً بدون خبرة محاسبية.
           </blockquote>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -493,14 +495,14 @@ export default function LandingContent() {
             ابدأ تتابع حساباتك اليوم — مجانًا
           </h2>
           <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-gray-600 sm:text-base">
-            سجّل محلك في أقل من دقيقة، واعرف ربحك الحقيقي آخر كل شهر.
+            سجّل مشروعك المنزلي في أقل من دقيقة، واعرف ربحك الحقيقي آخر كل شهر.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
               href="/login"
               className="motion-press inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-7 py-4 text-base font-bold text-white transition-colors hover:bg-brand-800"
             >
-              سجّل محلك الآن — مجاني
+              سجّل مشروعك الآن — مجاني
               <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
             </Link>
             <a

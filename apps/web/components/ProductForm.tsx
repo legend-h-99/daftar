@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import RecipeItemTable from "@/components/RecipeItemTable";
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { calculateCosts, MAX_MARGIN } from "@/lib/calc";
 import { formatSAR } from "@/lib/format";
 import { Material, Product, RecipeItem } from "@/lib/types";
@@ -48,7 +49,7 @@ export default function ProductForm({ product }: ProductFormProps) {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
       setError(err instanceof ApiError ? err.message : en ? "Could not load ingredients" : "تعذر تحميل المواد الخام");
     });
-  }, []);
+  }, [en]);
 
   const allItems = useMemo(
     () => [...rawItems, ...packagingItems],
@@ -87,6 +88,7 @@ export default function ProductForm({ product }: ProductFormProps) {
         await apiPatch(`/products/${product.id}`, payload);
       } else {
         await apiPost("/products", payload);
+        track("product_created", { recipe_items: allItems.length });
       }
       router.push("/products");
       router.refresh();

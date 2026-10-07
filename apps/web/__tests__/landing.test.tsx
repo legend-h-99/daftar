@@ -330,9 +330,9 @@ describe("صفحة الـ Landing", () => {
       ).toBeInTheDocument();
     });
 
-    it("زر 'سجّل محلك الآن — مجاني' يوجّه إلى /login", () => {
+    it("زر 'سجّل مشروعك الآن — مجاني' يوجّه إلى /login", () => {
       render(<LandingPage />);
-      const link = screen.getByRole("link", { name: /سجّل محلك الآن — مجاني/ });
+      const link = screen.getByRole("link", { name: /سجّل مشروعك الآن — مجاني/ });
       expect(link).toHaveAttribute("href", "/login");
     });
 

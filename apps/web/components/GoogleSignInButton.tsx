@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError, apiPost } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { track } from "@/lib/analytics";
 
 declare global {
   interface Window {
@@ -33,7 +34,7 @@ declare global {
   }
 }
 
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com";
 
 let gsiScriptPromise: Promise<void> | null = null;
 
@@ -85,11 +86,12 @@ export default function GoogleSignInButton() {
               }
               setError(null);
               try {
-                const res = await apiPost<{ accessToken: string; hasBusiness: boolean }>(
+                const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; hasBusiness: boolean }>(
                   "/auth/google",
                   { credential: response.credential },
                 );
-                setToken(res.accessToken);
+                setToken(res.accessToken, res.sessionAuthenticated);
+                track("user_signed_in", { method: "google", has_business: res.hasBusiness });
                 router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
               } catch (err) {
                 setError(

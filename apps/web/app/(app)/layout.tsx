@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
 import PageMotion from "@/components/PageMotion";
-import { getToken } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth";
+import { trackSessionStarted } from "@/lib/analytics";
 import { apiGet } from "@/lib/api";
 import { Business, User } from "@/lib/types";
 import { BusinessProvider } from "@/lib/business-context";
@@ -29,12 +30,15 @@ export default function AppLayout({
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!isAuthenticated()) {
       router.replace("/login");
       return;
     }
     refresh()
-      .then(() => setReady(true))
+      .then(() => {
+        setReady(true);
+        trackSessionStarted();
+      })
       .catch(() => {
         router.replace("/login");
       });
