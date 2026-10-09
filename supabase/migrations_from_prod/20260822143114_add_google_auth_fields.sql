@@ -1,0 +1,6 @@
+
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "googleId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId") WHERE "googleId" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email") WHERE "email" IS NOT NULL;
+ALTER TABLE "Business" ALTER COLUMN "ownerPhone" DROP NOT NULL;
