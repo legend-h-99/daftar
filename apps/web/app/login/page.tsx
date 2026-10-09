@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Languages, Mail, Lock, User, Eye, EyeOff, CheckCircle2, Smartphone } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
@@ -126,6 +127,7 @@ export default function LoginPage() {
     try {
       if (emailMode === "register") {
         await apiPost("/auth/email/register", { email, password, name: name || undefined }, { auth: false });
+        track("user_signed_up", { method: "email" });
         setRegisterSuccess(true);
       } else {
         const res = await apiPost<{
@@ -133,6 +135,7 @@ export default function LoginPage() {
           hasBusiness: boolean;
         }>("/auth/email/login", { email, password }, { auth: false });
         setToken(res.accessToken);
+        track("user_signed_in", { method: "email", has_business: res.hasBusiness });
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
       }
     } catch (err) {

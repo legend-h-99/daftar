@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import {
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_CATEGORY_LABELS_EN,
@@ -54,6 +55,7 @@ export default function AddExpenseSheet({
         date,
         note: note.trim() || undefined,
       });
+      track("expense_added", { category });
       onSaved();
       onClose();
     } catch (err) {

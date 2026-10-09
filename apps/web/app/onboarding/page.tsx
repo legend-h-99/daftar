@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, MapPin, Receipt, ChevronRight, ChevronLeft } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { getToken, setToken } from "@/lib/auth";
 import { Business } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -119,6 +120,7 @@ export default function OnboardingPage() {
         },
       );
       setToken(res.accessToken);
+      track("onboarding_completed", { vat_enabled: vatEnabled });
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : tx.saveError);

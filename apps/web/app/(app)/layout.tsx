@@ -7,6 +7,7 @@ import BottomNav from "@/components/BottomNav";
 import PageMotion from "@/components/PageMotion";
 import { getToken } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
+import { trackSessionStarted } from "@/lib/analytics";
 import { Business, User } from "@/lib/types";
 import { BusinessProvider } from "@/lib/business-context";
 
@@ -34,7 +35,10 @@ export default function AppLayout({
       return;
     }
     refresh()
-      .then(() => setReady(true))
+      .then(() => {
+        setReady(true);
+        trackSessionStarted();
+      })
       .catch(() => {
         router.replace("/login");
       });
