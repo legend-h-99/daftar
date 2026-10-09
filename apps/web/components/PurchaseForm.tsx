@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { formatSAR } from "@/lib/format";
 import { Material, OcrDraft, PurchaseSource } from "@/lib/types";
 import PurchaseRow, {
@@ -114,6 +115,7 @@ export default function PurchaseForm({
         source,
         items,
       });
+      track("purchase_recorded", { items_count: items.length, source });
       router.push("/inventory?purchaseUpdated=1");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : en ? "Could not save purchase" : "تعذر حفظ فاتورة الشراء");

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError, apiPost } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { track } from "@/lib/analytics";
 
 declare global {
   interface Window {
@@ -90,6 +91,7 @@ export default function GoogleSignInButton() {
                   { credential: response.credential },
                 );
                 setToken(res.accessToken);
+                track("user_signed_in", { method: "google", has_business: res.hasBusiness });
                 router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
               } catch (err) {
                 setError(
