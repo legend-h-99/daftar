@@ -105,6 +105,88 @@ describe('deployed Supabase API security', () => {
     expect(database.from).not.toHaveBeenCalledWith('Invoice');
   });
 
+  it('reports sales profit without fabricating undated cash flow', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    database.rpc.mockImplementation(async (name: string) => name === 'dashboard_summary'
+      ? { data: { totalSales: 30, totalPurchases: 100, costOfGoodsSold: 5, operatingExpenses: 2, costEstimated: true, missingCostItems: 1 }, error: null }
+      : { data: true, error: null });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ totalSales: 30, netProfit: 23, cashFlow: null, paymentHistoryIncomplete: true, costEstimated: true, missingCostItems: 1 });
+  });
+
+  it('reads payment collections beyond one database page', async () => {
+    const { handler, database, user, secret } = edgeApi({ PAYMENT_LEDGER_ENABLED: 'true' });
+    user.businessId = 'business-1';
+    database.rpc.mockImplementation(async (name: string) => name === 'dashboard_summary' ? { data: {}, error: null } : { data: true, error: null });
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string) => {
+      if (table !== 'InvoicePayment') return original(table);
+      const rows = Array.from({ length: 1201 }, () => ({ amount: 1, occurredAt: '2026-10-05T00:00:00Z' }));
+      const query: any = { data: [], error: null };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'order']) query[method] = jest.fn(() => query);
+      query.is = () => { query.data = []; return query; };
+      query.limit = () => query;
+      query.range = (start: number, end: number) => { query.data = rows.slice(start, end + 1); return query; };
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ cashCollected: 1201, cashFlow: 1201 });
+  });
+
+  it.each([false, true])('dates collections separately and handles legacy history: %s', async (legacy) => {
+    const { handler, database, user, secret } = edgeApi({ PAYMENT_LEDGER_ENABLED: 'true' });
+    user.businessId = 'business-1';
+    database.rpc.mockImplementation(async (name: string, args: any) => name === 'dashboard_summary'
+      ? { data: { totalSales: args.p_start.startsWith('2026-09') ? 30 : 0 }, error: null } : { data: true, error: null });
+    const original = database.from.getMockImplementation()!;
+    const rows: Record<string, Record<string, unknown>[]> = {
+      Invoice: [{ id: 'old', total: 30, paidAmount: 10, status: 'PARTIAL', createdAt: '2026-10-10T00:00:00Z' }],
+      InvoicePayment: [{ id: 'p', amount: 10, occurredAt: '2026-11-02T00:00:00Z' }, ...(legacy ? [{ id: 'legacy', amount: 20, occurredAt: null }] : [])],
+      Purchase: [], Expense: [], Material: [], StockMovement: [],
+    };
+    database.from.mockImplementation((table: string) => {
+      if (!(table in rows)) return original(table);
+      let data = rows[table];
+      const query: any = {
+        select: () => query, eq: () => query, gt: () => query, order: () => query,
+        range: (start: number, end: number) => { data = data.slice(start, end + 1); return query; },
+        gte: (field: string, value: string) => { data = data.filter(row => row[field] != null && String(row[field]) >= value); return query; },
+        lt: (field: string, value: string) => { data = data.filter(row => row[field] != null && String(row[field]) < value); return query; },
+        is: (field: string, value: unknown) => { data = data.filter(row => row[field] === value); return query; },
+        limit: (limit: number) => { data = data.slice(0, limit); return query; },
+        then: (resolve: (result: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve),
+      };
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const october = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(await october.json()).toMatchObject({ totalSales: 30, netProfit: 30, cashCollected: legacy ? null : 0 });
+    const november = await handler(request('/dashboard/summary?month=2026-11', 'GET', undefined, token));
+    expect(await november.json()).toMatchObject({ totalSales: 0, netProfit: 0, cashCollected: legacy ? null : 10, cashFlow: legacy ? null : 10 });
+  });
+
+  it('fails the report explicitly when a database query fails instead of showing zero balances', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string) => {
+      if (['User', 'TokenBlacklist'].includes(table)) return original(table);
+      const query: any = { data: null, error: { message: 'private database detail' } };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range']) query[method] = jest.fn(() => query);
+      return query;
+    });
+    database.rpc.mockImplementation(async (name: string) => name === 'dashboard_summary' ? { data: null, error: { message: 'private database detail' } } : { data: true, error: null });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('private database detail');
+  });
+
   it('routes both the production and candidate function prefixes', async () => {
     const { handler } = edgeApi();
     const candidate = await handler(new Request('https://project.supabase.co/functions/v1/api-candidate/health'));
@@ -115,7 +197,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('keeps phone OTP disabled unless explicitly enabled on the server', async () => {
-    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '' });
+    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '', EMAIL_LOGIN_ENABLED: 'true' });
     const response = await handler(request('/auth/otp/request', 'POST', { phone: '0500000001' }));
     const verify = await handler(request('/auth/otp/verify', 'POST', { phone: '0500000001', code: '123456' }));
 
@@ -143,8 +225,16 @@ describe('deployed Supabase API security', () => {
     expect(database.from).not.toHaveBeenCalled();
   });
 
+  it.each(['/auth/email/register', '/auth/email/login', '/auth/email/verify', '/auth/password/forgot', '/auth/password/reset'])('keeps %s disabled by default without database access', async (path) => {
+    const { handler, database, fetchMock } = edgeApi();
+    const response = await handler(request(path, 'POST', {}));
+    expect(response.status).toBe(404);
+    expect(database.from).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('fails closed when email delivery or Google audience is unconfigured', async () => {
-    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '' });
+    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '', EMAIL_LOGIN_ENABLED: 'true' });
     const registration = await handler(request('/auth/email/register', 'POST', {
       email: 'audit@example.invalid', password: 'safe-password',
     }));
@@ -185,7 +275,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('runs global and per-identity shared rate limits before trying email login', async () => {
-    const { handler, database } = edgeApi();
+    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     const response = await handler(request('/auth/email/login', 'POST', {
       email: 'audit@example.invalid', password: 'wrong-password',
     }));
@@ -199,7 +289,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('stops email login when the shared rate limit is exceeded', async () => {
-    const { handler, database } = edgeApi();
+    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     database.rpc.mockResolvedValue({ data: false, error: null });
     const response = await handler(request('/auth/email/login', 'POST', {
       email: 'audit@example.invalid', password: 'wrong-password',
@@ -210,7 +300,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('issues a token only after a verified account passes password checking', async () => {
-    const { handler, user } = edgeApi();
+    const { handler, user } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     user.passwordHash = await bcrypt.hash('correct-password', 4);
     user.emailVerified = true;
 
@@ -225,7 +315,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('sends verification without returning the token to the registrant', async () => {
-    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key' });
+    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
     user.emailVerified = false;
 
     const response = await handler(request('/auth/email/register', 'POST', {
@@ -463,7 +553,7 @@ describe('review findings 2026-10-03', () => {
       rpcReturns(database, 'dashboard_summary', { data: summary, error: null });
       const response = await handler(request('/dashboard/summary', 'GET', undefined, token));
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ totalExpenses: 7, netProfit: 23, cashFlow: -72, unpaidInvoicesCount: 2, unpaidInvoicesTotal: 40 });
+      expect(await response.json()).toMatchObject({ totalExpenses: 7, netProfit: 23, cashFlow: null, unpaidInvoicesCount: 2, unpaidInvoicesTotal: 40 });
       expect(database.from).not.toHaveBeenCalledWith('Invoice');
     });
 
@@ -586,7 +676,7 @@ describe('review findings 2026-10-03', () => {
       // The spec's `import * as` binding is frozen; spy on the CommonJS module the sandbox loads.
       const compare = jest.spyOn(require('bcryptjs'), 'compare');
       try {
-        const { handler } = api({ User: { data: null, error: null } });
+        const { handler } = api({ User: { data: null, error: null } }, { EMAIL_LOGIN_ENABLED: 'true' });
         const response = await handler(request('/auth/email/login', 'POST', { email: 'nobody@example.invalid', password: 'wrong-password' }));
         expect(response.status).toBe(401);
         expect(compare).toHaveBeenCalledTimes(1);

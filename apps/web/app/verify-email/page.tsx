@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
@@ -23,13 +23,13 @@ function VerifyEmailContent() {
     }
 
     apiPost<{
-      accessToken: string;
+      accessToken?: string; sessionAuthenticated?: boolean;
       user: User;
       hasBusiness: boolean;
       business?: Business;
     }>("/auth/email/verify", { token })
       .then((res) => {
-        setToken(res.accessToken);
+        setToken(res.accessToken, res.sessionAuthenticated);
         setStatus("success");
         setTimeout(() => {
           router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
@@ -92,8 +92,7 @@ function VerifyEmailContent() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const S = (require("react") as any).Suspense;
+const S = Suspense as any;
 
 export default function VerifyEmailPage() {
   return (

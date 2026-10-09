@@ -90,10 +90,10 @@ describe("صفحة الـ Landing", () => {
 
     it("يعرض ثلاث نقاط ثقة", () => {
       render(<LandingPage />);
-      // "مجاني بالكامل" يظهر أيضًا في جدول المقارنة
-      expect(screen.getAllByText("مجاني بالكامل").length).toBeGreaterThanOrEqual(1);
+      // "متاح مجانًا حاليًا" يظهر أيضًا في جدول المقارنة
+      expect(screen.getAllByText("متاح مجانًا حاليًا").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("عربي RTL أصيل")).toBeInTheDocument();
-      expect(screen.getByText("يعمل على الجوال بدون تدريب")).toBeInTheDocument();
+      expect(screen.getByText("مصمم للاستخدام من الجوال")).toBeInTheDocument();
     });
   });
 
@@ -102,7 +102,7 @@ describe("صفحة الـ Landing", () => {
   describe("قسم الإحصاءات", () => {
     it("يعرض '0' و '10×' و '<10 ث'", () => {
       render(<LandingPage />);
-      expect(screen.getByText("0")).toBeInTheDocument();
+      expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("10×")).toBeInTheDocument();
       expect(screen.getByText("<10 ث")).toBeInTheDocument();
     });
@@ -142,10 +142,10 @@ describe("صفحة الـ Landing", () => {
 
     it("يعرض الميزات الأربع", () => {
       render(<LandingPage />);
-      expect(screen.getByText("فواتير في 30 ثانية")).toBeInTheDocument();
-      expect(screen.getByText("تتبع المصاريف تلقائيًا")).toBeInTheDocument();
+      expect(screen.getByText("فواتير من الجوال")).toBeInTheDocument();
+      expect(screen.getByText("سجّل مصاريفك بوضوح")).toBeInTheDocument();
       expect(screen.getByText("مخزون ووصفات")).toBeInTheDocument();
-      expect(screen.getByText("ربحك في 10 ثوانٍ")).toBeInTheDocument();
+      expect(screen.getByText("نتيجة مشروعك بوضوح")).toBeInTheDocument();
     });
 
     it("يعرض الفائدة لكل ميزة", () => {
@@ -162,7 +162,7 @@ describe("صفحة الـ Landing", () => {
   describe("قسم أمثلة الاستخدام", () => {
     it("يعرض عنوان أمثلة الاستخدام", () => {
       render(<LandingPage />);
-      expect(screen.getByText("أمثلة استخدام حقيقية من السوق")).toBeInTheDocument();
+      expect(screen.getByText("سيناريوهات توضيحية للاستخدام")).toBeInTheDocument();
     });
 
     it("يعرض أسماء أصحاب الشهادات الثلاثة", () => {
@@ -236,7 +236,7 @@ describe("صفحة الـ Landing", () => {
       expect(within(table).getByText("تقرير الربح الشهري")).toBeInTheDocument();
       expect(within(table).getByText("متابعة المخزون والوصفات")).toBeInTheDocument();
       expect(within(table).getByText("بدون مصطلحات محاسبية")).toBeInTheDocument();
-      expect(within(table).getByText("مجاني بالكامل")).toBeInTheDocument();
+      expect(within(table).getByText("متاح مجانًا حاليًا")).toBeInTheDocument();
       expect(within(table).getByText("محاسبة متقدمة للشركات الكبيرة")).toBeInTheDocument();
     });
 
@@ -279,7 +279,7 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       expect(screen.getByText("هل دفتر مجاني؟")).toBeInTheDocument();
       expect(
-        screen.getByText(/نعم، دفتر مجاني بالكامل/),
+        screen.getByText(/الوظائف الحالية متاحة مجانًا، ولا تحتاج بطاقة ائتمانية/),
       ).toBeInTheDocument();
     });
 
@@ -330,9 +330,9 @@ describe("صفحة الـ Landing", () => {
       ).toBeInTheDocument();
     });
 
-    it("زر 'سجّل محلك الآن — مجاني' يوجّه إلى /login", () => {
+    it("زر 'سجّل مشروعك الآن — مجاني' يوجّه إلى /login", () => {
       render(<LandingPage />);
-      const link = screen.getByRole("link", { name: /سجّل محلك الآن — مجاني/ });
+      const link = screen.getByRole("link", { name: /سجّل مشروعك الآن — مجاني/ });
       expect(link).toHaveAttribute("href", "/login");
     });
 

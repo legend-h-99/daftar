@@ -32,7 +32,9 @@ const mockGetToken = vi.fn();
 const mockSetToken = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
+  usesSessionProxy: () => false,
   getToken: () => mockGetToken(),
+  isAuthenticated: () => !!mockGetToken(),
   setToken: (t: string) => mockSetToken(t),
   clearToken: vi.fn(),
 }));

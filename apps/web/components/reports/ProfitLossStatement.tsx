@@ -56,6 +56,11 @@ export default function ProfitLossStatement({
           <span className="text-xs text-amber-600 dark:text-amber-400">
             {percentOf(summary.costOfGoodsSold, summary.totalSales)}%
           </span>
+          {summary.costEstimated && (
+            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+              {en ? "Estimate" : "تقدير"}
+            </span>
+          )}
         </span>
         <span className="font-semibold text-amber-700 dark:text-amber-400">
           ({formatSAR(summary.costOfGoodsSold, language)})

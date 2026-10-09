@@ -1,5 +1,7 @@
 import Link from "next/link";
+import PricingSection from "@/components/pricing/PricingSection";
 import CurrentMonth from "./_current-month";
+import LandingTracker from "./_tracker";
 import {
   FileText,
   Wallet,
@@ -21,15 +23,15 @@ import {
 const features: { icon: LucideIcon; title: string; benefit: string; body: string }[] = [
   {
     icon: FileText,
-    title: "فواتير في 30 ثانية",
+    title: "فواتير من الجوال",
     benefit: "لا تضيع وقتك في الورقة",
     body: "أصدر فاتورة باسم المحل والزبون، صدّرها PDF عربي، وأرسلها مباشرة.",
   },
   {
     icon: Wallet,
-    title: "تتبع المصاريف تلقائيًا",
+    title: "سجّل مصاريفك بوضوح",
     benefit: "اعرف أين يذهب كل ريال",
-    body: "سجّل مصروف التشغيل والمشتريات في ثوانٍ وصنّفه — ولا تدوّن أي شيء يدويًا.",
+    body: "أدخل مصاريف التشغيل والمشتريات وصنّفها لتظهر في تقاريرك.",
   },
   {
     icon: Package,
@@ -39,16 +41,16 @@ const features: { icon: LucideIcon; title: string; benefit: string; body: string
   },
   {
     icon: BarChart3,
-    title: "ربحك في 10 ثوانٍ",
+    title: "نتيجة مشروعك بوضوح",
     benefit: "قرّر بثقة في نهاية الشهر",
-    body: "تقرير شهري واضح: دخل، مصاريف، وصافي الربح — بلا جداول بيانات ولا محاسب.",
+    body: "تقرير للمبيعات وتكلفة المخزون المباع والمصاريف التي سجلتها. اكتمال البيانات يحدد دقة النتيجة.",
   },
 ];
 
 const steps: { icon: LucideIcon; num: number; title: string; body: string }[] = [
   { icon: PenLine, num: 1, title: "سجّل محلك", body: "أدخل اسم محلك ومدينتك — يأخذ أقل من دقيقة." },
   { icon: Eye,     num: 2, title: "ابدأ التسجيل", body: "بعد كل بيعة أو مصروف، دوّنه فورًا من الجوال." },
-  { icon: TrendingUp, num: 3, title: "شوف ربحك", body: "آخر الشهر يطلع صافي ربحك وتقرير المصاريف بنقرة واحدة." },
+  { icon: TrendingUp, num: 3, title: "شوف ربحك", body: "راجع المبيعات والتكاليف المسجلة بنقرة واحدة؛ لا تشمل النتيجة بيانات لم تدخلها." },
 ];
 
 const faqs: { q: string; a: string }[] = [
@@ -58,7 +60,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "هل دفتر مجاني؟",
-    a: "نعم، دفتر مجاني بالكامل. لا بطاقة ائتمانية ولا اشتراك مدفوع مطلوب للبدء.",
+    a: "الوظائف الحالية متاحة مجانًا، ولا تحتاج بطاقة ائتمانية. أي باقات مدفوعة مستقبلية ستُعلن مع حدودها وسياسة انتقال واضحة قبل تطبيقها.",
   },
   {
     q: "هل يحتاج استخدامه تدريبًا أو خبرة محاسبية؟",
@@ -74,7 +76,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "هل بياناتي آمنة؟",
-    a: "بياناتك محفوظة على خوادم آمنة ولا يمكن لأي طرف آخر الوصول إليها. كل حساب معزول تمامًا.",
+    a: "يستخدم دفتر مصادقة وضوابط لعزل حسابات المنشآت. لا توجد حماية مطلقة؛ راجع إشعار الخصوصية لمعرفة البيانات المستخدمة والخدمات التي تعالجها.",
   },
   {
     q: "هل يدعم دفتر اللغة الإنجليزية؟",
@@ -88,7 +90,7 @@ const comparisons: { feature: string; daftar: boolean | string; paper: boolean |
   { feature: "تقرير الربح الشهري", daftar: true, paper: false, quickbooks: true },
   { feature: "متابعة المخزون والوصفات", daftar: true, paper: false, quickbooks: true },
   { feature: "بدون مصطلحات محاسبية", daftar: true, paper: true, quickbooks: false },
-  { feature: "مجاني بالكامل", daftar: true, paper: true, quickbooks: false },
+  { feature: "متاح مجانًا حاليًا", daftar: true, paper: true, quickbooks: false },
   { feature: "محاسبة متقدمة للشركات الكبيرة", daftar: false, paper: false, quickbooks: true },
 ];
 
@@ -229,12 +231,14 @@ function LedgerPreview() {
 export default function LandingContent() {
   return (
     <main className="min-h-screen bg-[#f7f8f7] text-[#101914]" dir="rtl" lang="ar">
+      <LandingTracker />
 
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 backdrop-blur">
         <nav className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5">
           <Logo />
           <div className="flex items-center gap-1 sm:gap-3">
+            <a href="#pricing" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-gray-600 hover:text-brand-700">الباقات</a>
             <a href="#faq" className="hidden rounded-2xl px-4 py-2 text-sm font-semibold text-gray-500 transition-colors hover:text-brand-700 sm:inline-block">
               الأسئلة الشائعة
             </a>
@@ -255,7 +259,7 @@ export default function LandingContent() {
       <section className="mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-12 pt-10 sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
-            تطبيق محاسبة عربي للمشاريع الصغيرة في السعودية
+            للأسر المنتجة والبيع من المنزل في السعودية
           </span>
 
           <h1 className="mt-5 text-4xl font-extrabold leading-[1.12] tracking-tight sm:text-5xl">
@@ -265,7 +269,7 @@ export default function LandingContent() {
           </h1>
 
           <blockquote className="mt-5 max-w-xl border-r-4 border-brand-700 pr-4 text-base leading-relaxed text-gray-600 sm:text-lg">
-            دفتر تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة والأسر المنتجة في السعودية. سجّل المبيعات والمصاريف والفواتير، وشاهد صافي الربح من مكان واحد بدون خبرة محاسبية.
+            دفتر تطبيق محاسبة عربي مبسّط للأسر المنتجة والبيع من المنزل في السعودية. سجّل مبيعاتك ومصاريفك ومكوّنات منتجاتك، وشاهد كم ربحت فعلاً بدون خبرة محاسبية.
           </blockquote>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -285,7 +289,7 @@ export default function LandingContent() {
           </div>
 
           <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2">
-            {["مجاني بالكامل", "عربي RTL أصيل", "يعمل على الجوال بدون تدريب"].map((t) => (
+            {["متاح مجانًا حاليًا", "عربي RTL أصيل", "مصمم للاستخدام من الجوال"].map((t) => (
               <li key={t} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600">
                 <Check className="h-4 w-4 text-brand-700" strokeWidth={3} />
                 {t}
@@ -373,7 +377,7 @@ export default function LandingContent() {
       <section>
         <div className="mx-auto w-full max-w-5xl px-5 py-20">
           <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
-            أمثلة استخدام حقيقية من السوق
+            سيناريوهات توضيحية للاستخدام
           </h2>
           <div className="mt-12 grid gap-4 sm:grid-cols-3">
             {testimonials.map(({ name, role, body }) => (
@@ -454,6 +458,8 @@ export default function LandingContent() {
         </p>
       </section>
 
+      <PricingSection />
+
       {/* ── 7. FAQ ── */}
       <section id="faq" className="border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-3xl px-5 py-20">
@@ -493,14 +499,14 @@ export default function LandingContent() {
             ابدأ تتابع حساباتك اليوم — مجانًا
           </h2>
           <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-gray-600 sm:text-base">
-            سجّل محلك في أقل من دقيقة، واعرف ربحك الحقيقي آخر كل شهر.
+            سجّل مبيعات مشروعك المنزلي وتكاليفه، وراجع نتيجته الشهرية بناءً على بياناتك.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
               href="/login"
               className="motion-press inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-7 py-4 text-base font-bold text-white transition-colors hover:bg-brand-800"
             >
-              سجّل محلك الآن — مجاني
+              سجّل مشروعك الآن — مجاني
               <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
             </Link>
             <a

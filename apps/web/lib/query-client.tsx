@@ -21,5 +21,5 @@ export function QueryProvider({ children }: { children: ReactNode }): any {
         },
       }),
   );
-  return createElement(CompatibleQueryClientProvider, { client, children }) as unknown as ReactNode;
+  return createElement(CompatibleQueryClientProvider, { client }, children) as unknown as ReactNode;
 }

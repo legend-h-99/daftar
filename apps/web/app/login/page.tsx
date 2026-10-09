@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Languages, Mail, Lock, User, Eye, EyeOff, CheckCircle2, Smartphone } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
@@ -15,6 +16,8 @@ import { fieldClass } from "@/components/ui/form-field";
 const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
 // Keep the UI hidden until a real SMS provider is enabled in Supabase Auth.
 const PHONE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_PHONE_LOGIN_ENABLED === "true";
+// Google is the only public sign-in/sign-up method; email/password stays off unless re-enabled.
+const EMAIL_LOGIN_ENABLED = process.env.NEXT_PUBLIC_EMAIL_LOGIN_ENABLED === "true";
 
 const DEMO_STORES = [
   { phone: "0500000001", name: "مطبخ أم سلطان",       city: "الرياض" },
@@ -56,12 +59,12 @@ export default function LoginPage() {
       setDemoError(null);
       setDemoLoading(true);
       try {
-        const res = await apiPost<{ accessToken: string; hasBusiness: boolean }>(
+        const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; hasBusiness: boolean }>(
           "/auth/demo",
           { phone: phoneNumber },
           { auth: false },
         );
-        setToken(res.accessToken);
+        setToken(res.accessToken, res.sessionAuthenticated);
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
       } catch (err) {
         setDemoError(err instanceof ApiError ? err.message : language === "ar" ? "تعذر دخول الحساب التجريبي" : "Could not sign in to demo account");
@@ -126,13 +129,15 @@ export default function LoginPage() {
     try {
       if (emailMode === "register") {
         await apiPost("/auth/email/register", { email, password, name: name || undefined }, { auth: false });
+        track("user_signed_up", { method: "email" });
         setRegisterSuccess(true);
       } else {
         const res = await apiPost<{
-          accessToken: string;
+          accessToken?: string; sessionAuthenticated?: boolean;
           hasBusiness: boolean;
         }>("/auth/email/login", { email, password }, { auth: false });
-        setToken(res.accessToken);
+        setToken(res.accessToken, res.sessionAuthenticated);
+        track("user_signed_in", { method: "email", has_business: res.hasBusiness });
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
       }
     } catch (err) {
@@ -186,7 +191,7 @@ export default function LoginPage() {
       <button
         type="button"
         onClick={toggleLanguage}
-        className="absolute end-4 top-4 z-20 flex h-10 items-center gap-1.5 rounded-full bg-card/90 px-3 text-xs font-bold text-muted-foreground shadow-sm ring-1 ring-border"
+        className="absolute end-4 top-4 z-20 flex min-h-11 items-center gap-1.5 rounded-full bg-card/90 px-3 text-xs font-bold text-muted-foreground shadow-sm ring-1 ring-border"
         aria-label={language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
       >
         <Languages className="h-4 w-4" />
@@ -259,15 +264,16 @@ export default function LoginPage() {
           </form>}
 
           {/* Divider */}
-          <div className="flex items-center gap-3 px-6 pb-4">
+          {EMAIL_LOGIN_ENABLED && <div className="flex items-center gap-3 px-6 pb-4">
             <span className="h-px flex-1 bg-muted" />
             <span className="text-xs font-semibold text-muted-foreground">
               {language === "ar" ? "أو" : "or"}
             </span>
             <span className="h-px flex-1 bg-muted" />
-          </div>
+          </div>}
 
-          <div className="p-6 pt-5">
+          <div className={EMAIL_LOGIN_ENABLED ? "p-6 pt-5" : "px-6 pb-6"}>
+            {EMAIL_LOGIN_ENABLED && <>
             {/* Login/Register toggle */}
             <div className="flex rounded-xl bg-muted p-1 mb-5">
               <button
@@ -369,7 +375,7 @@ export default function LoginPage() {
                 {emailMode === "login" && (
                   <Link
                     href="/forgot-password"
-                    className="mt-1.5 flex min-h-6 items-center justify-end text-xs font-semibold text-primary underline underline-offset-4"
+                    className="mt-1.5 flex min-h-11 items-center justify-end text-xs font-semibold text-primary underline underline-offset-4"
                   >
                     {language === "ar" ? "نسيت كلمة المرور؟" : "Forgot password?"}
                   </Link>
@@ -394,6 +400,7 @@ export default function LoginPage() {
                     : (language === "ar" ? "إنشاء الحساب" : "Create account")}
               </button>
             </form>
+            </>}
             <Link href="/privacy" className="mt-4 flex min-h-11 items-center justify-center rounded-lg text-sm text-primary underline underline-offset-4">
               {language === "ar" ? "إشعار الخصوصية" : "Privacy notice"}
             </Link>

@@ -1,5 +1,7 @@
 "use client";
 
+import ReportDataQuality from "@/components/reports/ReportDataQuality";
+
 import Link from "next/link";
 import {
   PiggyBank,
@@ -176,13 +178,15 @@ export default function DashboardPage() {
 
             <section aria-label={language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"} className="rounded-lg border bg-white p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-500">{language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"}</h2>
-              <p className="mt-2 text-3xl font-bold">{formatSAR(summary.cashFlow ?? (summary.totalSales - summary.totalPurchases - summary.operatingExpenses), language)}</p>
-              <p className="mt-3 text-xs text-gray-500">{language === "ar" ? "المبيعات − كل المشتريات − المصاريف" : "Sales − all purchases − expenses"}</p>
+              <p className="mt-2 text-3xl font-bold">{(summary.cashFlow == null ? (language === "ar" ? "غير متاح" : "Unavailable") : formatSAR(summary.cashFlow, language))}</p>
+              <p className="mt-3 text-xs text-gray-500">{language === "ar" ? "الدفعات حسب وقت تسجيلها − المشتريات − المصاريف" : "Collections by recording time − purchases − expenses"}</p>
             </section>
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="note">
-              {language === "ar" ? "المبيعات هنا هي المبالغ المحصلة. المنتج الذي لا ترتبط وصفته بالمخزون تُحسب تكلفته صفراً في الربح من المبيعات." : "Sales here are collected payments. Products with recipes not linked to inventory have zero cost in profit from sales."}
+              {language === "ar" ? "المبيعات حسب تاريخ إنشاء الفاتورة، وتشمل غير المحصل. الربح يعتمد على السجلات المدخلة وتكلفة المخزون المباع؛ التكاليف غير المسجلة أو غير المرتبطة بالمخزون لا تدخل في الحساب." : "Sales follow invoice creation dates, including unpaid sales. Profit uses recorded expenses and inventory sale costs; unrecorded costs and costs not linked to inventory are excluded."}
             </p>
 
+            {summary.cashFlow == null && <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{language === "ar" ? "لا تتوفر تواريخ تحصيل كاملة؛ لذلك لا نعرض تدفقًا نقديًا شهريًا قد يكون مضللًا." : "Complete collection dates are unavailable, so a potentially misleading monthly cash flow is not shown."}</p>}
+            <ReportDataQuality summary={summary} en={language === "en"} />
             {/* Low stock alert */}
             {summary.lowStock && summary.lowStock.length > 0 && (
               <Link

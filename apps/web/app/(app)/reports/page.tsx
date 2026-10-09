@@ -1,5 +1,7 @@
 "use client";
 
+import ReportDataQuality from "@/components/reports/ReportDataQuality";
+
 import { useMemo } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
@@ -47,7 +49,7 @@ export default function ReportsPage() {
   });
 
   const summary = data?.summary ?? null;
-  const expenses = data?.expenses ?? [];
+  const expenses = useMemo(() => data?.expenses ?? [], [data]);
 
   const expenseByCategory = useMemo(() => {
     if (!expenses.length) return [];
@@ -172,6 +174,8 @@ export default function ReportsPage() {
                 />
               </div>
 
+              <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{en ? "Sales include unpaid invoices by creation date. Results depend on recorded expenses and inventory-linked costs; missing costs are excluded." : "المبيعات تشمل الفواتير غير المحصلة حسب تاريخ إنشائها. النتيجة تعتمد على المصاريف المسجلة والتكاليف المرتبطة بالمخزون؛ التكاليف الناقصة لا تدخل في الحساب."}</p>
+              <ReportDataQuality summary={summary} en={en} />
               <ProfitLossStatement summary={summary} />
 
               {/* Expense breakdown by category */}

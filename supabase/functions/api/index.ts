@@ -36,6 +36,9 @@ const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ??
 // This server-side gate also protects native clients that do not use the web flag.
 const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
+// Google is the only public sign-in method. Email/password routes stay closed unless
+// deliberately re-enabled; existing password users sign in with Google on the same email.
+const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
 // Platform admins, by sign-in email. Kept in the function's secrets, not in
 // the (public) repository or the database.
 const ADMIN_EMAILS = new Set((Deno.env.get('ADMIN_EMAILS') ?? '')
@@ -571,7 +574,7 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
 
 type Summary = {
   totalSales: number; totalPurchases: number; costOfGoodsSold: number; operatingExpenses: number
-  invoiceCount: number; paidInvoicesCount: number; unpaidInvoicesCount: number; unpaidInvoicesTotal: number
+  costEstimated: boolean; missingCostItems: number; invoiceCount: number; paidInvoicesCount: number; unpaidInvoicesCount: number; unpaidInvoicesTotal: number
   unpaidInvoices: Record<string, unknown>[]; lowStock: Record<string, unknown>[]
 }
 
@@ -608,6 +611,20 @@ async function handleDashboard(user: Record<string, unknown>) {
   })
 }
 
+// Supabase limits individual responses. Never silently sum only the first page.
+async function readReportRows(query: any): Promise<{ data: Record<string, unknown>[]; error: unknown }> {
+  const rows: Record<string, unknown>[] = []
+  const pageSize = 200
+  for (let offset = 0; offset < 100_000; offset += pageSize) {
+    const result = await query.order('id', { ascending: true }).range(offset, offset + pageSize - 1)
+    if (result.error) return { data: [], error: result.error }
+    const page = result.data ?? []
+    rows.push(...page)
+    if (page.length < pageSize) return { data: rows, error: null }
+  }
+  return { data: [], error: new Error('Report size exceeds safe limit') }
+}
+
 async function handleDashboardSummary(user: Record<string, unknown>, month: string | null) {
   const bizId = user.businessId as string
   const empty = { totalSales: 0, totalPurchases: 0, costOfGoodsSold: 0, operatingExpenses: 0, totalExpenses: 0, netProfit: 0, cashFlow: 0, unpaidInvoices: [], unpaidInvoicesCount: 0, unpaidInvoicesTotal: 0, unpaidInvoicesLimitedTo: 5, lowStock: [] }
@@ -621,10 +638,32 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   const costOfGoodsSold = r.costOfGoodsSold ?? 0
   const operatingExpenses = r.operatingExpenses ?? 0
   const totalExpenses = costOfGoodsSold + operatingExpenses
+  const supabase = db()
+  const range = monthRange(month)
+  let cashCollected: number | null = null
+  let cashFlow: number | null = null
+  let paymentHistoryIncomplete = true
+  if (Deno.env.get('PAYMENT_LEDGER_ENABLED') === 'true') {
+    let paymentsQ = supabase.from('InvoicePayment').select('amount,occurredAt').eq('businessId', bizId)
+    if (range) paymentsQ = paymentsQ.gte('occurredAt', range.start).lt('occurredAt', range.end)
+    const [payments, unknown] = await Promise.all([
+      readReportRows(paymentsQ),
+      supabase.from('InvoicePayment').select('id').eq('businessId', bizId).is('occurredAt', null).limit(1),
+    ])
+    if (payments.error || unknown.error) return err('Could not load payment history', 503)
+    paymentHistoryIncomplete = (unknown.data ?? []).length > 0
+    // An undated legacy payment could belong to any month. Do not display a partial total as complete.
+    if (!range || !paymentHistoryIncomplete) {
+      cashCollected = (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0)
+      cashFlow = cashCollected - totalPurchases - operatingExpenses
+    }
+  }
+
   return json({
     totalSales, totalPurchases, costOfGoodsSold, operatingExpenses, totalExpenses,
     netProfit: totalSales - totalExpenses,
-    cashFlow: totalSales - totalPurchases - operatingExpenses,
+    cashFlow, cashCollected, paymentHistoryIncomplete, accountingBasis: 'SALES_CREATED_AT',
+    costEstimated: r.costEstimated ?? false, missingCostItems: r.missingCostItems ?? 0,
     unpaidInvoices: (r.unpaidInvoices ?? []).map(({ createdAt: _createdAt, ...invoice }) => invoice),
     unpaidInvoicesCount: r.unpaidInvoicesCount ?? 0,
     unpaidInvoicesTotal: r.unpaidInvoicesTotal ?? 0,
@@ -1133,23 +1172,28 @@ async function handleRequest(req: Request) {
       return await rateLimit(req, 'google', body.credential, 20) ?? authGoogle(body.credential)
     }
     if (req.method === 'POST' && path === '/auth/email/register') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
       return await rateLimit(req, 'email-register', body.email, 5) ?? authEmailRegister(body)
     }
     if (req.method === 'POST' && path === '/auth/email/login') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'email-login', body.email, 10) ?? authEmailLogin(body)
     }
     if (req.method === 'POST' && path === '/auth/email/verify') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'email-verify', body.token, 10) ?? authEmailVerify(body)
     }
     if (req.method === 'POST' && path === '/auth/password/forgot') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'password-forgot', body.email, 3) ?? authPasswordForgot(body)
     }
     if (req.method === 'POST' && path === '/auth/password/reset') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'password-reset', body.token, 10) ?? authPasswordReset(body)
     }

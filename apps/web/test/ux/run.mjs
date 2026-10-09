@@ -11,10 +11,20 @@ const browser = await chromium.launch({
     ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
     : {}),
 });
+const emailEnabled = process.env.UX_EMAIL_LOGIN_ENABLED === 'true';
 const results=[];
+// Match pathname, including API URLs with region/query parameters.
+const endpoint = suffix => url => url.pathname.endsWith(suffix);
 const summary={totalSales:100,totalPurchases:20,costOfGoodsSold:20,operatingExpenses:10,totalExpenses:30,netProfit:70,unpaidInvoices:[],unpaidInvoicesCount:0,unpaidInvoicesTotal:0,lowStock:[]};
 async function scenario(name, options, run){
  const context=await browser.newContext({viewport:{width:390,height:844},...options});
+ await context.addInitScript(() => {
+  let callback;
+  window.google = {accounts:{id:{initialize(config){callback=config.callback},renderButton(parent){
+   const button=document.createElement('button');button.textContent='Google';button.style.minHeight='44px';
+   button.onclick=()=>callback({credential:'synthetic-google-credential'});parent.appendChild(button);
+  }}}};
+ });
  const page=await context.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  // Never send API requests with synthetic credentials or mutate production records.
  await context.route('**/*',route=>{
@@ -28,7 +38,7 @@ async function scenario(name, options, run){
 }
 async function login(page){await page.goto(`${base}/login/`,{waitUntil:'networkidle'});}
 async function fixtures(context, failures=false){
- await context.addInitScript(()=>localStorage.setItem('daftar_token','synthetic-ui-test'));
+ await context.addInitScript(()=>localStorage.setItem('daftar_session','1'));
  let fail=failures;
  await context.route(/supabase\.co|onrender\.com|\/api-proxy|localhost:3001|127\.0\.0\.1:3001/,route=>{
   const u=route.request().url();
@@ -40,10 +50,11 @@ async function fixtures(context, failures=false){
 }
 for(const width of [320,390,768,1440]){
  await scenario(`login responsive ${width}px`,{viewport:{width,height:900}},async page=>{
-  await login(page);assert.equal(await page.getByLabel('البريد الإلكتروني',{exact:true}).count(),1);
+  await login(page);assert.equal(await page.getByLabel('البريد الإلكتروني',{exact:true}).count(),emailEnabled ? 1 : 0);
   assert.equal(await page.getByText('رقم الجوال',{exact:true}).count(),0);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow');
-  const input=await page.locator('#email').boundingBox();assert(input.width>100 && input.x>=0 && input.x+input.width<=width);
+  const target=emailEnabled ? page.locator('#email') : page.getByRole('button',{name:'Google',exact:true});
+  const input=await target.boundingBox();assert(input.width>0 && input.x>=0 && input.x+input.width<=width);
  });
 }
 await scenario('system dark/light and saved preference',{},async page=>{
@@ -59,30 +70,45 @@ await scenario('system dark/light and saved preference',{},async page=>{
 await scenario('Arabic/English language and direction',{},async page=>{
  await login(page);assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
  await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='ltr');
- assert.equal(await page.locator('main').getAttribute('dir'),'ltr');assert.equal(await page.getByLabel('Email',{exact:true}).count(),1);
+ assert.equal(await page.locator('main').getAttribute('dir'),'ltr');assert.equal(await page.getByLabel('Email',{exact:true}).count(),emailEnabled ? 1 : 0);
  await page.getByRole('button',{name:'التبديل إلى العربية'}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='rtl');assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
 });
+if (emailEnabled) {
 await scenario('invalid email blocked before submission',{},async(page,context)=>{
- let calls=0;await context.route('**/auth/email/login',r=>{calls++;return r.fulfill({json:{}})});
+ let calls=0;await context.route(endpoint('/auth/email/login'),r=>{calls++;return r.fulfill({json:{}})});
  await login(page);await page.locator('#email').fill('invalid');await page.locator('#password').fill('password123');
  await page.getByRole('button',{name:'تسجيل الدخول',exact:true}).click();
  assert.equal(await page.locator('#email').evaluate(e=>e.validity.valid),false);assert.equal(calls,0);
 });
 await scenario('login failure recovery and duplicate prevention',{},async(page,context)=>{
- let calls=0;await context.route('**/auth/email/login',async r=>{calls++;await new Promise(res=>setTimeout(res,500));return r.fulfill({status:401,json:{message:'بيانات الدخول غير صحيحة'}})});
+ let calls=0;let release;const pending=new Promise(resolve=>{release=resolve});
+ await context.route(endpoint('/auth/email/login'),async r=>{calls++;await pending;return r.fulfill({status:401,json:{message:'بيانات الدخول غير صحيحة'}})});
  await login(page);await page.locator('#email').fill('ux@example.invalid');await page.locator('#password').fill('password123');
- await page.getByRole('button',{name:'تسجيل الدخول',exact:true}).click();
- await page.waitForFunction(()=>document.querySelector('button[type=submit]')?.disabled===true);
+ try {
+  await page.getByRole('button',{name:'تسجيل الدخول',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('button[type=submit]')?.disabled===true);
+  // A second browser click on the disabled button cannot dispatch another request.
+  await page.locator('button[type=submit]').evaluate(e=>e.click());assert.equal(calls,1);
+ } finally {release();}
  await page.getByText('بيانات الدخول غير صحيحة',{exact:true}).waitFor();assert.equal(await page.locator('#email').inputValue(),'ux@example.invalid');assert.equal(calls,1);assert.equal(await page.locator('button[type=submit]').isDisabled(),false);
 });
 await scenario('signup completion with synthetic response',{},async(page,context)=>{
- await context.route('**/auth/email/register',r=>r.fulfill({json:{sent:true}}));await login(page);
+ await context.route(endpoint('/auth/email/register'),r=>r.fulfill({json:{sent:true}}));await login(page);
  await page.getByRole('button',{name:'حساب جديد',exact:true}).click();await page.locator('#email').fill('ux@example.invalid');await page.locator('#password').fill('password123');
  await page.getByRole('button',{name:'إنشاء الحساب',exact:true}).click();await page.getByText('تم التسجيل بنجاح!',{exact:true}).waitFor();
  await page.getByRole('button',{name:'تسجيل الدخول',exact:true}).click();assert.equal(await page.locator('#email').count(),1);
 });
+}
+await scenario('Google sign-in establishes a session without browser token storage',{},async(page,context)=>{
+ await fixtures(context);
+ await context.route(endpoint('/auth/google'),r=>r.fulfill({json:{sessionAuthenticated:true,hasBusiness:true}}));
+ await login(page);await page.getByRole('button',{name:'Google',exact:true}).click();
+ await page.waitForFunction(()=>/\/dashboard\/?$/.test(location.pathname));
+ assert.equal(await page.evaluate(()=>localStorage.getItem('daftar_token')),null);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('daftar_session')),'1');
+});
 await scenario('unauthenticated dashboard redirects',{},async page=>{await page.goto(`${base}/dashboard/`);await page.waitForFunction(()=>/\/login\/?$/.test(location.pathname));});
-await scenario('keyboard accessible password visibility control',{},async page=>{
+if (emailEnabled) await scenario('keyboard accessible password visibility control',{},async page=>{
  await login(page);const toggle=page.locator('#password').locator('..').locator('button');
  assert.notEqual(await toggle.getAttribute('tabindex'),'-1','Password visibility control is excluded from keyboard Tab order');
  assert(await toggle.getAttribute('aria-label'),'Password visibility control has no accessible name');
@@ -138,7 +164,7 @@ await scenario('unavailable OCR offers a private manual fallback',{},async(page,
  await page.getByRole('link',{name:'إدخال الشراء يدويًا'}).waitFor();
 });
 await scenario('privacy discoverability from login',{},async page=>{await login(page);const link=page.getByRole('link',{name:/خصوصية|privacy/i});assert(await link.count(),'No privacy notice link on login');await link.click();await page.getByRole('heading',{level:1,name:/خصوصية|privacy/i}).waitFor();});
-await scenario('dark input text contrast', {colorScheme:'dark'}, async page=>{
+if (emailEnabled) await scenario('dark input text contrast', {colorScheme:'dark'}, async page=>{
  await login(page);await page.locator('#email').fill('ux@example.invalid');
  const contrast=await page.locator('#email').evaluate(e=>{
   const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d');

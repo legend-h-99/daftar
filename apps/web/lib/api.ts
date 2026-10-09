@@ -1,4 +1,4 @@
-import { clearToken, getToken } from "./auth";
+import { clearToken, getToken, usesSessionProxy } from "./auth";
 import { DEMO_MODE, demoApiFetch } from "./demo-api";
 
 function getLang(): "ar" | "en" {
@@ -12,6 +12,7 @@ function getLang(): "ar" | "en" {
 // from any device on the local network (not just localhost).
 // On non-local hostnames (tunnels, production), fall back to NEXT_PUBLIC_API_URL.
 function resolveApiUrl(): string {
+  if (usesSessionProxy()) return "/api-proxy";
   // Production requests use the approved Supabase API endpoint.
   const productionApiUrl = "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api";
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;

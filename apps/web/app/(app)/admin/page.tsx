@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useBusiness } from "@/lib/business-context";
 import { useLanguage } from "@/lib/language";
@@ -70,15 +70,15 @@ export default function AdminPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
-  function loadOverview() {
+  const loadOverview = useCallback(() => {
     apiGet<Overview>("/admin/overview")
       .then(setOverview)
       .catch((err) => setError(err instanceof ApiError ? err.message : en ? "Could not load the overview" : "تعذر تحميل نظرة المنصة"));
-  }
+  }, [en]);
 
   useEffect(() => {
     if (isAdmin) loadOverview();
-  }, [isAdmin]);
+  }, [isAdmin, loadOverview]);
 
   if (!isAdmin) {
     return (
