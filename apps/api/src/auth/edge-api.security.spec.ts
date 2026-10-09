@@ -104,7 +104,7 @@ describe('deployed Supabase API security', () => {
     expect(database.from).not.toHaveBeenCalledWith('Invoice');
   });
 
-  it('DSH-02: returns profit from sales and cash flow separately', async () => {
+  it('DSH-02: reports sales profit without fabricating undated cash flow', async () => {
     const { handler, database, user, secret } = edgeApi();
     user.businessId = 'business-1';
     const original = database.from.getMockImplementation()!;
@@ -119,7 +119,7 @@ describe('deployed Supabase API security', () => {
     database.from.mockImplementation((table: string) => {
       if (!(table in rows)) return original(table);
       const query: any = { data: rows[table], error: null };
-      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range']) query[method] = jest.fn(() => query);
       return query;
     });
     const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
@@ -127,8 +127,77 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       totalSales: 30, totalPurchases: 100, costOfGoodsSold: 5,
-      operatingExpenses: 2, totalExpenses: 7, netProfit: 23, cashFlow: -72,
+      operatingExpenses: 2, totalExpenses: 7, netProfit: 23, cashFlow: null, paymentHistoryIncomplete: true,
     });
+  });
+
+  it('sums report rows beyond a single database page', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string) => {
+      if (['User', 'TokenBlacklist'].includes(table)) return original(table);
+      const rows = table === 'Invoice' ? Array.from({ length: 1201 }, () => ({ total: 1, status: 'UNPAID' })) : [];
+      const query: any = { data: [], error: null };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt', 'order']) query[method] = jest.fn(() => query);
+      query.range = (start: number, end: number) => { query.data = rows.slice(start, end + 1); return query; };
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ totalSales: 1201, netProfit: 1201, unpaidInvoicesCount: 1201 });
+  });
+
+  it.each([0, 10, 30])('keeps October sales profit unchanged when later collection becomes %s', async (paidAmount) => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    const rows: Record<string, unknown[]> = {
+      Invoice: [{ id: 'sale', total: 30, paidAmount, status: paidAmount === 30 ? 'PAID' : paidAmount ? 'PARTIAL' : 'UNPAID', items: [{ product: null }] }],
+      Purchase: [], Expense: [{ amount: 2 }], Material: [],
+      StockMovement: [{ qty: -1, costAmount: 4 }],
+    };
+    database.from.mockImplementation((table: string) => {
+      if (!(table in rows)) return original(table);
+      const query: any = { data: rows[table], error: null };
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range']) query[method] = jest.fn(() => query);
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const response = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ totalSales: 30, netProfit: 24, cashFlow: null, missingCostItems: 1 });
+  });
+
+  it.each([false, true])('dates collections separately and handles legacy history: %s', async (legacy) => {
+    const { handler, database, user, secret } = edgeApi({ PAYMENT_LEDGER_ENABLED: 'true' });
+    user.businessId = 'business-1';
+    const original = database.from.getMockImplementation()!;
+    const rows: Record<string, Record<string, unknown>[]> = {
+      Invoice: [{ id: 'old', total: 30, paidAmount: 10, status: 'PARTIAL', createdAt: '2026-10-10T00:00:00Z' }],
+      InvoicePayment: [{ id: 'p', amount: 10, occurredAt: '2026-11-02T00:00:00Z' }, ...(legacy ? [{ id: 'legacy', amount: 20, occurredAt: null }] : [])],
+      Purchase: [], Expense: [], Material: [], StockMovement: [],
+    };
+    database.from.mockImplementation((table: string) => {
+      if (!(table in rows)) return original(table);
+      let data = rows[table];
+      const query: any = {
+        select: () => query, eq: () => query, gt: () => query, order: () => query,
+        range: (start: number, end: number) => { data = data.slice(start, end + 1); return query; },
+        gte: (field: string, value: string) => { data = data.filter(row => row[field] != null && String(row[field]) >= value); return query; },
+        lt: (field: string, value: string) => { data = data.filter(row => row[field] != null && String(row[field]) < value); return query; },
+        is: (field: string, value: unknown) => { data = data.filter(row => row[field] === value); return query; },
+        limit: (limit: number) => { data = data.slice(0, limit); return query; },
+        then: (resolve: (result: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve),
+      };
+      return query;
+    });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const october = await handler(request('/dashboard/summary?month=2026-10', 'GET', undefined, token));
+    expect(await october.json()).toMatchObject({ totalSales: 30, netProfit: 30, cashCollected: legacy ? null : 0 });
+    const november = await handler(request('/dashboard/summary?month=2026-11', 'GET', undefined, token));
+    expect(await november.json()).toMatchObject({ totalSales: 0, netProfit: 0, cashCollected: legacy ? null : 10, cashFlow: legacy ? null : 10 });
   });
 
   it('fails the report explicitly when a database query fails instead of showing zero balances', async () => {
@@ -138,7 +207,7 @@ describe('deployed Supabase API security', () => {
     database.from.mockImplementation((table: string) => {
       if (['User', 'TokenBlacklist'].includes(table)) return original(table);
       const query: any = { data: null, error: { message: 'private database detail' } };
-      for (const method of ['select', 'eq', 'gte', 'lt', 'gt']) query[method] = jest.fn(() => query);
+      for (const method of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range']) query[method] = jest.fn(() => query);
       return query;
     });
     const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
@@ -157,7 +226,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('keeps phone OTP disabled unless explicitly enabled on the server', async () => {
-    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '' });
+    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '', EMAIL_LOGIN_ENABLED: 'true' });
     const response = await handler(request('/auth/otp/request', 'POST', { phone: '0500000001' }));
     const verify = await handler(request('/auth/otp/verify', 'POST', { phone: '0500000001', code: '123456' }));
 
@@ -185,8 +254,16 @@ describe('deployed Supabase API security', () => {
     expect(database.from).not.toHaveBeenCalled();
   });
 
+  it.each(['/auth/email/register', '/auth/email/login', '/auth/email/verify', '/auth/password/forgot', '/auth/password/reset'])('keeps %s disabled by default without database access', async (path) => {
+    const { handler, database, fetchMock } = edgeApi();
+    const response = await handler(request(path, 'POST', {}));
+    expect(response.status).toBe(404);
+    expect(database.from).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('fails closed when email delivery or Google audience is unconfigured', async () => {
-    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '' });
+    const { handler, database } = edgeApi({ GOOGLE_CLIENT_ID: '', EMAIL_LOGIN_ENABLED: 'true' });
     const registration = await handler(request('/auth/email/register', 'POST', {
       email: 'audit@example.invalid', password: 'safe-password',
     }));
@@ -227,7 +304,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('runs global and per-identity shared rate limits before trying email login', async () => {
-    const { handler, database } = edgeApi();
+    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     const response = await handler(request('/auth/email/login', 'POST', {
       email: 'audit@example.invalid', password: 'wrong-password',
     }));
@@ -241,7 +318,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('stops email login when the shared rate limit is exceeded', async () => {
-    const { handler, database } = edgeApi();
+    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     database.rpc.mockResolvedValue({ data: false, error: null });
     const response = await handler(request('/auth/email/login', 'POST', {
       email: 'audit@example.invalid', password: 'wrong-password',
@@ -252,7 +329,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('issues a token only after a verified account passes password checking', async () => {
-    const { handler, user } = edgeApi();
+    const { handler, user } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
     user.passwordHash = await bcrypt.hash('correct-password', 4);
     user.emailVerified = true;
 
@@ -267,7 +344,7 @@ describe('deployed Supabase API security', () => {
   });
 
   it('sends verification without returning the token to the registrant', async () => {
-    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key' });
+    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
     user.emailVerified = false;
 
     const response = await handler(request('/auth/email/register', 'POST', {

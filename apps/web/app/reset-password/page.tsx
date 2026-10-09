@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { Suspense, FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, XCircle, Lock, Eye, EyeOff } from "lucide-react";
@@ -39,12 +39,12 @@ function ResetPasswordContent() {
 
     setLoading(true);
     try {
-      const res = await apiPost<{ accessToken: string; user: User; hasBusiness: boolean; business?: Business }>(
+      const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; user: User; hasBusiness: boolean; business?: Business }>(
         "/auth/password/reset",
         { token, password },
         { auth: false },
       );
-      setToken(res.accessToken);
+      setToken(res.accessToken, res.sessionAuthenticated);
       setSuccess(true);
       setTimeout(() => {
         router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
@@ -174,5 +174,4 @@ export default function ResetPasswordPage() {
 
 // Keep the boundary compatible with the workspace's React 19 type packages.
 // Next still requires a Suspense boundary for useSearchParams during export.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SuspenseBoundary = (require("react") as any).Suspense;
+const SuspenseBoundary = Suspense as any;

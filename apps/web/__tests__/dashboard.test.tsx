@@ -19,7 +19,9 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
+  usesSessionProxy: () => false,
   getToken: () => "test-token",
+  isAuthenticated: () => true,
   clearToken: vi.fn(),
 }));
 
@@ -118,6 +120,15 @@ function makeInvoice(overrides: Partial<UnpaidInvoiceSummary> = {}): UnpaidInvoi
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
+it("does not substitute sales for missing collection dates", async () => {
+  vi.mocked(apiGet).mockResolvedValue(makeSummary({ cashFlow: null, missingCostItems: 2, costEstimated: true }));
+  render(<DashboardPage />);
+  await waitFor(() => expect(screen.getByText("غير متاح")).toBeInTheDocument());
+  expect(screen.getByText(/لا تتوفر تواريخ تحصيل كاملة/)).toBeInTheDocument();
+  expect(screen.getByText(/2 بنود بيع/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "راجع وصفات المنتجات" })).toHaveAttribute("href", "/products");
+});
+
 describe("صفحة الرئيسية (Dashboard)", () => {
   describe("حالة التحميل", () => {
     it("يظهر الهيكل العظمي أثناء جلب البيانات", () => {
@@ -182,7 +193,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
     await waitFor(() => expect(screen.getByText("24.00 ر.س")).toBeInTheDocument());
     expect(screen.getByText("-72.00 ر.س")).toBeInTheDocument();
     expect(screen.getByText("النقد الداخل والخارج")).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent("تُحسب تكلفته صفراً");
+    expect(screen.getByRole("note")).toHaveTextContent("التكاليف غير المسجلة");
   });
 
   describe("حالة الخطأ", () => {

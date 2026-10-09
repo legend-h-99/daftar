@@ -6,12 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.mjs,.ts,.tsx --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
     "figma:connect": "figma connect publish",
     "figma:unpublish": "figma connect unpublish",
-    "test:ux": "node test/ux/run.mjs"
+    "test:ux": "node test/ux/run.mjs",
+    "test:session": "node test/ux/session-browser.mjs",
+    "test:ux:release": "node test/ux/check-release.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Languages, LogOut, Sun, Moon } from "lucide-react";
-import { clearToken } from "@/lib/auth";
-import { apiPost } from "@/lib/api";
+import { clearToken, usesSessionProxy } from "@/lib/auth";
+import { apiPost, ApiError } from "@/lib/api";
+import { toast } from "sonner";
 import { useLanguage } from "@/lib/language";
 import { useTheme } from "@/lib/theme";
 
@@ -19,12 +21,19 @@ export default function TopBar({ businessName }: TopBarProps) {
   async function handleSignOut() {
     try {
       await apiPost("/auth/logout", {});
-    } catch {
-      // If request fails, still sign out locally.
-    } finally {
-      clearToken();
-      router.replace("/login");
+    } catch (err) {
+      // JavaScript cannot clear an HttpOnly cookie. If the Worker was never
+      // reached (or rejected the request before logout), keep the UI honest.
+      if (usesSessionProxy() && err instanceof ApiError && [0, 403, 405].includes(err.status)) {
+        toast.error(language === "ar"
+          ? "تعذر إنهاء الجلسة، تحقق من اتصالك ثم حاول مرة أخرى"
+          : "Could not end your session. Check your connection and try again.");
+        return;
+      }
+      // The Worker clears the cookie even when its upstream logout fails.
     }
+    clearToken();
+    router.replace("/login");
   }
 
   return (
@@ -43,6 +52,7 @@ export default function TopBar({ businessName }: TopBarProps) {
         </div>
 
         <div className="flex items-center gap-1">
+          <Link href="/plans" className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground">{language === "ar" ? "الباقات" : "Plans"}</Link>
           {businessName && (
             <span className="max-w-[100px] truncate text-sm font-medium text-muted-foreground">
               {businessName}

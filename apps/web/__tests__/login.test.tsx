@@ -22,6 +22,7 @@ const mockSetToken = vi.fn();
 vi.mock("@/lib/auth", () => ({
   setToken: (t: string) => mockSetToken(t),
   getToken: vi.fn(),
+  usesSessionProxy: () => false,
   clearToken: vi.fn(),
 }));
 
@@ -39,6 +40,9 @@ vi.mock("@/components/GoogleSignInButton", () => ({
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
 import LoginPage from "@/app/login/page";
+
+// The email flow is behind a flag (off in production); these tests exercise it when enabled.
+vi.hoisted(() => { process.env.NEXT_PUBLIC_EMAIL_LOGIN_ENABLED = "true"; });
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -104,5 +108,18 @@ describe("صفحة تسجيل الدخول بدون رقم الجوال", () => 
         body: JSON.stringify({ email: "test@example.com", password: "password123" }),
       }),
     );
+  });
+});
+
+describe("صفحة تسجيل الدخول عبر Google فقط", () => {
+  it("يخفي نموذج البريد عندما لا يكون مفعّلاً", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_EMAIL_LOGIN_ENABLED", "false");
+    const { default: GoogleOnlyLoginPage } = await import("@/app/login/page");
+    render(<GoogleOnlyLoginPage />);
+    expect(screen.getByTestId("google-btn")).toBeInTheDocument();
+    expect(screen.queryByLabelText("البريد الإلكتروني")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("كلمة المرور")).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 });

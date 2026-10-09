@@ -258,10 +258,15 @@ export interface DashboardSummary {
   costOfGoodsSold: number;
   /** true when some cost came from the current material price, not the price at sale time */
   costEstimated?: boolean;
+  /** Sale lines whose recipe costs are missing or not fully covered by stock movements. */
+  missingCostItems?: number;
   operatingExpenses: number;
   totalExpenses: number;
   netProfit: number;
-  cashFlow: number;
+  cashFlow: number | null;
+  cashCollected?: number | null;
+  paymentHistoryIncomplete?: boolean;
+  accountingBasis?: "SALES_CREATED_AT";
   unpaidInvoices: UnpaidInvoiceSummary[];
   unpaidInvoicesCount: number;
   unpaidInvoicesTotal: number;

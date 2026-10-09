@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SCAN_ENABLED } from "@/lib/features";
 import Link from "next/link";
 import {
@@ -45,7 +45,7 @@ export default function InventoryPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  function load() {
+  const load = useCallback(() => {
     apiGet<InventoryMaterial[]>("/inventory")
       .then(setItems)
       .catch((err) =>
@@ -54,12 +54,12 @@ export default function InventoryPage() {
     apiGet<StockMovement[]>("/inventory/movements")
       .then(setMovements)
       .catch(() => {});
-  }
+  }, [language]);
 
   useEffect(() => {
     load();
     setPurchaseUpdated(new URLSearchParams(window.location.search).get("purchaseUpdated") === "1");
-  }, []);
+  }, [load]);
 
   function handleDelete(material: InventoryMaterial) {
     if (deletingId !== material.id) {

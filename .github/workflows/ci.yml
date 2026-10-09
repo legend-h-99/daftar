@@ -31,8 +31,17 @@ jobs:
       - name: Audit deployed web dependencies
         run: node apps/web/test/release-audit.mjs
 
+      - name: Lint web
+        run: pnpm --filter web lint
+
       - name: Test web
         run: pnpm --filter web test -- --run
+
+      - name: Install test browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Test session cookies in the browser
+        run: pnpm --filter web test:session
 
       - name: Generate Prisma client
         run: pnpm --filter api exec prisma generate
@@ -49,6 +58,24 @@ jobs:
       - name: Build Cloudflare static release
         run: pnpm --filter web build
         env:
+          NEXT_PUBLIC_APP_ENV: "production"
+          NEXT_PUBLIC_DEMO_MODE: "false"
+          NEXT_PUBLIC_DEMO_LOGIN: "false"
+          NEXT_PUBLIC_EMAIL_LOGIN_ENABLED: "false"
+          NEXT_PUBLIC_PHONE_LOGIN_ENABLED: "false"
+          NEXT_PUBLIC_SESSION_PROXY_ENABLED: "true"
           NEXT_OUTPUT_EXPORT: "1"
           NEXT_DIST_DIR: ".next-cloudflare-check"
           NEXT_PUBLIC_API_URL: "https://nklcbcpkycrhuumpbksb.supabase.co/functions/v1/api"
+
+      - name: Test static release UX (synthetic API only)
+        run: pnpm --filter web test:ux:release
+
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-qa
+          path: |
+            test-results/ux-release/
+            test-results/session-browser/

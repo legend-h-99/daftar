@@ -4,7 +4,7 @@ import * as bcrypt from 'https://esm.sh/bcryptjs@3.0.3'
 const CORS = {
   'access-control-allow-origin': 'https://daftar-ead.pages.dev',
   'access-control-allow-credentials': 'true',
-  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info, idempotency-key',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
 }
 
@@ -34,6 +34,9 @@ const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ??
 // This server-side gate also protects native clients that do not use the web flag.
 const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
+// Google is the only public sign-in method. Email/password routes stay closed unless
+// deliberately re-enabled; existing password users sign in with Google on the same email.
+const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
   '+966500000001': { name: 'مطبخ أم سلطان', city: 'الرياض' },
@@ -169,8 +172,8 @@ function normalizePath(rawPath: string): string {
 function monthRange(month: string | null): { start: string; end: string } | null {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return null
   const [y, m] = month.split('-').map(Number)
-  const start = new Date(y, m - 1, 1).toISOString()
-  const end = new Date(y, m, 1).toISOString()
+  const start = new Date(Date.UTC(y, m - 1, 1) - 3 * 3600_000).toISOString()
+  const end = new Date(Date.UTC(y, m, 1) - 3 * 3600_000).toISOString()
   return { start, end }
 }
 
@@ -513,6 +516,20 @@ async function handleDashboard(user: Record<string, unknown>) {
   })
 }
 
+// Supabase limits individual responses. Never silently sum only the first page.
+async function readReportRows(query: any): Promise<{ data: Record<string, unknown>[]; error: unknown }> {
+  const rows: Record<string, unknown>[] = []
+  const pageSize = 200
+  for (let offset = 0; offset < 100_000; offset += pageSize) {
+    const result = await query.order('id', { ascending: true }).range(offset, offset + pageSize - 1)
+    if (result.error) return { data: [], error: result.error }
+    const page = result.data ?? []
+    rows.push(...page)
+    if (page.length < pageSize) return { data: rows, error: null }
+  }
+  return { data: [], error: new Error('Report size exceeds safe limit') }
+}
+
 async function handleDashboardSummary(user: Record<string, unknown>, month: string | null) {
   const supabase = db()
   const bizId = user.businessId as string
@@ -521,7 +538,7 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
 
   const range = monthRange(month)
 
-  let invQ = supabase.from('Invoice').select('id,number,total,paidAmount,status,dueDate,createdAt,customer:Customer(name)').eq('businessId', bizId)
+  let invQ = supabase.from('Invoice').select('id,number,total,paidAmount,status,dueDate,createdAt,customer:Customer(name),items:InvoiceItem(productId,product:Product(overheadCost,recipeItems:RecipeItem(materialId,quantityUsed,unitPrice)))').eq('businessId', bizId)
   if (range) invQ = invQ.gte('createdAt', range.start).lt('createdAt', range.end)
 
   let purQ = supabase.from('Purchase').select('total,date').eq('businessId', bizId)
@@ -534,11 +551,11 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   if (range) cogsQ = cogsQ.gte('createdAt', range.start).lt('createdAt', range.end)
 
   let expQ = supabase.from('Expense').select('amount,date').eq('businessId', bizId)
-  if (range) expQ = expQ.gte('date', range.start.slice(0, 10)).lt('date', range.end.slice(0, 10))
+  if (range) expQ = expQ.gte('date', month + '-01').lt('date', new Date(new Date(range.end).getTime() + 3 * 3600_000).toISOString().slice(0, 10))
 
   const matQ = supabase.from('Material').select('id,name,unit,stockQty,reorderLevel').eq('businessId', bizId).gt('reorderLevel', 0)
 
-  const [invRes, purRes, expRes, matRes, cogsRes] = await Promise.all([invQ, purQ, expQ, matQ, cogsQ])
+  const [invRes, purRes, expRes, matRes, cogsRes] = await Promise.all([invQ, purQ, expQ, matQ, cogsQ].map(query => readReportRows(query)))
   if ([invRes, purRes, expRes, matRes, cogsRes].some(result => result.error)) {
     return err('Could not load report', 503)
   }
@@ -548,21 +565,45 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
   const expenses = (expRes.data ?? []) as Record<string, unknown>[]
   const materials = (matRes.data ?? []) as Record<string, unknown>[]
 
-  const totalSales = invoices.filter(i => i.status === 'PAID' || i.status === 'PARTIAL').reduce((s, i) => s + ((i.paidAmount as number) ?? 0), 0)
+  const totalSales = invoices.reduce((s, i) => s + Number(i.total ?? 0), 0)
+  const missingCostItems = invoices.reduce((count, invoice) => count + ((invoice.items ?? []) as Record<string, unknown>[]).filter(item => {
+    const product = item.product as Record<string, unknown> | null
+    const recipe = (product?.recipeItems ?? []) as Record<string, unknown>[]
+    return !product || !recipe.length || Number(product.overheadCost ?? 0) > 0 || recipe.some(line => !line.materialId || Number(line.unitPrice ?? 0) <= 0)
+  }).length, 0)
   const totalPurchases = purchases.reduce((s, p) => s + ((p.total as number) ?? 0), 0)
   const operatingExpenses = expenses.reduce((s, e) => s + (e.amount as number), 0)
-  const costOfGoodsSold = ((cogsRes.data ?? []) as Record<string, unknown>[]).reduce((sum, movement) => {
-    const material = movement.material as Record<string, unknown> | null
-    return sum + (movement.costAmount != null
   // Movements without a recorded costAmount fall back to the material's current price; flag it so the UI can say "estimate".
   let costEstimated = false
+  const costOfGoodsSold = ((cogsRes.data ?? []) as Record<string, unknown>[]).reduce((sum, movement) => {
+    const material = movement.material as Record<string, unknown> | null
+    if (movement.costAmount == null) costEstimated = true
+    return sum + (movement.costAmount != null
       ? Number(movement.costAmount)
       : Math.abs(Number(movement.qty)) * Number(material?.unitPrice ?? 0))
-    if (movement.costAmount == null) costEstimated = true
   }, 0)
   const totalExpenses = costOfGoodsSold + operatingExpenses
   const netProfit = totalSales - totalExpenses
-  const cashFlow = totalSales - totalPurchases - operatingExpenses
+  // Never infer collection dates from invoice creation dates.
+  // Enable only after applying 20261007090000_invoice_payment_ledger.sql.
+  let cashCollected: number | null = null
+  let cashFlow: number | null = null
+  let paymentHistoryIncomplete = true
+  if (Deno.env.get('PAYMENT_LEDGER_ENABLED') === 'true') {
+    let paymentsQ = supabase.from('InvoicePayment').select('amount,occurredAt').eq('businessId', bizId)
+    if (range) paymentsQ = paymentsQ.gte('occurredAt', range.start).lt('occurredAt', range.end)
+    const [payments, unknown] = await Promise.all([
+      readReportRows(paymentsQ),
+      supabase.from('InvoicePayment').select('id').eq('businessId', bizId).is('occurredAt', null).limit(1),
+    ])
+    if (payments.error || unknown.error) return err('Could not load payment history', 503)
+    paymentHistoryIncomplete = (unknown.data ?? []).length > 0
+    // An undated legacy payment could belong to any month. Do not display a partial total as complete.
+    if (!range || !paymentHistoryIncomplete) {
+      cashCollected = (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0)
+      cashFlow = cashCollected - totalPurchases - operatingExpenses
+    }
+  }
 
   const unpaidAll = invoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL')
   const unpaidInvoices = unpaidAll.slice(0, 5).map(i => ({
@@ -575,7 +616,7 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
     .filter(mat => (mat.stockQty as number) <= (mat.reorderLevel as number))
     .map(mat => ({ id: mat.id, name: mat.name, unit: mat.unit, stockQty: mat.stockQty, reorderLevel: mat.reorderLevel }))
 
-  return json({ totalSales, totalPurchases, costOfGoodsSold, costEstimated, operatingExpenses, totalExpenses, netProfit, cashFlow, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
+  return json({ totalSales, totalPurchases, costOfGoodsSold, costEstimated, operatingExpenses, totalExpenses, netProfit, cashFlow, cashCollected, paymentHistoryIncomplete, accountingBasis: 'SALES_CREATED_AT', missingCostItems, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
 }
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────
@@ -815,11 +856,16 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
       (body.dueDate != null && typeof body.dueDate !== 'string') ||
       (body.notes != null && typeof body.notes !== 'string') ||
       !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) return err('Invalid invoice', 400)
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) {
+    return err('Invalid idempotency key', 400, 'INVALID_IDEMPOTENCY_KEY')
+  }
   const { data, error } = await db().rpc('create_invoice_with_inventory', {
     p_business_id: user.businessId as string, p_customer_id: (body.customerId as string | undefined) ?? null,
     p_status: (body.status as string | undefined) ?? 'UNPAID',
     p_due_date: (body.dueDate as string | undefined) ?? null,
     p_notes: (body.notes as string | undefined) ?? null, p_items: body.items,
+    p_idempotency_key: idempotencyKey,
   })
   if (error) {
     console.error('Invoice transaction failed', error.code, error.message)
@@ -829,6 +875,30 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   }
   // Apply invoice_paid_amount_atomic before deploying this version: paidAmount
   // is now part of the same transaction as the invoice and stock movements.
+  return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
+}
+
+async function createMaterial(supabase: ReturnType<typeof db>, bizId: string, body: Record<string, unknown>) {
+  const allowed = ['name', 'unit', 'purchasePrice', 'purchaseQty', 'vatRate', 'initialQty', 'reorderLevel']
+  if (Object.keys(body).some(key => !allowed.includes(key)) ||
+      typeof body.name !== 'string' || !body.name.trim() ||
+      !['KG', 'GRAM', 'LITER', 'ML', 'PIECE'].includes(body.unit as string) ||
+      !validAmount(body.purchasePrice, true) || !validAmount(body.purchaseQty) ||
+      !validAmount(body.initialQty ?? 0, true) ||
+      !validAmount(body.vatRate ?? 0, true) || Number(body.vatRate ?? 0) > 100 ||
+      (body.reorderLevel != null && !validAmount(body.reorderLevel, true)) ||
+      !Number.isFinite(Number(body.purchasePrice) / Number(body.purchaseQty))) {
+    return err('تحقق من اسم الصنف والوحدة والسعر والكمية', 400)
+  }
+  const { data, error } = await supabase.rpc('create_material_with_opening_balance', {
+    p_business_id: bizId,
+    p_material_id: newId('material'),
+    p_body: { ...body, name: body.name.trim() },
+  })
+  if (error) {
+    console.error('Material creation failed', { code: error.code })
+    return err('تعذر حفظ الصنف، حاول مرة أخرى', 500)
+  }
   return json(data, 201)
 }
 
@@ -851,7 +921,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range((page - 1) * limit, page * limit - 1)
     if (range) {
       if (table === 'Expense') {
-        q = q.gte('date', range.start.slice(0, 10)).lt('date', range.end.slice(0, 10))
+        q = q.gte('date', month + '-01').lt('date', new Date(new Date(range.end).getTime() + 3 * 3600_000).toISOString().slice(0, 10))
       } else {
         q = q.gte('createdAt', range.start).lt('createdAt', range.end)
       }
@@ -864,6 +934,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Material') return createMaterial(supabase, bizId, body)
     if (table === 'Expense') {
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
@@ -915,7 +986,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   }
 
   if (req.method === 'DELETE' && id) {
-    await supabase.from(table).delete().eq('id', id).eq('businessId', bizId)
+    const { data: deleted } = await supabase.from(table).delete().eq('id', id).eq('businessId', bizId).select('id')
+    if (!deleted?.length) return err('Not found', 404)
     return new Response(null, { status: 204, headers: CORS })
   }
 
@@ -961,23 +1033,28 @@ async function handleRequest(req: Request) {
       return await rateLimit(req, 'google', body.credential, 20) ?? authGoogle(body.credential)
     }
     if (req.method === 'POST' && path === '/auth/email/register') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       if (!RESEND_API_KEY) return err('Email registration is temporarily unavailable', 503)
       return await rateLimit(req, 'email-register', body.email, 5) ?? authEmailRegister(body)
     }
     if (req.method === 'POST' && path === '/auth/email/login') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'email-login', body.email, 10) ?? authEmailLogin(body)
     }
     if (req.method === 'POST' && path === '/auth/email/verify') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'email-verify', body.token, 10) ?? authEmailVerify(body)
     }
     if (req.method === 'POST' && path === '/auth/password/forgot') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'password-forgot', body.email, 3) ?? authPasswordForgot(body)
     }
     if (req.method === 'POST' && path === '/auth/password/reset') {
+      if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       return await rateLimit(req, 'password-reset', body.token, 10) ?? authPasswordReset(body)
     }
