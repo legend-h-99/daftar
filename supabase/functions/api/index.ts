@@ -6,6 +6,8 @@ const CORS = {
   'access-control-allow-credentials': 'true',
   'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info, idempotency-key',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  // Chrome caps this at 2 hours; without it every authorized call pays a preflight.
+  'access-control-max-age': '7200',
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -37,6 +39,10 @@ const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
 // Google is the only public sign-in method. Email/password routes stay closed unless
 // deliberately re-enabled; existing password users sign in with Google on the same email.
 const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
+// Platform admins, by sign-in email. Kept in the function's secrets, not in
+// the (public) repository or the database.
+const ADMIN_EMAILS = new Set((Deno.env.get('ADMIN_EMAILS') ?? '')
+  .split(',').map(email => email.trim().toLowerCase()).filter(Boolean))
 
 const DEMO_STORES: Record<string, { name: string; city: string }> = {
   '+966500000001': { name: 'مطبخ أم سلطان', city: 'الرياض' },
@@ -56,10 +62,24 @@ function normalizePhone(phone: string): string {
   return `+966${digits}`
 }
 
+// Right after a cold start the API gateway has answered 401 to some of the
+// first concurrent calls, although every call carries the same service key.
+// A 401 means the request was rejected before it ran, so one retry is safe
+// even for writes; any other status is returned as is.
+async function gatewayRetryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init)
+  if (response.status !== 401) return response
+  console.warn('Database gateway answered 401; retrying once')
+  return fetch(input, init)
+}
+
 let dbClient: ReturnType<typeof createClient> | null = null
 function db() {
   if (!SUPABASE_URL || !SERVICE_KEY) throw new Error('Database configuration missing')
-  dbClient ??= createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+  dbClient ??= createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false },
+    global: { fetch: gatewayRetryFetch },
+  })
   return dbClient
 }
 
@@ -91,23 +111,47 @@ async function verifyJwt(token: string): Promise<Record<string, unknown> | null>
   } catch { return null }
 }
 
-async function getUser(req: Request) {
+// Resolves the caller, or a Response to send instead: 401 for a bad or revoked
+// token, 503 when the lookup itself failed (the web app logs out on 401, so a
+// database blip must not look like one), 429 for the per-account cap.
+async function getUser(req: Request): Promise<Record<string, unknown> | Response> {
   const auth = req.headers.get('Authorization')
-  if (!auth?.startsWith('Bearer ')) return null
+  if (!auth?.startsWith('Bearer ')) return err('Unauthorized', 401)
   const claims = await verifyJwt(auth.slice(7))
-  if (!claims) return null
+  if (!claims) return err('Unauthorized', 401)
   const supabase = db()
-  const [{ data: revoked }, { data: account }] = await Promise.all([
+  // One parallel round trip: revocation, account and the per-account rate limit.
+  const [blacklist, account, limited] = await Promise.all([
     supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
-    supabase.from('User').select('id,phone,email,googleId,businessId').eq('id', claims.sub).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified').eq('id', claims.sub).maybeSingle(),
+    rateLimit(req, 'api-account', claims.sub, 100, { includeIp: false }),
   ])
-  if (revoked || !account) return null
-  return { ...claims, phone: account.phone, email: account.email, googleId: account.googleId, businessId: account.businessId }
+  if (blacklist.error || account.error) return err('Service temporarily unavailable', 503)
+  if (blacklist.data || !account.data) return err('Unauthorized', 401)
+  if (limited) return limited
+  const row = account.data
+  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified }
+}
+
+// An admin's email must be on the list and proven: through Google or the
+// verification link. An unverified sign-up with the same address is not enough.
+function isAdmin(user: Record<string, unknown>): boolean {
+  return typeof user.email === 'string' && ADMIN_EMAILS.has(user.email.trim().toLowerCase()) &&
+    (Boolean(user.googleId) || user.emailVerified === true)
 }
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 }
+// A feature switched off by configuration: a 503 for the client, but not a
+// server fault, so it is kept out of the admin error log.
+const EXPECTED_HEADER = 'x-daftar-expected'
+function disabled(msg: string) {
+  const response = err(msg, 503)
+  response.headers.set(EXPECTED_HEADER, '1')
+  return response
+}
+
 // `code` lets the web app show a localized message instead of this English text.
 function err(msg: string, status = 400, code?: string, extra: Record<string, unknown> = {}) {
   return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
@@ -169,18 +213,32 @@ function normalizePath(rawPath: string): string {
     || '/'
 }
 
-function monthRange(month: string | null): { start: string; end: string } | null {
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) return null
+// Saudi Arabia is UTC+3 all year (no daylight saving).
+const RIYADH_OFFSET_MS = 3 * 3600 * 1000
+
+// A calendar month in Riyadh: `start`/`end` bound stored UTC timestamps
+// (createdAt); `startDate`/`endDate` bound business dates (expense/purchase date).
+function monthRange(month: string | null): { start: string; end: string; startDate: string; endDate: string } | null {
+  if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null
   const [y, m] = month.split('-').map(Number)
-  const start = new Date(Date.UTC(y, m - 1, 1) - 3 * 3600_000).toISOString()
-  const end = new Date(Date.UTC(y, m, 1) - 3 * 3600_000).toISOString()
-  return { start, end }
+  const first = Date.UTC(y, m - 1, 1)
+  const next = Date.UTC(y, m, 1)
+  return {
+    start: new Date(first - RIYADH_OFFSET_MS).toISOString(),
+    end: new Date(next - RIYADH_OFFSET_MS).toISOString(),
+    startDate: new Date(first).toISOString().slice(0, 10),
+    endDate: new Date(next).toISOString().slice(0, 10),
+  }
+}
+
+function currentRiyadhMonth(): string {
+  return new Date(Date.now() + RIYADH_OFFSET_MS).toISOString().slice(0, 7)
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 async function authGoogle(credential: string) {
-  if (!GOOGLE_CLIENT_ID) return err('Google login is not configured', 503)
+  if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
   const tokenRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`)
   if (!tokenRes.ok) return err('Invalid Google token', 401)
   const payload = await tokenRes.json()
@@ -229,7 +287,7 @@ async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
-  if (!await reserveDailySmsSend()) return err('Phone verification is temporarily unavailable', 503)
+  if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
 
   const { error } = await db().auth.signInWithOtp({
     phone,
@@ -272,10 +330,11 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
 }
 
-async function authMe(userId: string) {
-  const { data } = await db().from('User').select('id,phone,email,name,businessId,Business(*)').eq('id', userId).single()
+async function authMe(user: Record<string, unknown>) {
+  const { data, error } = await db().from('User').select('id,phone,email,name,businessId,Business(*)').eq('id', user.sub).single()
+  if (error && error.code !== 'PGRST116') return err('Service temporarily unavailable', 503)
   if (!data) return err('User not found', 404)
-  return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, businessId: data.businessId } })
+  return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, name: data.name, businessId: data.businessId, isAdmin: isAdmin(user) } })
 }
 
 function validEmailInput(email: unknown, password: unknown): email is string {
@@ -318,7 +377,7 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
 }
 
 async function authEmailRegister(body: Record<string, unknown>) {
-  if (!RESEND_API_KEY) return err('Email registration is temporarily unavailable', 503)
+  if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
   if (!validEmailInput(body.email, body.password)) return err('Invalid email or password', 400)
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
@@ -336,25 +395,57 @@ async function authEmailRegister(body: Record<string, unknown>) {
     const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
     if (error) return err('Could not register', 500)
   }
-  await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const issued = await issueVerificationLink(userId, email)
+  if (issued === 'FAILED') return err('Could not register', 500)
+  if (issued === 'UNDELIVERED') return err('Could not send verification email', 503)
+  return json({ sent: true })
+}
+
+function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32))
-  const token = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+type LinkOutcome = 'SENT' | 'FAILED' | 'UNDELIVERED'
+
+// Replaces any pending verification link with a new one and emails it.
+async function issueVerificationLink(userId: string, email: string): Promise<LinkOutcome> {
+  const supabase = db()
+  await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const token = randomToken()
   const { error } = await supabase.from('EmailVerification').insert({
     id: newId('verification'), userId, token,
     expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
   })
-  if (error) return err('Could not register', 500)
-  if (!await sendVerificationEmail(email, token)) return err('Could not send verification email', 503)
-  return json({ sent: true })
+  if (error) return 'FAILED'
+  return await sendVerificationEmail(email, token) ? 'SENT' : 'UNDELIVERED'
 }
+
+// Replaces any pending password reset link with a new one and emails it.
+async function issuePasswordResetLink(userId: string, email: string): Promise<LinkOutcome> {
+  const supabase = db()
+  await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
+  const token = randomToken()
+  const { error } = await supabase.from('PasswordReset').insert({
+    id: newId('reset'), userId, token,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })
+  if (error) return 'FAILED'
+  return await sendPasswordResetEmail(email, token) ? 'SENT' : 'UNDELIVERED'
+}
+
+// A real bcrypt hash (cost 12) of a random string, compared when the email has
+// no password so unknown and known addresses take the same time to reject.
+const DUMMY_PASSWORD_HASH = '$2b$12$rzlddSFCiO/4vBLQWOZ5SeFd/MUyeKLG5ClUaB1Uav8RBbTaRdM0q'
 
 async function authEmailLogin(body: Record<string, unknown>) {
   const invalid = () => err('Invalid credentials', 401, 'INVALID_CREDENTIALS')
   if (typeof body.email !== 'string' || typeof body.password !== 'string') return invalid()
   const supabase = db()
   const email = body.email.trim().toLowerCase()
-  const { data: user } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
-  const passwordMatches = Boolean(user?.passwordHash) && await bcrypt.compare(body.password, user.passwordHash!)
+  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
+  if (error) return err('Service temporarily unavailable', 503)
+  const passwordMatches = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH) && Boolean(user?.passwordHash)
   if (!passwordMatches) return invalid()
   if (!user.emailVerified) return err('Please verify your email address first', 403, 'EMAIL_NOT_VERIFIED')
   const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
@@ -366,7 +457,7 @@ async function authEmailLogin(body: Record<string, unknown>) {
 }
 
 async function authPasswordForgot(body: Record<string, unknown>) {
-  if (!RESEND_API_KEY) return err('Password reset is temporarily unavailable', 503)
+  if (!RESEND_API_KEY) return disabled('Password reset is temporarily unavailable')
   if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
     return err('Invalid email address', 400)
   }
@@ -378,14 +469,7 @@ async function authPasswordForgot(body: Record<string, unknown>) {
   // return the same successful response as a known password account.
   if (!user?.passwordHash || !user.email) return json({ sent: true })
 
-  await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', user.id).eq('consumed', false)
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  const token = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
-  const { error } = await supabase.from('PasswordReset').insert({
-    id: newId('reset'), userId: user.id, token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  })
-  if (error || !await sendPasswordResetEmail(email, token)) return err('Could not send password reset email', 503)
+  if (await issuePasswordResetLink(user.id, email) !== 'SENT') return err('Could not send password reset email', 503)
   return json({ sent: true })
 }
 
@@ -443,7 +527,8 @@ async function handleBusiness(req: Request, user: Record<string, unknown>) {
   const supabase = db()
   const bizId = user.businessId as string
   if (req.method === 'GET') {
-    const { data } = await supabase.from('Business').select('*').eq('id', bizId).single()
+    const { data, error } = await supabase.from('Business').select('*').eq('id', bizId).single()
+    if (error) return error.code === 'PGRST116' ? err('Business not found', 404) : err('Service temporarily unavailable', 503)
     return json(data)
   }
   if (req.method === 'PATCH' || req.method === 'PUT') {
@@ -487,32 +572,42 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 
+type Summary = {
+  totalSales: number; totalPurchases: number; costOfGoodsSold: number; operatingExpenses: number
+  costEstimated: boolean; missingCostItems: number; invoiceCount: number; paidInvoicesCount: number; unpaidInvoicesCount: number; unpaidInvoicesTotal: number
+  unpaidInvoices: Record<string, unknown>[]; lowStock: Record<string, unknown>[]
+}
+
+// Totals are summed in SQL so they are never cut short by the API's row cap.
+async function loadSummary(bizId: string, month: string | null) {
+  const range = monthRange(month)
+  return await db().rpc('dashboard_summary', {
+    p_business_id: bizId,
+    p_start: range?.start ?? null, p_end: range?.end ?? null,
+    p_start_date: range?.startDate ?? null, p_end_date: range?.endDate ?? null,
+  }) as { data: Partial<Summary> | null; error: unknown }
+}
+
+// Legacy shape, still used by the mobile app.
 async function handleDashboard(user: Record<string, unknown>) {
-  const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return json({ revenue: { total: 0, thisMonth: 0 }, expenses: { total: 0, thisMonth: 0 }, profit: { total: 0, thisMonth: 0 }, invoiceCount: 0, paidInvoices: 0, pendingInvoices: 0, recentInvoices: [] })
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-  const [inv, exp] = await Promise.all([
-    supabase.from('Invoice').select('id,total,paidAmount,status,createdAt,customer:Customer(name)').eq('businessId', bizId),
-    supabase.from('Expense').select('amount,date').eq('businessId', bizId),
+  const [all, month, recent] = await Promise.all([
+    loadSummary(bizId, null),
+    loadSummary(bizId, currentRiyadhMonth()),
+    db().from('Invoice').select('id,total,paidAmount,status,createdAt,customer:Customer(name)').eq('businessId', bizId)
+      .order('createdAt', { ascending: false }).limit(5),
   ])
-  const invoices = inv.data ?? []
-  const expenses = exp.data ?? []
-  const paid = invoices.filter((i: Record<string, unknown>) => i.status === 'PAID')
-  const partial = invoices.filter((i: Record<string, unknown>) => i.status === 'PARTIAL')
-  const totalRevenue = [...paid, ...partial].reduce((s: number, i: Record<string, unknown>) => s + ((i.paidAmount as number) ?? 0), 0)
-  const monthInv = invoices.filter((i: Record<string, unknown>) => (i.createdAt as string) >= startOfMonth)
-  const monthRevenue = monthInv.filter((i: Record<string, unknown>) => i.status === 'PAID' || i.status === 'PARTIAL').reduce((s: number, i: Record<string, unknown>) => s + ((i.paidAmount as number) ?? 0), 0)
-  const totalExp = expenses.reduce((s: number, e: Record<string, unknown>) => s + (e.amount as number), 0)
-  const monthExp = expenses.filter((e: Record<string, unknown>) => (e.date as string) >= startOfMonth).reduce((s: number, e: Record<string, unknown>) => s + (e.amount as number), 0)
+  if (all.error || month.error || recent.error) return err('Could not load report', 503)
+  const a = all.data ?? {}, m = month.data ?? {}
   return json({
-    revenue: { total: totalRevenue, thisMonth: monthRevenue },
-    expenses: { total: totalExp, thisMonth: monthExp },
-    profit: { total: totalRevenue - totalExp, thisMonth: monthRevenue - monthExp },
-    invoiceCount: invoices.length,
-    paidInvoices: paid.length,
-    pendingInvoices: invoices.filter((i: Record<string, unknown>) => i.status === 'UNPAID' || i.status === 'PARTIAL').length,
-    recentInvoices: invoices.slice(0, 5),
+    revenue: { total: a.totalSales ?? 0, thisMonth: m.totalSales ?? 0 },
+    expenses: { total: a.operatingExpenses ?? 0, thisMonth: m.operatingExpenses ?? 0 },
+    profit: { total: (a.totalSales ?? 0) - (a.operatingExpenses ?? 0), thisMonth: (m.totalSales ?? 0) - (m.operatingExpenses ?? 0) },
+    invoiceCount: a.invoiceCount ?? 0,
+    paidInvoices: a.paidInvoicesCount ?? 0,
+    pendingInvoices: a.unpaidInvoicesCount ?? 0,
+    recentInvoices: recent.data ?? [],
   })
 }
 
@@ -531,61 +626,20 @@ async function readReportRows(query: any): Promise<{ data: Record<string, unknow
 }
 
 async function handleDashboardSummary(user: Record<string, unknown>, month: string | null) {
-  const supabase = db()
   const bizId = user.businessId as string
   const empty = { totalSales: 0, totalPurchases: 0, costOfGoodsSold: 0, operatingExpenses: 0, totalExpenses: 0, netProfit: 0, cashFlow: 0, unpaidInvoices: [], unpaidInvoicesCount: 0, unpaidInvoicesTotal: 0, unpaidInvoicesLimitedTo: 5, lowStock: [] }
   if (!bizId) return json(empty)
 
-  const range = monthRange(month)
-
-  let invQ = supabase.from('Invoice').select('id,number,total,paidAmount,status,dueDate,createdAt,customer:Customer(name),items:InvoiceItem(productId,product:Product(overheadCost,recipeItems:RecipeItem(materialId,quantityUsed,unitPrice)))').eq('businessId', bizId)
-  if (range) invQ = invQ.gte('createdAt', range.start).lt('createdAt', range.end)
-
-  let purQ = supabase.from('Purchase').select('total,date').eq('businessId', bizId)
-  if (range) purQ = purQ.gte('date', range.start).lt('date', range.end)
-
-  // Buying stock is not the same as consuming it in a sale. Preserve the
-  // historical movement cost; only legacy movements need the current-price fallback.
-  let cogsQ = supabase.from('StockMovement').select('qty,costAmount,material:Material(unitPrice)')
-    .eq('businessId', bizId).eq('type', 'SALE')
-  if (range) cogsQ = cogsQ.gte('createdAt', range.start).lt('createdAt', range.end)
-
-  let expQ = supabase.from('Expense').select('amount,date').eq('businessId', bizId)
-  if (range) expQ = expQ.gte('date', month + '-01').lt('date', new Date(new Date(range.end).getTime() + 3 * 3600_000).toISOString().slice(0, 10))
-
-  const matQ = supabase.from('Material').select('id,name,unit,stockQty,reorderLevel').eq('businessId', bizId).gt('reorderLevel', 0)
-
-  const [invRes, purRes, expRes, matRes, cogsRes] = await Promise.all([invQ, purQ, expQ, matQ, cogsQ].map(query => readReportRows(query)))
-  if ([invRes, purRes, expRes, matRes, cogsRes].some(result => result.error)) {
-    return err('Could not load report', 503)
-  }
-
-  const invoices = (invRes.data ?? []) as Record<string, unknown>[]
-  const purchases = (purRes.data ?? []) as Record<string, unknown>[]
-  const expenses = (expRes.data ?? []) as Record<string, unknown>[]
-  const materials = (matRes.data ?? []) as Record<string, unknown>[]
-
-  const totalSales = invoices.reduce((s, i) => s + Number(i.total ?? 0), 0)
-  const missingCostItems = invoices.reduce((count, invoice) => count + ((invoice.items ?? []) as Record<string, unknown>[]).filter(item => {
-    const product = item.product as Record<string, unknown> | null
-    const recipe = (product?.recipeItems ?? []) as Record<string, unknown>[]
-    return !product || !recipe.length || Number(product.overheadCost ?? 0) > 0 || recipe.some(line => !line.materialId || Number(line.unitPrice ?? 0) <= 0)
-  }).length, 0)
-  const totalPurchases = purchases.reduce((s, p) => s + ((p.total as number) ?? 0), 0)
-  const operatingExpenses = expenses.reduce((s, e) => s + (e.amount as number), 0)
-  // Movements without a recorded costAmount fall back to the material's current price; flag it so the UI can say "estimate".
-  let costEstimated = false
-  const costOfGoodsSold = ((cogsRes.data ?? []) as Record<string, unknown>[]).reduce((sum, movement) => {
-    const material = movement.material as Record<string, unknown> | null
-    if (movement.costAmount == null) costEstimated = true
-    return sum + (movement.costAmount != null
-      ? Number(movement.costAmount)
-      : Math.abs(Number(movement.qty)) * Number(material?.unitPrice ?? 0))
-  }, 0)
+  const { data, error } = await loadSummary(bizId, month)
+  if (error) return err('Could not load report', 503)
+  const r = data ?? {}
+  const totalSales = r.totalSales ?? 0
+  const totalPurchases = r.totalPurchases ?? 0
+  const costOfGoodsSold = r.costOfGoodsSold ?? 0
+  const operatingExpenses = r.operatingExpenses ?? 0
   const totalExpenses = costOfGoodsSold + operatingExpenses
-  const netProfit = totalSales - totalExpenses
-  // Never infer collection dates from invoice creation dates.
-  // Enable only after applying 20261007090000_invoice_payment_ledger.sql.
+  const supabase = db()
+  const range = monthRange(month)
   let cashCollected: number | null = null
   let cashFlow: number | null = null
   let paymentHistoryIncomplete = true
@@ -605,30 +659,38 @@ async function handleDashboardSummary(user: Record<string, unknown>, month: stri
     }
   }
 
-  const unpaidAll = invoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL')
-  const unpaidInvoices = unpaidAll.slice(0, 5).map(i => ({
-    id: i.id, number: i.number,
-    customerName: (i.customer as Record<string, unknown>)?.name ?? null,
-    total: i.total, paidAmount: (i.paidAmount as number) ?? 0, dueDate: i.dueDate ?? null, status: i.status,
-  }))
+  return json({
+    totalSales, totalPurchases, costOfGoodsSold, operatingExpenses, totalExpenses,
+    netProfit: totalSales - totalExpenses,
+    cashFlow, cashCollected, paymentHistoryIncomplete, accountingBasis: 'SALES_CREATED_AT',
+    costEstimated: r.costEstimated ?? false, missingCostItems: r.missingCostItems ?? 0,
+    unpaidInvoices: (r.unpaidInvoices ?? []).map(({ createdAt: _createdAt, ...invoice }) => invoice),
+    unpaidInvoicesCount: r.unpaidInvoicesCount ?? 0,
+    unpaidInvoicesTotal: r.unpaidInvoicesTotal ?? 0,
+    unpaidInvoicesLimitedTo: 5,
+    lowStock: r.lowStock ?? [],
+  })
+}
 
-  const lowStock = materials
-    .filter(mat => (mat.stockQty as number) <= (mat.reorderLevel as number))
-    .map(mat => ({ id: mat.id, name: mat.name, unit: mat.unit, stockQty: mat.stockQty, reorderLevel: mat.reorderLevel }))
-
-  return json({ totalSales, totalPurchases, costOfGoodsSold, costEstimated, operatingExpenses, totalExpenses, netProfit, cashFlow, cashCollected, paymentHistoryIncomplete, accountingBasis: 'SALES_CREATED_AT', missingCostItems, unpaidInvoices, unpaidInvoicesCount: unpaidAll.length, unpaidInvoicesTotal: unpaidAll.reduce((s, i) => s + ((i.total as number) - ((i.paidAmount as number) ?? 0)), 0), unpaidInvoicesLimitedTo: 5, lowStock })
+function pageOf(url: URL | undefined, defaultLimit = 100): { from: number; to: number } {
+  const page = Math.max(1, Number.parseInt(url?.searchParams.get('page') ?? '1', 10) || 1)
+  const limit = Math.min(Math.max(Number.parseInt(url?.searchParams.get('limit') ?? String(defaultLimit), 10) || defaultLimit, 1), MAX_PAGE_SIZE)
+  return { from: (page - 1) * limit, to: page * limit - 1 }
 }
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────
 
-async function handleInventory(req: Request, user: Record<string, unknown>, sub?: string) {
+async function handleInventory(req: Request, user: Record<string, unknown>, sub?: string, url?: URL) {
   const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return json([])
 
   if (sub === 'movements') {
     if (req.method !== 'GET') return err('Method not allowed', 405)
-    const { data } = await supabase.from('StockMovement').select('*, material:Material(id,name,unit)').eq('businessId', bizId).order('createdAt', { ascending: false })
+    const { from, to } = pageOf(url, MAX_PAGE_SIZE)
+    const { data, error } = await supabase.from('StockMovement').select('*, material:Material(id,name,unit)').eq('businessId', bizId)
+      .order('createdAt', { ascending: false }).range(from, to)
+    if (error) return err('Service temporarily unavailable', 503)
     return json(data ?? [])
   }
 
@@ -640,24 +702,21 @@ async function handleInventory(req: Request, user: Record<string, unknown>, sub?
         (note != null && (typeof note !== 'string' || note.length > MAX_TEXT_LENGTH))) {
       return err('Invalid stock adjustment', 400)
     }
-    const { data: mat, error: matErr } = await supabase.from('Material').select('*').eq('id', materialId).eq('businessId', bizId).single()
-    if (matErr || !mat) return err('Material not found', 404)
-    const delta = (newQty as number) - (mat.stockQty as number)
-    const { data: updated } = await supabase.from('Material').update({ stockQty: newQty }).eq('id', materialId).eq('businessId', bizId).select().single()
-    await supabase.from('StockMovement').insert({
-      id: newId('mov'),
-      businessId: bizId,
-      materialId,
-      type: 'ADJUSTMENT',
-      qty: delta,
-      balanceAfter: newQty,
-      note: note ?? null,
+    // One transaction: the count, the new balance and its movement row.
+    const { data, error } = await supabase.rpc('adjust_material_stock', {
+      p_business_id: bizId, p_material_id: materialId, p_new_qty: newQty, p_note: note ?? null,
     })
-    return json(updated)
+    if (error) {
+      if (error.message?.includes('Material not found')) return err('Material not found', 404)
+      console.error('Stock adjustment failed', error.code)
+      return err('Could not adjust stock', 500)
+    }
+    return json(data)
   }
 
   if (req.method === 'GET') {
-    const { data: materials } = await supabase.from('Material').select('*').eq('businessId', bizId).order('name', { ascending: true })
+    const { data: materials, error } = await supabase.from('Material').select('*').eq('businessId', bizId).order('name', { ascending: true })
+    if (error) return err('Service temporarily unavailable', 503)
     const result = (materials ?? []).map((m: Record<string, unknown>) => ({
       ...m,
       lowStock: m.reorderLevel != null && (m.stockQty as number) <= (m.reorderLevel as number),
@@ -671,26 +730,11 @@ async function handleInventory(req: Request, user: Record<string, unknown>, sub?
 // ── PURCHASES SUMMARY ────────────────────────────────────────────────────────
 
 async function handlePurchasesSummary(user: Record<string, unknown>) {
-  const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return json({ bySupplier: [], byMonth: [] })
-  const { data: purchases } = await supabase.from('Purchase').select('total,createdAt,supplier:Supplier(name)').eq('businessId', bizId).order('createdAt', { ascending: false })
-  const rows = (purchases ?? []) as Record<string, unknown>[]
-  const supplierMap = new Map<string, { count: number; total: number }>()
-  for (const p of rows) {
-    const name = ((p.supplier as Record<string, unknown>)?.name as string) ?? 'غير محدد'
-    const cur = supplierMap.get(name) ?? { count: 0, total: 0 }
-    supplierMap.set(name, { count: cur.count + 1, total: cur.total + ((p.total as number) ?? 0) })
-  }
-  const bySupplier = [...supplierMap.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total)
-  const monthMap = new Map<string, { count: number; total: number }>()
-  for (const p of rows) {
-    const month = (p.createdAt as string).slice(0, 7)
-    const cur = monthMap.get(month) ?? { count: 0, total: 0 }
-    monthMap.set(month, { count: cur.count + 1, total: cur.total + ((p.total as number) ?? 0) })
-  }
-  const byMonth = [...monthMap.entries()].map(([month, v]) => ({ month, ...v })).sort((a, b) => a.month.localeCompare(b.month))
-  return json({ bySupplier, byMonth })
+  const { data, error } = await db().rpc('purchases_summary', { p_business_id: bizId })
+  if (error) return err('Could not load report', 503)
+  return json(data ?? { bySupplier: [], byMonth: [] })
 }
 
 // ── GENERIC CRUD ──────────────────────────────────────────────────────────────
@@ -698,7 +742,8 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
 const TABLE_SELECTS: Record<string, string> = {
   Invoice: '*, items:InvoiceItem(*), customer:Customer(name,phone)',
   Purchase: '*, items:PurchaseItem(*), supplier:Supplier(name)',
-  Product: '*',
+  // The edit form rebuilds the recipe from these items.
+  Product: '*, recipeItems:RecipeItem(*)',
   Expense: '*',
   Customer: '*',
   Supplier: '*',
@@ -766,7 +811,7 @@ function validateExpense(body: Record<string, unknown>, isCreate: boolean): stri
 async function normalizeInvoiceUpdate(
   supabase: ReturnType<typeof db>, id: string, bizId: string, body: Record<string, unknown>,
 ): Promise<Response | null> {
-  if (['number', 'subtotal', 'vatAmount', 'total', 'issueDate'].some(key => key in body)) return err('Field cannot be changed', 400)
+  if (['number', 'subtotal', 'vatAmount', 'total', 'issueDate', 'idempotencyKey', 'idempotencyHash'].some(key => key in body)) return err('Field cannot be changed', 400)
   if ('status' in body && !INVOICE_STATUSES.includes(body.status as string)) return err('Invalid status', 400)
   if ('dueDate' in body && body.dueDate != null && !validDate(body.dueDate)) return err('Invalid due date', 400)
   if (!('status' in body) && !('paidAmount' in body)) return null
@@ -792,7 +837,8 @@ function hasImmutableFields(row: Record<string, unknown>): boolean {
 }
 
 async function handlePurchase(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
-  if (req.method !== 'POST' || id) return handleCrud(req, user, 'Purchase', id, url)
+  if (req.method === 'POST' && id) return err('Method not allowed', 405)
+  if (req.method !== 'POST') return handleCrud(req, user, 'Purchase', id, url)
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid purchase', 400) }
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
@@ -847,7 +893,21 @@ async function handleProduct(req: Request, user: Record<string, unknown>, id?: s
 }
 
 async function handleInvoice(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
-  if (req.method !== 'POST' || id) return handleCrud(req, user, 'Invoice', id, url)
+  // POST /invoices/<id> used to fall through to the generic update and could
+  // rewrite totals and payments that only the invoice transaction may set.
+  if (req.method === 'POST' && id) return err('Method not allowed', 405)
+  if (req.method === 'DELETE' && id) {
+    const { data: deleted, error } = await db().rpc('delete_invoice_with_inventory', {
+      p_business_id: user.businessId as string, p_invoice_id: id,
+    })
+    if (error) {
+      console.error('Invoice delete failed', error.code)
+      return err('Could not delete invoice', 500)
+    }
+    if (deleted !== true) return err('Not found', 404)
+    return new Response(null, { status: 204, headers: CORS })
+  }
+  if (req.method !== 'POST') return handleCrud(req, user, 'Invoice', id, url)
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid invoice', 400) }
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
@@ -871,7 +931,13 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
     console.error('Invoice transaction failed', error.code, error.message)
     const shortage = /^Insufficient stock: (.*)$/.exec(error.message)
     if (shortage) return err(error.message, 409, 'INSUFFICIENT_STOCK', { material: shortage[1] })
-    return err(error.message.includes('not found') ? error.message : 'Could not create invoice', 400)
+    if (error.message === 'Idempotency key reused') {
+      return err('This idempotency key was already used for a different invoice', 422, 'IDEMPOTENCY_KEY_REUSED')
+    }
+    if (error.message.includes('not found') || /^Invalid invoice/.test(error.message)) return err(error.message, 400)
+    // Anything else (timeouts, dropped connections) may have committed; a 5xx
+    // tells the web app to retry with the same key instead of a new one.
+    return err('Could not create invoice', 500)
   }
   // Apply invoice_paid_amount_atomic before deploying this version: paidAmount
   // is now part of the same transaction as the invoice and stock movements.
@@ -910,25 +976,30 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
 
   if (req.method === 'GET') {
     if (id) {
-      const { data, error } = await supabase.from(table).select(sel).eq('id', id).eq('businessId', bizId).single()
-      if (error || !data) return err('Not found', 404)
+      let one = supabase.from(table).select(sel).eq('id', id).eq('businessId', bizId)
+      if (table === 'Invoice') one = one.order('position', { referencedTable: 'items', ascending: true })
+      const { data, error } = await one.single()
+      if (error && error.code !== 'PGRST116') return err('Service temporarily unavailable', 503)
+      if (!data) return err('Not found', 404)
       return json(data)
     }
-    const month = url?.searchParams.get('month') ?? null
-    const range = monthRange(month)
-    const page = Math.max(1, Number.parseInt(url?.searchParams.get('page') ?? '1', 10) || 1)
-    const limit = Math.min(Math.max(Number.parseInt(url?.searchParams.get('limit') ?? '100', 10) || 100, 1), MAX_PAGE_SIZE)
-    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range((page - 1) * limit, page * limit - 1)
+    const range = monthRange(url?.searchParams.get('month') ?? null)
+    const { from, to } = pageOf(url)
+    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range(from, to)
     if (range) {
-      if (table === 'Expense') {
-        q = q.gte('date', month + '-01').lt('date', new Date(new Date(range.end).getTime() + 3 * 3600_000).toISOString().slice(0, 10))
+      // Expenses and purchases are filtered by their business date, matching the dashboard.
+      if (table === 'Expense' || table === 'Purchase') {
+        q = q.gte('date', range.startDate).lt('date', range.endDate)
       } else {
         q = q.gte('createdAt', range.start).lt('createdAt', range.end)
       }
     }
-    const { data } = await q
+    const { data, error } = await q
+    if (error) return err('Service temporarily unavailable', 503)
     return json(data ?? [])
   }
+
+  if (req.method === 'POST' && id) return err('Method not allowed', 405)
 
   if (req.method === 'POST') {
     const body = await req.json()
@@ -979,6 +1050,11 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
       const invalid = await normalizeInvoiceUpdate(supabase, id, bizId, body)
       if (invalid) return invalid
     }
+    // Purchase totals and numbers come from create_purchase_with_inventory and
+    // already moved stock; editing them alone would desync the books.
+    if (table === 'Purchase' && ['number', 'total', 'subtotal', 'vatAmount', 'source'].some(key => key in body)) {
+      return err('Field cannot be changed', 400)
+    }
     if (!await foreignKeysBelongToBusiness(supabase, table, body, bizId)) return err('Related record not found', 404)
     const { data, error } = await supabase.from(table).update(body).eq('id', id).eq('businessId', bizId).select(sel).single()
     if (error || !data) return err('Not found', 404)
@@ -994,7 +1070,68 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   return err('Method not allowed', 405)
 }
 
+// ── PLATFORM ADMIN ───────────────────────────────────────────────────────────
+
+const ADMIN_LINK_ACTIONS: Record<string, { action: string; send: typeof issueVerificationLink }> = {
+  'verification-email': { action: 'VERIFICATION_LINK', send: issueVerificationLink },
+  'password-reset': { action: 'PASSWORD_RESET_LINK', send: issuePasswordResetLink },
+}
+
+async function handleAdmin(req: Request, user: Record<string, unknown>, seg: string[], url: URL) {
+  // Non-admins get the same answer as an unknown route.
+  if (!isAdmin(user)) return err('Not found', 404)
+  if (req.method === 'GET' && seg[1] === 'overview' && seg.length === 2) {
+    const { data, error } = await db().rpc('admin_overview')
+    if (error) return err('Could not load overview', 503)
+    return json(data)
+  }
+  if (req.method === 'GET' && seg[1] === 'users' && seg.length === 2) {
+    const query = (url.searchParams.get('q') ?? '').trim()
+    if (query.length < 2 || query.length > 100) return err('Enter at least 2 characters', 400)
+    const { data, error } = await db().rpc('admin_find_users', { p_query: query })
+    if (error) return err('Could not search users', 503)
+    return json(data ?? [])
+  }
+  const link = ADMIN_LINK_ACTIONS[seg[3] ?? '']
+  if (req.method === 'POST' && seg[1] === 'users' && seg[2] && link && seg.length === 4) {
+    const limited = await rateLimit(req, 'admin-link', user.sub, 20, { includeIp: false })
+    if (limited) return limited
+    if (!RESEND_API_KEY) return disabled('Email delivery is not configured')
+    const { data: target, error } = await db().from('User')
+      .select('id,email,googleId,emailVerified,passwordHash').eq('id', seg[2]).maybeSingle()
+    if (error) return err('Service temporarily unavailable', 503)
+    if (!target) return err('Not found', 404)
+    if (!target.email) return err('This account has no email address', 409, 'NO_EMAIL')
+    if (!target.passwordHash) return err('This account signs in with Google only', 409, 'NO_PASSWORD_LOGIN')
+    if (link.action === 'VERIFICATION_LINK' && target.emailVerified) return err('Email is already verified', 409, 'ALREADY_VERIFIED')
+    const result = await link.send(target.id as string, target.email as string)
+    await db().from('AdminAuditLog').insert({ adminUserId: user.sub, action: link.action, targetUserId: target.id, result })
+    if (result !== 'SENT') return err('Could not send the email', 503)
+    return json({ sent: true })
+  }
+  return err('Not found', 404)
+}
+
+// Paths keep their resource names; record ids become ':id' so the log holds no personal data.
+const PATH_WORDS = new Set(['summary', 'movements', 'adjust', 'status', 'pdf', 'scan', 'me', 'logout', 'overview', 'users',
+  'verification-email', 'password-reset', 'otp', 'request', 'verify', 'demo', 'google', 'email', 'register', 'login',
+  'password', 'forgot', 'reset'])
+function errorPath(path: string): string {
+  return path.split('/').map((part, i) => i >= 2 && part && !PATH_WORDS.has(part) ? ':id' : part).join('/').slice(0, 200)
+}
+
+async function recordServerError(req: Request, status: number) {
+  try {
+    await db().from('ApiErrorEvent').insert({ method: req.method, path: errorPath(normalizePath(new URL(req.url).pathname)), status })
+  } catch { /* never let error logging fail the request */ }
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────────────────
+
+const PUBLIC_AUTH_PATHS = new Set([
+  '/auth/otp/request', '/auth/otp/verify', '/auth/demo', '/auth/google', '/auth/email/register',
+  '/auth/email/login', '/auth/email/verify', '/auth/password/forgot', '/auth/password/reset',
+])
 
 async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
@@ -1004,21 +1141,23 @@ async function handleRequest(req: Request) {
   const seg = path.split('/').filter(Boolean)
 
   try {
+    if (path === '/health' || path === '') return json({ status: 'ok' })
     // Cap all API traffic by its platform-provided client IP. Individual auth
-    // endpoints have tighter per-IP and per-identity limits below.
-    if (path !== '/health' && path !== '' && req.method !== 'OPTIONS') {
-      const limited = await rateLimit(req, 'api', null, 100)
+    // endpoints have tighter per-IP and per-identity limits below. For signed-in
+    // routes the cap runs alongside the session lookup instead of before it.
+    const ipLimit = rateLimit(req, 'api', null, 100)
+    if (req.method === 'POST' && PUBLIC_AUTH_PATHS.has(path)) {
+      const limited = await ipLimit
       if (limited) return limited
     }
-    if (path === '/health' || path === '') return json({ status: 'ok' })
     if (req.method === 'POST' && path === '/auth/otp/request') {
-      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
+      if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       const limited = await rateLimit(req, 'otp-request', body.phone, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
-      if (!PHONE_LOGIN_ENABLED) return err('Phone verification is temporarily unavailable', 503)
+      if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
     }
@@ -1029,13 +1168,13 @@ async function handleRequest(req: Request) {
     }
     if (req.method === 'POST' && path === '/auth/google') {
       const body = await req.json()
-      if (!GOOGLE_CLIENT_ID) return err('Google login is not configured', 503)
+      if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
       return await rateLimit(req, 'google', body.credential, 20) ?? authGoogle(body.credential)
     }
     if (req.method === 'POST' && path === '/auth/email/register') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
-      if (!RESEND_API_KEY) return err('Email registration is temporarily unavailable', 503)
+      if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
       return await rateLimit(req, 'email-register', body.email, 5) ?? authEmailRegister(body)
     }
     if (req.method === 'POST' && path === '/auth/email/login') {
@@ -1059,19 +1198,19 @@ async function handleRequest(req: Request) {
       return await rateLimit(req, 'password-reset', body.token, 10) ?? authPasswordReset(body)
     }
 
-    const user = await getUser(req)
-    if (!user) return err('Unauthorized', 401)
-    // The per-IP cap already ran above; this adds only the per-account cap.
-    const accountLimited = await rateLimit(req, 'api-account', user.sub, 100, { includeIp: false })
-    if (accountLimited) return accountLimited
+    // getUser also applies the per-account cap in the same round trip.
+    const [ipLimited, user] = await Promise.all([ipLimit, getUser(req)])
+    if (ipLimited) return ipLimited
+    if (user instanceof Response) return user
 
-    if (path === '/auth/me' && req.method === 'GET') return authMe(user.sub as string)
+    if (path === '/auth/me' && req.method === 'GET') return authMe(user)
+    if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
     if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)
     if (path === '/dashboard/summary' && req.method === 'GET') return handleDashboardSummary(user, url.searchParams.get('month'))
-    if (seg[0] === 'inventory') return handleInventory(req, user, seg[1])
+    if (seg[0] === 'inventory') return handleInventory(req, user, seg[1], url)
     if (path === '/purchases/summary' && req.method === 'GET') return handlePurchasesSummary(user)
     if (path === '/purchases/scan' && req.method === 'POST') return err('ميزة المسح غير متاحة في هذه النسخة', 501)
     if (seg[0] === 'invoices' && seg[2] === 'pdf') return err('تحميل PDF غير متاح حالياً', 501)
@@ -1100,8 +1239,9 @@ async function handleRequest(req: Request) {
 
 Deno.serve(async (req: Request) => {
   const response = await handleRequest(req)
+  if (response.status >= 500 && !response.headers.has(EXPECTED_HEADER)) await recordServerError(req, response.status)
   const headers: Record<string, string> = {}
-  response.headers.forEach((value, key) => { headers[key] = value })
+  response.headers.forEach((value, key) => { if (key !== EXPECTED_HEADER) headers[key] = value })
   Object.entries(corsFor(req)).forEach(([key, value]) => { headers[key] = value })
   return new Response(response.body, { status: response.status, headers })
 })

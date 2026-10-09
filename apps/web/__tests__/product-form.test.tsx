@@ -39,4 +39,10 @@ describe("product margin controls", () => {
     expect(slider).toHaveValue("0");
     await waitFor(() => expect(screen.getByRole("button", { name: "حفظ" })).toBeEnabled());
   });
+
+  it("opens an existing product for editing even if it arrives without recipe items", () => {
+    const product = { id: "p-1", name: "كيك", profitMargin: 25, rawCost: 0, packagingCost: 0, totalCost: 0, sellingPrice: 0 } as never;
+    render(<ProductForm product={product} />);
+    expect(screen.getByDisplayValue("كيك")).toBeInTheDocument();
+  });
 });

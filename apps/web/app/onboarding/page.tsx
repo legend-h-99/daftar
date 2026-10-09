@@ -202,7 +202,7 @@ export default function OnboardingPage() {
                 <label htmlFor="biz-city" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <MapPin className="h-4 w-4 text-brand-600" />
                   {tx.city}{" "}
-                  <span className="font-normal text-gray-400">{tx.cityOptional}</span>
+                  <span className="font-normal text-gray-500">{tx.cityOptional}</span>
                 </label>
                 <input
                   id="biz-city"

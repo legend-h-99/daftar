@@ -193,7 +193,7 @@ export default function ReportsPage() {
                           </span>
                           <span className="font-semibold text-gray-900">
                             {formatSAR(amount, language)}
-                            <span className="mr-1.5 text-xs font-normal text-gray-400">
+                            <span className="mr-1.5 text-xs font-normal text-gray-500">
                               {pct}%
                             </span>
                           </span>

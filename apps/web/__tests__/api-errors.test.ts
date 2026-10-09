@@ -56,3 +56,28 @@ describe("رسائل أخطاء الخادم", () => {
     expect((await errorFrom(apiPost("/x", {}, { auth: false }))).message).toBe("اسم المحل مكرر");
   });
 });
+
+describe("ترويسات الطلبات", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("لا يرسل Content-Type مع طلب GET بلا جسم", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const { apiGet } = await import("@/lib/api");
+    await apiGet("/customers");
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain("content-type");
+  });
+});
+
+describe("مفتاح منع التكرار", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("يترجم إعادة استخدام المفتاح لفاتورة مختلفة", async () => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    mockResponse(422, { message: "This idempotency key was already used for a different invoice", code: "IDEMPOTENCY_KEY_REUSED" });
+    const err = await errorFrom(apiPost("/invoices", {}, { auth: false }));
+    expect(err.message).toContain("أعد فتح صفحة الفاتورة");
+  });
+});

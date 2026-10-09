@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Languages, LogOut, Sun, Moon } from "lucide-react";
+import { Languages, LogOut, Sun, Moon, ShieldCheck } from "lucide-react";
 import { clearToken, usesSessionProxy } from "@/lib/auth";
 import { apiPost, ApiError } from "@/lib/api";
 import { toast } from "sonner";
+import { useBusiness } from "@/lib/business-context";
 import { useLanguage } from "@/lib/language";
 import { useTheme } from "@/lib/theme";
 
@@ -17,6 +18,7 @@ export default function TopBar({ businessName }: TopBarProps) {
   const router = useRouter();
   const { language, toggleLanguage } = useLanguage();
   const { resolvedTheme, toggleTheme } = useTheme();
+  const { user } = useBusiness();
 
   async function handleSignOut() {
     try {
@@ -54,9 +56,19 @@ export default function TopBar({ businessName }: TopBarProps) {
         <div className="flex items-center gap-1">
           <Link href="/plans" className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground">{language === "ar" ? "الباقات" : "Plans"}</Link>
           {businessName && (
-            <span className="max-w-[100px] truncate text-sm font-medium text-muted-foreground">
+            <span className={`${user?.isAdmin ? "max-w-[64px]" : "max-w-[100px]"} truncate text-sm font-medium text-muted-foreground`}>
               {businessName}
             </span>
+          )}
+
+          {user?.isAdmin && (
+            <Link
+              href="/admin"
+              aria-label={language === "ar" ? "لوحة الإدارة" : "Platform admin"}
+              className="motion-press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </Link>
           )}
 
           <button
