@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Tajawal } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import BehaviorTracker from "@/components/BehaviorTracker";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/lib/theme";
 import { LanguageProvider } from "@/lib/language";
@@ -68,6 +69,7 @@ export default function RootLayout({
           <ThemeProvider>
             <LanguageProvider>
               <ServiceWorkerRegistration />
+              <BehaviorTracker />
               {children}
             </LanguageProvider>
           </ThemeProvider>

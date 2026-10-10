@@ -13,7 +13,8 @@
     "figma:unpublish": "figma connect unpublish",
     "test:ux": "node test/ux/run.mjs",
     "test:session": "node test/ux/session-browser.mjs",
-    "test:ux:release": "node test/ux/check-release.mjs"
+    "test:ux:release": "node test/ux/check-release.mjs",
+    "test:behavior": "node test/ux/behavior-browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

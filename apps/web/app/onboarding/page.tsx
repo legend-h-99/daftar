@@ -88,6 +88,7 @@ export default function OnboardingPage() {
 
   function handleNextStep(e: FormEvent) {
     e.preventDefault();
+    track("onboarding_started");
     if (!name.trim()) {
       setError(tx.bizNameRequired);
       return;
@@ -98,12 +99,15 @@ export default function OnboardingPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    track("workflow_started", { workflow: "onboarding" });
     const normalizedVat = toLatinDigits(vatNumber).replace(/\s/g, "");
     if (vatEnabled && !normalizedVat) {
+      track("workflow_failed", { workflow: "onboarding", status: 400 });
       setError(tx.vatRequired);
       return;
     }
     if (vatEnabled && !VAT_NUMBER_PATTERN.test(normalizedVat)) {
+      track("workflow_failed", { workflow: "onboarding", status: 400 });
       setError(tx.vatInvalid);
       return;
     }
@@ -123,6 +127,7 @@ export default function OnboardingPage() {
       track("onboarding_completed", { vat_enabled: vatEnabled });
       router.replace("/dashboard");
     } catch (err) {
+      track("workflow_failed", { workflow: "onboarding", status: err instanceof ApiError ? err.status : 0 });
       setError(err instanceof ApiError ? err.message : tx.saveError);
     } finally {
       setLoading(false);

@@ -187,6 +187,52 @@ describe('deployed Supabase API security', () => {
     expect(await response.text()).not.toContain('private database detail');
   });
 
+  it.each([false, true])('labels Google new-account creation accurately: %s', async isNewUser => {
+    const { handler, database, fetchMock, user } = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-real-test', email: 'anonymous@example.invalid', email_verified: true, aud: 'expected-client' }) });
+    if (isNewUser) {
+      const original = database.from.getMockImplementation()!;
+      database.from.mockImplementation((table: string): any => table === 'User' ? {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+        insert: () => ({ select: () => ({ single: async () => ({ data: { ...user, googleId: 'google-real-test' }, error: null }) }) }),
+      } : original(table));
+    }
+    const response = await handler(request('/auth/google','POST',{ credential: 'synthetic-google-token' }));
+    expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ isNewUser });
+  });
+
+  describe('anonymous behavior collection', () => {
+    const event = { id: '11111111-1111-4111-8111-111111111111', deviceId: '22222222-2222-4222-8222-222222222222', sessionId: '33333333-3333-4333-8333-333333333333', event: 'page_viewed', path: '/login', source: 'x', properties: {}, occurredAt: new Date().toISOString() };
+    it('stores an anonymous event without looking up the account', async () => {
+      const { handler, database } = edgeApi();
+      const response = await handler(request('/analytics/events', 'POST', event));
+      expect(response.status).toBe(204);
+      expect(database.from).not.toHaveBeenCalled();
+      expect(database.rpc).toHaveBeenCalledWith('record_product_event', expect.objectContaining({ p_event: 'page_viewed', p_path: '/login', p_properties: {} }));
+    });
+    it.each([{ properties: { email: 'private@example.invalid' } }, { email: 'private@example.invalid' }, { path: '/login?email=private' }, { event: 'arbitrary_message' }, { properties: { workflow: 'private text' } }, { deviceId: 'real-account-id' }])('rejects identifying or arbitrary input: %j', async patch => {
+      const { handler, database } = edgeApi();
+      const response = await handler(request('/analytics/events', 'POST', { ...event, ...patch }));
+      expect(response.status).toBe(400);
+      expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
+    });
+    it('does not expose the private analytics summary anonymously', async () => {
+      const { handler, database } = edgeApi();
+      expect((await handler(request('/admin/analytics'))).status).toBe(401);
+      expect(database.rpc.mock.calls.some(call => call[0] === 'product_analytics_summary')).toBe(false);
+    });
+    it('honors the server kill switch', async () => {
+      const { handler, database } = edgeApi({ ANALYTICS_ENABLED: 'false' });
+      expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(204);
+      expect(database.rpc).not.toHaveBeenCalled();
+    });
+    it('rate limits collection before writing any event', async () => {
+      const { handler, database } = edgeApi(); database.rpc.mockResolvedValue({ data: false, error: null });
+      expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
+      expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
+    });
+  });
+
   it('routes both the production and candidate function prefixes', async () => {
     const { handler } = edgeApi();
     const candidate = await handler(new Request('https://project.supabase.co/functions/v1/api-candidate/health'));

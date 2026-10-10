@@ -37,12 +37,15 @@ export default function AddExpenseSheet({
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
+    track("workflow_started", { workflow: "expense" });
     const value = Number(amount);
     if (!value || value <= 0) {
+      track("workflow_failed", { workflow: "expense", status: 400 });
       setFormError(en ? "Enter a valid amount" : "أدخل مبلغ صحيح");
       return;
     }
     if (!date) {
+      track("workflow_failed", { workflow: "expense", status: 400 });
       setFormError(en ? "Choose a date" : "اختر التاريخ");
       return;
     }
@@ -59,6 +62,7 @@ export default function AddExpenseSheet({
       onSaved();
       onClose();
     } catch (err) {
+      track("workflow_failed", { workflow: "expense", status: err instanceof ApiError ? err.status : 0 });
       setFormError(err instanceof ApiError ? err.message : en ? "Could not add expense" : "تعذر إضافة المصروف");
     } finally {
       setSaving(false);

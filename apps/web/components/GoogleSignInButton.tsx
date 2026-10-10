@@ -81,19 +81,23 @@ export default function GoogleSignInButton() {
             client_id: clientId,
             callback: async (response) => {
               if (!response.credential) {
+                track("login_failed", { method: "google", status: 400 });
                 setError(language === "ar" ? "تعذر استلام بيانات Google" : "Could not receive Google sign-in data");
                 return;
               }
               setError(null);
+              track("login_started", { method: "google" });
               try {
-                const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; hasBusiness: boolean }>(
+                const res = await apiPost<{ accessToken?: string; sessionAuthenticated?: boolean; hasBusiness: boolean; isNewUser?: boolean }>(
                   "/auth/google",
                   { credential: response.credential },
                 );
                 setToken(res.accessToken, res.sessionAuthenticated);
+                if (res.isNewUser) track("user_signed_up", { method: "google" });
                 track("user_signed_in", { method: "google", has_business: res.hasBusiness });
                 router.replace(res.hasBusiness ? "/dashboard" : "/onboarding");
               } catch (err) {
+                track("login_failed", { method: "google", status: err instanceof ApiError ? err.status : 0 });
                 setError(
                   err instanceof ApiError
                     ? err.message
@@ -122,6 +126,7 @@ export default function GoogleSignInButton() {
       })
       .catch(() => {
         if (!cancelled) {
+          track("login_failed", { method: "google", status: 0 });
           setError(language === "ar" ? "تعذر تحميل تسجيل الدخول عبر Google" : "Could not load Google sign-in");
         }
       });

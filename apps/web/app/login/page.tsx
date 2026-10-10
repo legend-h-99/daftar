@@ -129,7 +129,6 @@ export default function LoginPage() {
     try {
       if (emailMode === "register") {
         await apiPost("/auth/email/register", { email, password, name: name || undefined }, { auth: false });
-        track("user_signed_up", { method: "email" });
         setRegisterSuccess(true);
       } else {
         const res = await apiPost<{
