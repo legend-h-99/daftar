@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { CustomersService } from './customers.service';
+import { CustomerCrudService } from '../application/use-cases/customers/customer-crud.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -11,19 +11,17 @@ import { PaginationDto, toPaginationParams } from '../common/dto/pagination.dto'
 @UseGuards(JwtAuthGuard, BusinessGuard)
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(private readonly customerService: CustomerCrudService) {}
 
   @Post()
   create(@CurrentUser() user: CurrentUserData, @Body() dto: CreateCustomerDto) {
-    return this.customersService.create(user.businessId as string, dto);
+    return this.customerService.create(user.businessId as string, dto);
   }
 
   @Get()
-  findAll(
-    @CurrentUser() user: CurrentUserData,
-    @Query() pagination: PaginationDto,
-  ) {
-    return this.customersService.findAll(user.businessId as string, toPaginationParams(pagination));
+  findAll(@CurrentUser() user: CurrentUserData, @Query() pagination: PaginationDto) {
+    const { limit, skip } = toPaginationParams(pagination);
+    return this.customerService.findAll(user.businessId as string, limit, skip);
   }
 
   @Patch(':id')
@@ -32,11 +30,11 @@ export class CustomersController {
     @Param('id') id: string,
     @Body() dto: UpdateCustomerDto,
   ) {
-    return this.customersService.update(user.businessId as string, id, dto);
+    return this.customerService.update(user.businessId as string, id, dto);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
-    return this.customersService.remove(user.businessId as string, id);
+    return this.customerService.remove(user.businessId as string, id);
   }
 }

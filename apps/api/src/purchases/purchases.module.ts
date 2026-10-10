@@ -1,17 +1,9 @@
 import { Module } from '@nestjs/common';
 import { PurchasesController } from './purchases.controller';
-import { PurchasesService } from './purchases.service';
-import { InventoryModule } from '../inventory/inventory.module';
-import { OCR_PROVIDER } from './ocr/ocr.provider';
-import { MockOcrProvider } from './ocr/mock-ocr.provider';
+import { CleanArchModule } from '../infrastructure/clean-arch.module';
 
 @Module({
-  imports: [InventoryModule],
+  imports: [CleanArchModule],
   controllers: [PurchasesController],
-  providers: [
-    PurchasesService,
-    // Swap MockOcrProvider for a real implementation here when going live.
-    { provide: OCR_PROVIDER, useClass: MockOcrProvider },
-  ],
 })
 export class PurchasesModule {}

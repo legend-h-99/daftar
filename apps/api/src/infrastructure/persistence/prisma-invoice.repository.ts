@@ -41,6 +41,8 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
       },
       include: { items: true, customer: true },
       orderBy: { number: 'desc' },
+      take: filter.limit ?? 50,
+      skip: filter.skip ?? 0,
     });
     return results as unknown as InvoiceWithDetails[];
   }

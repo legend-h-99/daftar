@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
-import { CustomersService } from './customers.service';
+import { CleanArchModule } from '../infrastructure/clean-arch.module';
 
 @Module({
+  imports: [CleanArchModule],
   controllers: [CustomersController],
-  providers: [CustomersService],
 })
 export class CustomersModule {}

@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UNIT_OF_WORK, IUnitOfWork, IAtomicContext } from '../../ports/unit-of-work.port';
+import { PURCHASE_REPOSITORY, IPurchaseRepository } from '../../ports/repositories/purchase.repository.port';
+import { SUPPLIER_REPOSITORY, ISupplierRepository } from '../../ports/repositories/supplier.repository.port';
 import { MaterialUnit } from '../../../domain/entities/material.entity';
+import { PurchaseWithItems } from '../../../domain/entities/purchase.entity';
 import { RecostProductsUseCase } from '../products/recost-products.use-case';
 
 export interface CreatePurchaseItemCommand {
@@ -25,16 +28,19 @@ const MAX_RETRIES = 5;
 export class CreatePurchaseUseCase {
   constructor(
     @Inject(UNIT_OF_WORK) private readonly uow: IUnitOfWork,
+    @Inject(PURCHASE_REPOSITORY) private readonly purchaseRepo: IPurchaseRepository,
+    @Inject(SUPPLIER_REPOSITORY) private readonly supplierRepo: ISupplierRepository,
     private readonly recostProducts: RecostProductsUseCase,
   ) {}
 
-  async execute(businessId: string, cmd: CreatePurchaseCommand) {
+  async execute(businessId: string, cmd: CreatePurchaseCommand): Promise<PurchaseWithItems> {
+    const supplierId = await this.resolveSupplier(businessId, cmd);
     let lastError: unknown;
+    let purchaseId: string | undefined;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const touchedMaterialIds = await this.uow.executeSerializable(async (ctx) => {
-          const supplierId = await this.resolveSupplier(ctx, businessId, cmd);
+        const { id, touched } = await this.uow.executeSerializable(async (ctx) => {
           const nextNumber = (await ctx.purchase.maxNumber(businessId)) + 1;
           const total = cmd.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 
@@ -48,14 +54,9 @@ export class CreatePurchaseUseCase {
             notes: cmd.notes,
           });
 
-          const touched: string[] = [];
+          const touchedIds: string[] = [];
           for (const item of cmd.items) {
-            const materialId = await this.applyPurchaseLine(
-              ctx,
-              businessId,
-              purchase.id,
-              item,
-            );
+            const materialId = await this.applyPurchaseLine(ctx, businessId, purchase.id, item);
             await ctx.purchase.createItem({
               purchaseId: purchase.id,
               materialId,
@@ -65,28 +66,27 @@ export class CreatePurchaseUseCase {
               unitPrice: item.unitPrice,
               lineTotal: item.quantity * item.unitPrice,
             });
-            touched.push(materialId);
+            touchedIds.push(materialId);
           }
 
-          return touched;
+          return { id: purchase.id, touched: touchedIds };
         });
 
-        // Re-costing happens outside the serializable window (read-heavy, non-critical for numbering).
-        await this.recostProducts.execute(businessId, touchedMaterialIds);
-
-        return; // success
+        purchaseId = id;
+        await this.recostProducts.execute(businessId, touched);
+        break;
       } catch (err: unknown) {
         lastError = err;
         if (!isUniqueConstraintError(err)) throw err;
       }
     }
-    throw lastError;
+
+    if (!purchaseId) throw lastError;
+
+    const result = await this.purchaseRepo.findById(businessId, purchaseId);
+    return result!;
   }
 
-  /**
-   * Upserts a material from a purchase line and records a PURCHASE movement.
-   * Returns the resolved materialId.
-   */
   private async applyPurchaseLine(
     ctx: IAtomicContext,
     businessId: string,
@@ -132,12 +132,17 @@ export class CreatePurchaseUseCase {
   }
 
   private async resolveSupplier(
-    ctx: IAtomicContext,
     businessId: string,
     cmd: CreatePurchaseCommand,
   ): Promise<string | undefined> {
     if (cmd.supplierId) return cmd.supplierId;
-    // Supplier creation/lookup would go here if needed — no Prisma types leak in.
+    if (cmd.supplierName?.trim()) {
+      const name = cmd.supplierName.trim();
+      const existing = await this.supplierRepo.findByName(businessId, name);
+      if (existing) return existing.id;
+      const created = await this.supplierRepo.create({ businessId, name });
+      return created.id;
+    }
     return undefined;
   }
 }
