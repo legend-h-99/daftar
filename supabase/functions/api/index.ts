@@ -235,6 +235,44 @@ function currentRiyadhMonth(): string {
   return new Date(Date.now() + RIYADH_OFFSET_MS).toISOString().slice(0, 7)
 }
 
+const ANALYTICS_EVENTS = new Set(["user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
+const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
+const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
+const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function handleAnalytics(req: Request): Promise<Response> {
+  if (req.method !== 'POST') return err('Method not allowed', 405);
+  if (Deno.env.get('ANALYTICS_ENABLED') === 'false') return new Response(null, { status: 204 });
+  const origin = req.headers.get('Origin');
+  if (origin && !ALLOWED_ORIGINS.has(origin)) return err('Origin not allowed', 403);
+  if (Number(req.headers.get('Content-Length') || 0) > 2048) return err('Event too large', 413);
+  const limited = await rateLimit(req, 'analytics', null, 60);
+  if (limited) return limited;
+  const text = await req.text();
+  if (text.length > 2048) return err('Event too large', 413);
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(text); } catch { return err('Invalid event', 400); }
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !['id','deviceId','sessionId','event','path','source','properties','occurredAt'].includes(k))) return err('Invalid event', 400);
+  if (![body.id, body.deviceId, body.sessionId].every(v => typeof v === 'string' && ANALYTICS_UUID.test(v)) || !ANALYTICS_EVENTS.has(body.event as string) || !ANALYTICS_PATHS.has(body.path as string) || !ANALYTICS_SOURCES.has(body.source as string)) return err('Invalid event', 400);
+  if (typeof body.occurredAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(body.occurredAt) || !Number.isFinite(Date.parse(body.occurredAt))) return err('Invalid event time', 400);
+  // Preserve browser action order even when requests arrive out of order. Wrong
+  // device clocks fall back to receipt time; timestamps remain untrusted signals.
+  const occurredAt = Math.abs(Date.now() - Date.parse(body.occurredAt)) <= 15 * 60_000 ? body.occurredAt : new Date().toISOString();
+  const props = body.properties;
+  if (!props || typeof props !== 'object' || Array.isArray(props)) return err('Invalid properties', 400);
+  const allowed: Record<string, readonly unknown[]> = { method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
+  for (const [key, value] of Object.entries(props)) {
+    const valid = ['has_business','vat_enabled'].includes(key) ? typeof value === 'boolean'
+      : ['items_count','recipe_items','days_since_last','status'].includes(key) ? typeof value === 'number' && Number.isInteger(value) && value >= -1 && value <= 599
+      : allowed[key]?.includes(value);
+    if (!valid) return err('Invalid properties', 400);
+  }
+  const deviceLimit = await rateLimit(req, 'analytics-device', body.deviceId, 30, { includeIp: false });
+  if (deviceLimit) return deviceLimit;
+  const { error } = await db().rpc('record_product_event', { p_id: body.id, p_device_id: body.deviceId, p_session_id: body.sessionId, p_event: body.event, p_path: body.path, p_source: body.source, p_properties: props, p_occurred_at: occurredAt });
+  if (error) return err('Measurement temporarily unavailable', 503);
+  return new Response(null, { status: 204 });
+}
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 async function authGoogle(credential: string) {
@@ -250,6 +288,7 @@ async function authGoogle(credential: string) {
   const name = (payload.name ?? payload.given_name ?? '') as string
   const supabase = db()
 
+  let isNewUser = false
   let { data: user } = await supabase.from('User').select('*').eq('googleId', googleId).maybeSingle()
   if (!user) {
     const { data: byEmail } = await supabase.from('User').select('*').eq('email', email).maybeSingle()
@@ -261,12 +300,13 @@ async function authGoogle(credential: string) {
       const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name }).select().single()
       if (insertErr) return err('Could not create account', 500)
       user = created
+      isNewUser = true
     }
   }
   if (!user) return err('Could not create user', 500)
 
   const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId })
-  return json({ accessToken, user: { id: user.id, email, name: user.name ?? name, businessId: user.businessId }, hasBusiness: !!user.businessId })
+  return json({ accessToken, user: { id: user.id, email, name: user.name ?? name, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
 async function authDemoLogin(phone: string) {
@@ -1080,6 +1120,13 @@ const ADMIN_LINK_ACTIONS: Record<string, { action: string; send: typeof issueVer
 async function handleAdmin(req: Request, user: Record<string, unknown>, seg: string[], url: URL) {
   // Non-admins get the same answer as an unknown route.
   if (!isAdmin(user)) return err('Not found', 404)
+  if (req.method === 'GET' && seg[1] === 'analytics' && seg.length === 2) {
+    const days = Number(url.searchParams.get('days') || 7);
+    if (![7,30].includes(days)) return err('Invalid time range', 400);
+    const { data, error } = await db().rpc('product_analytics_summary', { p_days: days });
+    if (error) return err('Could not load measurement', 503);
+    return json(data);
+  }
   if (req.method === 'GET' && seg[1] === 'overview' && seg.length === 2) {
     const { data, error } = await db().rpc('admin_overview')
     if (error) return err('Could not load overview', 503)
@@ -1142,6 +1189,7 @@ async function handleRequest(req: Request) {
 
   try {
     if (path === '/health' || path === '') return json({ status: 'ok' })
+    if (path === '/analytics/events') return await handleAnalytics(req)
     // Cap all API traffic by its platform-provided client IP. Individual auth
     // endpoints have tighter per-IP and per-identity limits below. For signed-in
     // routes the cap runs alongside the session lookup instead of before it.

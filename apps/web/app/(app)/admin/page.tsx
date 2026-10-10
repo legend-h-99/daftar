@@ -1,5 +1,6 @@
 "use client";
 
+import BehaviorAnalytics from "@/components/BehaviorAnalytics";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useBusiness } from "@/lib/business-context";
@@ -152,6 +153,8 @@ export default function AdminPage() {
       </div>
 
       {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">{error}</p>}
+
+      <BehaviorAnalytics en={en} />
 
       {overview && (
         <>

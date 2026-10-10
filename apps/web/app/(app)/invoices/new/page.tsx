@@ -93,7 +93,9 @@ export default function NewInvoicePage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    track("workflow_started", { workflow: "invoice" });
     if (items.length === 0) {
+      track("workflow_failed", { workflow: "invoice", status: 400 });
       setError(en ? "Add at least one item" : "أضف صنف واحد على الأقل");
       return;
     }
@@ -126,6 +128,7 @@ export default function NewInvoicePage() {
       track("invoice_created", { items_count: items.length });
       router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
+      track("workflow_failed", { workflow: "invoice", status: err instanceof ApiError ? err.status : 0 });
       // A 4xx answer means nothing was saved; the next attempt is a new invoice.
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) idempotencyKey.current = crypto.randomUUID();
       setError(err instanceof ApiError ? err.message : en ? "Could not create invoice" : "تعذر إنشاء الفاتورة");

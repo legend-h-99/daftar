@@ -47,6 +47,7 @@ export default function ProductForm({ product }: ProductFormProps) {
   // product stays linked to stock (and sales can consume it automatically).
   useEffect(() => {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
+      track("workflow_failed", { workflow: "product", status: err instanceof ApiError ? err.status : 0 });
       setError(err instanceof ApiError ? err.message : en ? "Could not load ingredients" : "تعذر تحميل المواد الخام");
     });
   }, [en]);
@@ -63,7 +64,9 @@ export default function ProductForm({ product }: ProductFormProps) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    track("workflow_started", { workflow: "product" });
     if (!name.trim()) {
+      track("workflow_failed", { workflow: "product", status: 400 });
       setNameError(en ? "Enter a product name" : "اكتب اسم المنتج");
       document.getElementById("product-name")?.focus();
       return;

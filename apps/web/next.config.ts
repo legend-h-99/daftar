@@ -28,6 +28,11 @@ const apiProxyTarget =
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  webpack(config) {
+    // Optional low-disk release build; normal builds retain their cache.
+    if (process.env.DAFTAR_DISABLE_BUILD_CACHE === "1") config.cache = false;
+    return config;
+  },
   ...(isStaticExport
     ? {
         output: "export" as const,

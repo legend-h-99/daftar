@@ -71,6 +71,11 @@ jobs:
       - name: Test static release UX (synthetic API only)
         run: pnpm --filter web test:ux:release
 
+      - name: Test anonymous customer behavior
+        run: pnpm --filter web test:behavior
+        env:
+          QA_STATIC_DIR: ".next-cloudflare-check"
+
       - name: Save browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,3 +84,4 @@ jobs:
           path: |
             test-results/ux-release/
             test-results/session-browser/
+            test-results/behavior-browser/

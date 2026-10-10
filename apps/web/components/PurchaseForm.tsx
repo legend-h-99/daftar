@@ -53,6 +53,7 @@ export default function PurchaseForm({
 
   useEffect(() => {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
+      track("workflow_failed", { workflow: "purchase", status: err instanceof ApiError ? err.status : 0 });
       setError(err instanceof ApiError ? err.message : en ? "Could not load ingredients" : "تعذر تحميل المواد الخام");
     });
   }, [en]);
@@ -93,6 +94,7 @@ export default function PurchaseForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    track("workflow_started", { workflow: "purchase" });
     const items = rows
       .filter((r) => r.name.trim() && Number(r.quantity) > 0)
       .map((r) => ({
@@ -103,6 +105,7 @@ export default function PurchaseForm({
         unitPrice: Number(r.unitPrice) || 0,
       }));
     if (items.length === 0) {
+      track("workflow_failed", { workflow: "purchase", status: 400 });
       setError(en ? "Add at least one item with a valid quantity" : "أضف صنف واحد على الأقل بكمية صحيحة");
       return;
     }
