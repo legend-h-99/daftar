@@ -16,6 +16,12 @@ describe("analytics", () => {
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store.get(k) ?? null,
       setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
+    const session = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => session.get(k) ?? null,
+      setItem: (k: string, v: string) => void session.set(k, v),
     });
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -43,5 +49,32 @@ describe("analytics", () => {
     expect(isAnalyticsOptedOut()).toBe(true);
     track("expense_added", { category: "INGREDIENTS" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("normalizes dynamic path segments so ids are never sent", async () => {
+    const { normalizePath } = await load("phc_test");
+    expect(normalizePath("/invoices/clx9k2m4p0000abcd1234efgh")).toBe("/invoices/:id");
+    expect(normalizePath("/invoices/3f2b8c1e-9d4a-4e7b-8c1d-0a1b2c3d4e5f")).toBe("/invoices/:id");
+    expect(normalizePath("/invoices/42/edit")).toBe("/invoices/:id/edit");
+    expect(normalizePath("/invoices/list")).toBe("/invoices/list");
+    expect(normalizePath("/")).toBe("/");
+  });
+
+  it("sends session_started once per browser session", async () => {
+    const { trackSessionStarted } = await load("phc_test");
+    trackSessionStarted();
+    trackSessionStarted();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    expect(body.event).toBe("session_started");
+    expect(body.properties.days_since_last).toBe(-1);
+  });
+
+  it("opting out forgets the device id", async () => {
+    const { track, setAnalyticsOptOut } = await load("phc_test");
+    track("landing_viewed");
+    expect(window.localStorage.getItem("daftar_aid")).not.toBeNull();
+    setAnalyticsOptOut(true);
+    expect(window.localStorage.getItem("daftar_aid")).toBeNull();
   });
 });
