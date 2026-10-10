@@ -77,4 +77,44 @@ describe("analytics", () => {
     setAnalyticsOptOut(true);
     expect(window.localStorage.getItem("daftar_aid")).toBeNull();
   });
+
+  it("leaves real route words and 32-char hex ids correctly classified", async () => {
+    const { normalizePath } = await load("phc_test");
+    expect(normalizePath("/products/edit/view")).toBe("/products/edit/view");
+    expect(normalizePath("/forgot-password")).toBe("/forgot-password");
+    expect(normalizePath("/invoices/3f2b8c1e9d4a4e7b8c1d0a1b2c3d4e5f")).toBe("/invoices/:id");
+  });
+
+  it("sends the normalized path in the payload", async () => {
+    const { track } = await load("phc_test");
+    window.history.pushState({}, "", "/invoices/clx9k2m4p0000abcd1234efgh");
+    track("landing_viewed");
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    expect(body.properties.path).toBe("/invoices/:id");
+    window.history.pushState({}, "", "/");
+  });
+
+  it("stops sending after opt-out", async () => {
+    const { track, setAnalyticsOptOut } = await load("phc_test");
+    track("landing_viewed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    setAnalyticsOptOut(true);
+    track("landing_viewed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still sends session_started once when sessionStorage is blocked", async () => {
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    const { trackSessionStarted } = await load("phc_test");
+    trackSessionStarted();
+    trackSessionStarted();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

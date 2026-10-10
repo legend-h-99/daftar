@@ -23,6 +23,9 @@ const OPT_OUT_KEY = "daftar_analytics_off";
 const LAST_SEEN_KEY = "daftar_last_seen";
 const SESSION_KEY = "daftar_session";
 
+// Fallback when sessionStorage is blocked: still send at most once per page lifetime.
+let sessionSent = false;
+
 function read(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
@@ -120,7 +123,8 @@ export function track(event: AnalyticsEvent, props: Props = {}) {
 // between sessions and reloads do not reset it. Feeds retention.
 export function trackSessionStarted() {
   if (!enabled()) return;
-  if (readSession(SESSION_KEY) === "1") return;
+  if (sessionSent || readSession(SESSION_KEY) === "1") return;
+  sessionSent = true;
   writeSession(SESSION_KEY, "1");
   const last = Number(read(LAST_SEEN_KEY));
   const now = Date.now();
