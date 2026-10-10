@@ -1,11 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MaterialsController } from './materials.controller';
-import { MaterialsService } from './materials.service';
-import { InventoryModule } from '../inventory/inventory.module';
+import { CleanArchModule } from '../infrastructure/clean-arch.module';
 
 @Module({
-  imports: [InventoryModule],
+  imports: [CleanArchModule],
   controllers: [MaterialsController],
-  providers: [MaterialsService],
 })
 export class MaterialsModule {}

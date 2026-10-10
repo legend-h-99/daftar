@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ExpensesService } from './expenses.service';
+import { ExpenseCrudService } from '../application/use-cases/expenses/expense-crud.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { FindExpensesQueryDto } from './dto/find-expenses-query.dto';
@@ -11,16 +11,25 @@ import { CurrentUserData } from '../common/types/auth.types';
 @UseGuards(JwtAuthGuard, BusinessGuard)
 @Controller('expenses')
 export class ExpensesController {
-  constructor(private readonly expensesService: ExpensesService) {}
+  constructor(private readonly expenseService: ExpenseCrudService) {}
 
   @Post()
   create(@CurrentUser() user: CurrentUserData, @Body() dto: CreateExpenseDto) {
-    return this.expensesService.create(user.businessId as string, dto);
+    return this.expenseService.create(user.businessId as string, {
+      category: dto.category,
+      amount: dto.amount,
+      date: dto.date,
+      note: dto.note,
+    });
   }
 
   @Get()
   findAll(@CurrentUser() user: CurrentUserData, @Query() query: FindExpensesQueryDto) {
-    return this.expensesService.findAll(user.businessId as string, query);
+    return this.expenseService.findAll(user.businessId as string, {
+      month: query.month,
+      limit: query.limit,
+      skip: query.skip,
+    });
   }
 
   @Patch(':id')
@@ -29,11 +38,11 @@ export class ExpensesController {
     @Param('id') id: string,
     @Body() dto: UpdateExpenseDto,
   ) {
-    return this.expensesService.update(user.businessId as string, id, dto);
+    return this.expenseService.update(user.businessId as string, id, dto);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
-    return this.expensesService.remove(user.businessId as string, id);
+    return this.expenseService.remove(user.businessId as string, id);
   }
 }

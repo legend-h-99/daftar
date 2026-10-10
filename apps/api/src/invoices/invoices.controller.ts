@@ -1,6 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
-import { InvoicesService } from './invoices.service';
+import { CreateInvoiceUseCase, CreateInvoiceCommand } from '../application/use-cases/invoices/create-invoice.use-case';
+import { UpdateInvoiceStatusUseCase } from '../application/use-cases/invoices/update-invoice-status.use-case';
+import { GenerateInvoicePdfUseCase } from '../application/use-cases/invoices/generate-invoice-pdf.use-case';
+import { DeleteInvoiceUseCase } from '../application/use-cases/invoices/delete-invoice.use-case';
+import { INVOICE_REPOSITORY, IInvoiceRepository } from '../application/ports/repositories/invoice.repository.port';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { FindInvoicesQueryDto } from './dto/find-invoices-query.dto';
@@ -12,21 +16,44 @@ import { CurrentUserData } from '../common/types/auth.types';
 @UseGuards(JwtAuthGuard, BusinessGuard)
 @Controller('invoices')
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly createInvoice: CreateInvoiceUseCase,
+    private readonly updateInvoiceStatus: UpdateInvoiceStatusUseCase,
+    private readonly generatePdf: GenerateInvoicePdfUseCase,
+    private readonly deleteInvoice: DeleteInvoiceUseCase,
+    @Inject(INVOICE_REPOSITORY) private readonly invoiceRepo: IInvoiceRepository,
+  ) {}
 
   @Post()
   create(@CurrentUser() user: CurrentUserData, @Body() dto: CreateInvoiceDto) {
-    return this.invoicesService.create(user.businessId as string, dto);
+    const cmd: CreateInvoiceCommand = {
+      customerId: dto.customerId,
+      status: dto.status,
+      dueDate: dto.dueDate,
+      notes: dto.notes,
+      items: dto.items.map((i) => ({
+        productId: i.productId,
+        name: i.name,
+        unitPrice: i.unitPrice,
+        quantity: i.quantity,
+      })),
+    };
+    return this.createInvoice.execute(user.businessId as string, cmd);
   }
 
   @Get()
   findAll(@CurrentUser() user: CurrentUserData, @Query() query: FindInvoicesQueryDto) {
-    return this.invoicesService.findAll(user.businessId as string, query);
+    return this.invoiceRepo.findAll(user.businessId as string, {
+      status: query.status,
+      month: query.month,
+      limit: query.limit,
+      skip: query.skip,
+    });
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
-    return this.invoicesService.findOne(user.businessId as string, id);
+    return this.invoiceRepo.findById(user.businessId as string, id);
   }
 
   @Get(':id/pdf')
@@ -35,10 +62,7 @@ export class InvoicesController {
     @Param('id') id: string,
     @Res() res: Response,
   ) {
-    const { buffer, filename } = await this.invoicesService.generatePdf(
-      user.businessId as string,
-      id,
-    );
+    const { buffer, filename } = await this.generatePdf.execute(user.businessId as string, id);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${filename}"`,
@@ -53,11 +77,14 @@ export class InvoicesController {
     @Param('id') id: string,
     @Body() dto: UpdateInvoiceStatusDto,
   ) {
-    return this.invoicesService.updateStatus(user.businessId as string, id, dto);
+    return this.updateInvoiceStatus.execute(user.businessId as string, id, {
+      status: dto.status,
+      paidAmount: dto.paidAmount ?? 0,
+    });
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
-    return this.invoicesService.remove(user.businessId as string, id);
+    return this.deleteInvoice.execute(user.businessId as string, id);
   }
 }

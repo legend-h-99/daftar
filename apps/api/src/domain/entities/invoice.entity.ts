@@ -54,4 +54,6 @@ export interface CreateInvoiceData {
 export interface InvoiceFilter {
   status?: InvoiceStatus;
   month?: string;
+  limit?: number;
+  skip?: number;
 }
