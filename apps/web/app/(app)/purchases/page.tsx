@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { SCAN_ENABLED } from "@/lib/features";
 import Link from "next/link";
-import { Camera, Plus, ShoppingCart } from "lucide-react";
+import { Camera, Plus, ShoppingCart, Truck } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
@@ -50,9 +50,18 @@ export default function PurchasesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">
-          {language === "ar" ? "المشتريات" : "Purchases"}
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-extrabold text-gray-900">
+            {language === "ar" ? "المشتريات" : "Purchases"}
+          </h1>
+          <Link
+            href="/suppliers"
+            className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm active:bg-gray-50"
+          >
+            <Truck className="h-3.5 w-3.5" />
+            {language === "ar" ? "الموردون" : "Suppliers"}
+          </Link>
+        </div>
         <div className="flex gap-2">
           {SCAN_ENABLED && (
             <Link
