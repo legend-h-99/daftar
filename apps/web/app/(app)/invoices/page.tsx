@@ -35,6 +35,7 @@ export default function InvoicesPage() {
     previousMonth,
     nextMonth,
   } = useMonthResource<Invoice[]>({
+    key: "invoices",
     load: (targetMonth) => apiGet<Invoice[]>(`/invoices?month=${targetMonth}`),
     errorMessage: (err) => err instanceof ApiError ? err.message : language === "ar" ? "تعذر تحميل الفواتير" : "Could not load invoices",
   });
