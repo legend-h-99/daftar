@@ -29,6 +29,7 @@ export default function PurchasesPage() {
     previousMonth,
     nextMonth,
   } = useMonthResource<PurchasesPageData>({
+    key: "purchases",
     load: async (targetMonth) => {
       const [purchases, summary] = await Promise.all([
         apiGet<Purchase[]>(`/purchases?month=${targetMonth}`),

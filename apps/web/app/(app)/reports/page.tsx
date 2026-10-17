@@ -38,6 +38,7 @@ export default function ReportsPage() {
     nextMonth,
     reload,
   } = useMonthResource<ReportsPageData>({
+    key: "reports",
     load: async (targetMonth) => {
       const [summary, expenses] = await Promise.all([
         apiGet<DashboardSummary>(`/dashboard/summary?month=${targetMonth}`),
