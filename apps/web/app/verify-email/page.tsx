@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { Business, User } from "@/lib/types";
+import EmailAuthGate from "@/components/EmailAuthGate";
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -50,8 +51,7 @@ function VerifyEmailContent() {
         <div className="animate-slide-up rounded-2xl border border-border bg-card p-8 shadow-sm text-center">
           <div className="mb-6 flex justify-center">
             <span
-              className="flex h-14 w-14 items-center justify-center rounded-xl text-2xl font-extrabold text-white shadow-sm"
-              style={{ backgroundImage: "linear-gradient(135deg, #4C1D95, #7C3AED)" }}
+              className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-700 text-2xl font-extrabold text-white shadow-sm"
             >
               د
             </span>
@@ -96,8 +96,8 @@ const S = Suspense as any;
 
 export default function VerifyEmailPage() {
   return (
-    <S>
+    <EmailAuthGate><S>
       <VerifyEmailContent />
-    </S>
+    </S></EmailAuthGate>
   );
 }

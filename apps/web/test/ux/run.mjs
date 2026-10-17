@@ -73,6 +73,17 @@ await scenario('Arabic/English language and direction',{},async page=>{
  assert.equal(await page.locator('main').getAttribute('dir'),'ltr');assert.equal(await page.getByLabel('Email',{exact:true}).count(),emailEnabled ? 1 : 0);
  await page.getByRole('button',{name:'التبديل إلى العربية'}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='rtl');assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
 });
+if (!emailEnabled) await scenario('disabled email routes offer Google sign-in without submitting tokens',{},async(page,context)=>{
+ let calls=0;
+ await context.route(endpoint('/auth/email/verify'),r=>{calls++;return r.fulfill({status:404,json:{message:'Email sign-in is disabled'}})});
+ for(const route of ['/forgot-password/','/reset-password/?token=synthetic-token','/verify-email/?token=synthetic-token']){
+  await page.goto(`${base}${route}`,{waitUntil:'networkidle'});
+  await page.getByRole('heading',{name:'سجّل الدخول باستخدام Google'}).waitFor();
+  assert.equal(await page.locator('form').count(),0);
+  assert.equal(await page.getByRole('link',{name:'العودة لتسجيل الدخول'}).getAttribute('href'),'/login/');
+ }
+ assert.equal(calls,0);
+});
 if (emailEnabled) {
 await scenario('invalid email blocked before submission',{},async(page,context)=>{
  let calls=0;await context.route(endpoint('/auth/email/login'),r=>{calls++;return r.fulfill({json:{}})});
@@ -150,8 +161,9 @@ await scenario('English translation across app forms and reports',{},async(page,
 await scenario('corrected form errors clear as fields are fixed',{},async(page,context)=>{
  await fixtures(context);await page.goto(`${base}/expenses/`,{waitUntil:'networkidle'});
  await page.getByRole('button',{name:'إضافة مصروف'}).first().click();
- await page.getByRole('button',{name:'حفظ',exact:true}).click();await page.getByText('أدخل مبلغ صحيح',{exact:true}).waitFor();
- await page.locator('#expense-amount').fill('12');assert.equal(await page.getByText('أدخل مبلغ صحيح',{exact:true}).count(),0);
+ const amountError=page.getByRole('alert').filter({hasText:/أدخل مبلغ/});
+ await page.getByRole('button',{name:'حفظ',exact:true}).click();await amountError.waitFor();
+ await page.locator('#expense-amount').fill('12');assert.equal(await amountError.count(),0);
  await page.goto(`${base}/products/new/`,{waitUntil:'networkidle'});
  await page.getByRole('button',{name:'حفظ',exact:true}).click();await page.getByText('اكتب اسم المنتج',{exact:true}).waitFor();
  await page.locator('#product-name').fill('اختبار');assert.equal(await page.getByText('اكتب اسم المنتج',{exact:true}).count(),0);

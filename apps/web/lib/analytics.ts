@@ -1,6 +1,7 @@
 // First-party, anonymous product measurement. Never send account identifiers,
 // amounts, free text, query strings or full referrers. Browser events are untrusted.
 export type AnalyticsEvent =
+  | "first_expense_prompt_viewed" | "first_expense_prompt_clicked" | "first_expense_prompt_skipped" | "first_expense_completed"
   | "user_signed_up" | "user_signed_in" | "login_started" | "login_failed"
   | "onboarding_started" | "onboarding_completed" | "product_created" | "invoice_created"
   | "expense_added" | "purchase_recorded" | "session_started"
@@ -14,7 +15,7 @@ const SOURCE_KEY = "daftar_analytics_source";
 let memoryId: string | null = null;
 let memorySession: { id: string; seen: number } | null = null;
 let lastPage = "";
-const EVENTS = new Set<AnalyticsEvent>(["user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
+const EVENTS = new Set<AnalyticsEvent>(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
 const PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 function read(key: string, session = false): string | null {
   try { return (session ? window.sessionStorage : window.localStorage).getItem(key); } catch { return null; }
@@ -72,7 +73,7 @@ function safeProps(props: Props): Props {
   for (const key of ["items_count", "recipe_items", "days_since_last", "status"]) {
     const value = props[key]; if (typeof value === "number" && Number.isInteger(value) && value >= -1 && value <= 599) safe[key] = value;
   }
-  const enums: Record<string, string[]> = { method: ["google", "email"], location: ["header", "body"], workflow: ["onboarding", "product", "invoice", "expense", "purchase"] };
+  const enums: Record<string, string[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ["google", "email"], location: ["header", "body"], workflow: ["onboarding", "product", "invoice", "expense", "purchase"] };
   for (const [key, values] of Object.entries(enums)) if (typeof props[key] === "string" && values.includes(props[key] as string)) safe[key] = props[key];
   return safe;
 }

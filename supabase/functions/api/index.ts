@@ -235,7 +235,7 @@ function currentRiyadhMonth(): string {
   return new Date(Date.now() + RIYADH_OFFSET_MS).toISOString().slice(0, 7)
 }
 
-const ANALYTICS_EVENTS = new Set(["user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
+const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
 const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -259,7 +259,7 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const occurredAt = Math.abs(Date.now() - Date.parse(body.occurredAt)) <= 15 * 60_000 ? body.occurredAt : new Date().toISOString();
   const props = body.properties;
   if (!props || typeof props !== 'object' || Array.isArray(props)) return err('Invalid properties', 400);
-  const allowed: Record<string, readonly unknown[]> = { method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
+  const allowed: Record<string, readonly unknown[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
   for (const [key, value] of Object.entries(props)) {
     const valid = ['has_business','vat_enabled'].includes(key) ? typeof value === 'boolean'
       : ['items_count','recipe_items','days_since_last','status'].includes(key) ? typeof value === 'number' && Number.isInteger(value) && value >= -1 && value <= 599
