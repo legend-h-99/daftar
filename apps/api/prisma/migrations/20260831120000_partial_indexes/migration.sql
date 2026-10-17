@@ -21,11 +21,9 @@ CREATE INDEX IF NOT EXISTS "EmailVerification_active_idx"
   ON "EmailVerification" ("token", "expiresAt")
   WHERE consumed = false;
 
--- Partial index: non-expired token blacklist entries
--- Cleanup queries only need expired rows; auth checks only need live rows
-CREATE INDEX IF NOT EXISTS "TokenBlacklist_live_idx"
-  ON "TokenBlacklist" ("jti")
-  WHERE "expiresAt" > NOW();
+-- TokenBlacklist already has a primary-key index on jti and an expiresAt
+-- cleanup index. NOW() cannot appear in a partial-index predicate because
+-- PostgreSQL requires immutable predicates; retain the existing indexes.
 
 -- Covering index: Expense summary by month (avoids heap fetch for amount)
 CREATE INDEX IF NOT EXISTS "Expense_month_covering_idx"

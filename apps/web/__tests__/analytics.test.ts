@@ -23,6 +23,14 @@ describe("anonymous first-party behavior analytics", () => {
     expect(first.path).toBe("/login"); expect(first.source).toBe("x"); expect(first.properties).toEqual({ method: "google" });
     expect(JSON.stringify(first)).not.toContain("private"); expect(first.properties).not.toHaveProperty("amount");
   });
+  it("allows only bounded diagnostic codes, never error text or input values", async () => {
+    const { track } = await import("@/lib/analytics");
+    track("workflow_failed", { workflow: "expense", stage: "validation", reason: "invalid_amount", amount: 25, message: "private" });
+    track("workflow_failed", { stage: "private", reason: "private" });
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(JSON.parse(calls[0][1]!.body as string).properties).toEqual({ workflow: "expense", stage: "validation", reason: "invalid_amount" });
+    expect(JSON.parse(calls[1][1]!.body as string).properties).toEqual({});
+  });
   it("stops sending and clears measurement IDs when opted out", async () => {
     const { track, setAnalyticsOptOut } = await import("@/lib/analytics");
     track("page_viewed"); setAnalyticsOptOut(true); track("expense_added");

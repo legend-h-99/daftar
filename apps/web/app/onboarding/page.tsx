@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
 
+import FirstExpensePrompt from "@/components/FirstExpensePrompt";
+
 const STEPS = 2;
 
 const t = {
@@ -74,6 +76,7 @@ export default function OnboardingPage() {
   const { language, toggleLanguage } = useLanguage();
   const tx = t[language];
 
+  const [setupComplete, setSetupComplete] = useState(false);
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
@@ -125,7 +128,7 @@ export default function OnboardingPage() {
       );
       setToken(res.accessToken, res.sessionAuthenticated);
       track("onboarding_completed", { vat_enabled: vatEnabled });
-      router.replace("/dashboard");
+      setSetupComplete(true);
     } catch (err) {
       track("workflow_failed", { workflow: "onboarding", status: err instanceof ApiError ? err.status : 0 });
       setError(err instanceof ApiError ? err.message : tx.saveError);
@@ -133,6 +136,8 @@ export default function OnboardingPage() {
       setLoading(false);
     }
   }
+
+  if (setupComplete) return <FirstExpensePrompt onContinue={() => router.replace("/dashboard")} />;
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#f7f8f7]" dir={language === "ar" ? "rtl" : "ltr"}>

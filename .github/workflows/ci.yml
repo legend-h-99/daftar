@@ -9,6 +9,40 @@ permissions:
   contents: read
 
 jobs:
+  scale-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: daftar_scale
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daftar_scale
+      JWT_SECRET: isolated-scale-ci-secret-not-for-production
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api exec prisma generate
+      - run: pnpm --filter api exec prisma migrate deploy
+      - run: pnpm --filter api db:seed:scale
+      - run: pnpm --filter api test:scale
+
   test-and-build:
     runs-on: ubuntu-latest
     steps:
@@ -49,6 +83,12 @@ jobs:
       - name: Test API
         run: pnpm --filter api test --runInBand
 
+      - name: Type-check API including test tooling
+        run: pnpm --filter api exec tsc --noEmit
+
+      - name: Test Supabase material and activation contracts
+        run: node --test supabase/functions/api/material-create.test.cjs supabase/functions/api/activation-analytics.test.cjs
+
       - name: Build API
         run: pnpm --filter api build
 
@@ -73,6 +113,11 @@ jobs:
 
       - name: Test anonymous customer behavior
         run: pnpm --filter web test:behavior
+        env:
+          QA_STATIC_DIR: ".next-cloudflare-check"
+
+      - name: Test first expense activation
+        run: pnpm --filter web exec node test/ux/first-expense-browser.mjs
         env:
           QA_STATIC_DIR: ".next-cloudflare-check"
 
