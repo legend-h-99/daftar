@@ -229,25 +229,23 @@ export class AuthService {
     }
 
     const existing =
-      (await this.prisma.user.findUnique({ where: { googleSub: payload.sub } })) ??
+      (await this.prisma.user.findUnique({ where: { googleId: payload.sub } })) ??
       (await this.prisma.user.findUnique({ where: { email: payload.email } }));
 
     const user = existing
       ? await this.prisma.user.update({
           where: { id: existing.id },
           data: {
-            googleSub: payload.sub,
+            googleId: payload.sub,
             email: payload.email,
             name: payload.name ?? existing.name,
-            avatarUrl: payload.picture,
           },
         })
       : await this.prisma.user.create({
           data: {
-            googleSub: payload.sub,
+            googleId: payload.sub,
             email: payload.email,
             name: payload.name,
-            avatarUrl: payload.picture,
           },
         });
 
