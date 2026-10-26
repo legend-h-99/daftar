@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { faqGroups, faqSchema } from "./_faq";
 import PricingSection from "@/components/pricing/PricingSection";
 import CurrentMonth from "./_current-month";
 import LandingTracker from "./_tracker";
@@ -51,37 +52,6 @@ const steps: { icon: LucideIcon; num: number; title: string; body: string }[] = 
   { icon: PenLine, num: 1, title: "سجّل محلك", body: "أدخل اسم محلك ومدينتك — يأخذ أقل من دقيقة." },
   { icon: Eye,     num: 2, title: "ابدأ التسجيل", body: "بعد كل بيعة أو مصروف، دوّنه فورًا من الجوال." },
   { icon: TrendingUp, num: 3, title: "شوف ربحك", body: "راجع المبيعات والتكاليف المسجلة بنقرة واحدة؛ لا تشمل النتيجة بيانات لم تدخلها." },
-];
-
-const faqs: { q: string; a: string }[] = [
-  {
-    q: "ما هو تطبيق دفتر؟",
-    a: "دفتر تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة والأسر المنتجة في السعودية. يتيح تتبع المبيعات والمصاريف والفواتير والمخزون من مكان واحد — بلا مصطلحات محاسبية.",
-  },
-  {
-    q: "هل دفتر مجاني؟",
-    a: "الوظائف الحالية متاحة مجانًا، ولا تحتاج بطاقة ائتمانية. أي باقات مدفوعة مستقبلية ستُعلن مع حدودها وسياسة انتقال واضحة قبل تطبيقها.",
-  },
-  {
-    q: "هل يحتاج استخدامه تدريبًا أو خبرة محاسبية؟",
-    a: "لا. دفتر مصمّم لأصحاب المشاريع الصغيرة بلا خلفية محاسبية. الواجهة بلغة السوق اليومية — إذا عرفت تبيع، تقدر تستخدمه.",
-  },
-  {
-    q: "هل يعمل على الجوال؟",
-    a: "نعم. دفتر تطبيق ويب تقدر تضيفه لشاشتك الرئيسية مثل أي تطبيق، ويعمل بسلاسة على iOS وAndroid.",
-  },
-  {
-    q: "كيف يختلف دفتر عن QuickBooks أو برامج المحاسبة الأخرى؟",
-    a: "برامج المحاسبة الكبيرة مصمّمة لمحاسبين في شركات كبيرة. دفتر مصمّم لصاحب محل أو أسرة منتجة — واجهة بسيطة، عربي كامل، يشتغل من الجوال مباشرة.",
-  },
-  {
-    q: "هل بياناتي آمنة؟",
-    a: "يستخدم دفتر مصادقة وضوابط لعزل حسابات المنشآت. لا توجد حماية مطلقة؛ راجع إشعار الخصوصية لمعرفة البيانات المستخدمة والخدمات التي تعالجها.",
-  },
-  {
-    q: "هل يدعم دفتر اللغة الإنجليزية؟",
-    a: "يمكن التبديل بين العربية والإنجليزية من داخل التطبيق في أي وقت.",
-  },
 ];
 
 const comparisons: { feature: string; daftar: boolean | string; paper: boolean | string; quickbooks: boolean | string }[] = [
@@ -466,14 +436,28 @@ export default function LandingContent() {
           <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
             الأسئلة الشائعة
           </h2>
-          <dl className="mt-10 space-y-6">
-            {faqs.map(({ q, a }) => (
-              <div key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
-                <dt className="text-base font-bold text-[#101914]">{q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-gray-600">{a}</dd>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, "\\u003c") }}
+          />
+          <div className="mt-10 space-y-10">
+            {faqGroups.map(({ title, items }) => (
+              <div key={title}>
+                <h3 className="mb-4 text-lg font-bold text-brand-700">{title}</h3>
+                <dl className="space-y-4">
+                  {items.map(({ q, a, href, linkLabel }) => (
+                    <div key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
+                      <dt className="text-base font-bold text-[#101914]">{q}</dt>
+                      <dd className="mt-2 text-sm leading-relaxed text-gray-600">
+                        {a}
+                        {href && <Link href={href} className="mt-2 block font-semibold text-brand-700 underline underline-offset-4">{linkLabel}</Link>}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             ))}
-          </dl>
+          </div>
         </div>
       </section>
 
