@@ -12,9 +12,10 @@ import { useTheme } from "@/lib/theme";
 
 interface TopBarProps {
   businessName?: string | null;
+  wide?: boolean;
 }
 
-export default function TopBar({ businessName }: TopBarProps) {
+export default function TopBar({ businessName, wide = false }: TopBarProps) {
   const router = useRouter();
   const { language, toggleLanguage } = useLanguage();
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -40,7 +41,7 @@ export default function TopBar({ businessName }: TopBarProps) {
 
   return (
     <header className="print:hidden sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="mx-auto flex max-w-md items-center justify-between px-4 py-3">
+      <div className={`mx-auto flex items-center justify-between px-4 py-3 ${wide ? "max-w-7xl sm:px-6 lg:px-8" : "max-w-md"}`}>
         <div className="flex items-center gap-2">
           <span
             className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white"

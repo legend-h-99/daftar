@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
 import PageMotion from "@/components/PageMotion";
@@ -17,6 +17,8 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const adminView = pathname.startsWith("/admin");
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
@@ -59,9 +61,12 @@ export default function AppLayout({
   return (
     <BusinessProvider value={{ user, business, refresh }}>
       <div className="min-h-screen bg-[#f7f8f7] print:bg-white">
-        <TopBar businessName={business?.name} />
-        <PageMotion className="mx-auto max-w-md px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 print:max-w-none print:p-0">{children}</PageMotion>
-        <BottomNav />
+        <TopBar businessName={business?.name} wide={adminView} />
+        <PageMotion className={`mx-auto px-4 pt-4 print:max-w-none print:p-0 ${adminView
+          ? "max-w-7xl pb-10 sm:px-6 lg:px-8"
+          : "max-w-md pb-[calc(6rem+env(safe-area-inset-bottom))]"
+        }`}>{children}</PageMotion>
+        {!adminView && <BottomNav />}
       </div>
     </BusinessProvider>
   );
