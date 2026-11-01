@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, MapPin, Receipt, ChevronRight, ChevronLeft } from "lucide-react";
+import { Building2, MapPin, Receipt } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { isAuthenticated, setToken } from "@/lib/auth";
@@ -13,51 +13,41 @@ import { useLanguage } from "@/lib/language";
 
 import FirstExpensePrompt from "@/components/FirstExpensePrompt";
 
-const STEPS = 2;
-
 const t = {
   ar: {
     bizData: "بيانات المحل",
-    subtitle: "خطوتين بس وتبدأ تتابع حسابات محلك",
-    step: (n: number) => `الخطوة ${n} من ${STEPS}`,
-    bizInfo: "معلومات المحل",
+    subtitle: "اكتب اسم محلك وتبدأ تتابع حساباتك",
     bizName: "اسم المحل",
     bizNamePlaceholder: "مثال: بيت الحلا",
     bizNameRequired: "اكتب اسم المحل أولاً",
     city: "المدينة",
     cityOptional: "(اختياري)",
     cityPlaceholder: "مثال: الرياض",
-    next: "التالي",
-    vatSettings: "إعدادات الضريبة",
-    vatQuestion: "مسجل في ضريبة القيمة المضافة؟",
+    hasVat: "عندي رقم ضريبي",
+    noVat: "ما عندي رقم ضريبي",
     vatNumber: "الرقم الضريبي",
     vatNumberPlaceholder: "3XXXXXXXXXXXXX3",
-    vatRequired: "أدخل الرقم الضريبي أو أوقف تفعيل الضريبة",
+    vatRequired: "أدخل الرقم الضريبي أو اختر «ما عندي رقم ضريبي»",
     vatInvalid: "الرقم الضريبي يجب أن يكون 15 رقماً يبدأ بـ 3 وينتهي بـ 3",
-    back: "رجوع",
     save: "حفظ والمتابعة",
     saving: "جاري الحفظ...",
     saveError: "تعذر حفظ بيانات المحل",
   },
   en: {
     bizData: "Business Setup",
-    subtitle: "Two quick steps and you're ready to track your business",
-    step: (n: number) => `Step ${n} of ${STEPS}`,
-    bizInfo: "Business Info",
+    subtitle: "Add your business name and start tracking",
     bizName: "Business name",
     bizNamePlaceholder: "e.g. The Sweet House",
     bizNameRequired: "Please enter your business name",
     city: "City",
     cityOptional: "(optional)",
     cityPlaceholder: "e.g. Riyadh",
-    next: "Next",
-    vatSettings: "Tax Settings",
-    vatQuestion: "Registered for VAT?",
+    hasVat: "I have a VAT number",
+    noVat: "I don't have a VAT number",
     vatNumber: "VAT number",
     vatNumberPlaceholder: "3XXXXXXXXXXXXX3",
-    vatRequired: "Enter your VAT number or disable VAT",
+    vatRequired: "Enter your VAT number or choose \"I don't have a VAT number\"",
     vatInvalid: "The VAT number must be 15 digits that start and end with 3.",
-    back: "Back",
     save: "Save & Continue",
     saving: "Saving...",
     saveError: "Could not save business details",
@@ -77,7 +67,6 @@ export default function OnboardingPage() {
   const tx = t[language];
 
   const [setupComplete, setSetupComplete] = useState(false);
-  const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [vatEnabled, setVatEnabled] = useState(false);
@@ -89,19 +78,13 @@ export default function OnboardingPage() {
     if (!isAuthenticated()) router.replace("/login");
   }, [router]);
 
-  function handleNextStep(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     track("onboarding_started");
     if (!name.trim()) {
       setError(tx.bizNameRequired);
       return;
     }
-    setError(null);
-    setStep(2);
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
     track("workflow_started", { workflow: "onboarding" });
     const normalizedVat = toLatinDigits(vatNumber).replace(/\s/g, "");
     if (vatEnabled && !normalizedVat) {
@@ -167,164 +150,89 @@ export default function OnboardingPage() {
           <p className="text-sm text-gray-500">{tx.subtitle}</p>
         </div>
 
-        {/* Step progress */}
-        <div className="mb-6 animate-fade-up" style={{ animationDelay: "80ms" }}>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500">{tx.step(step)}</span>
-            <span className="text-xs font-semibold text-brand-700">
-              {step === 1 ? tx.bizInfo : tx.vatSettings}
-            </span>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-            <div
-              className="h-full rounded-full bg-brand-700 transition-all duration-500"
-              style={{ width: `${(step / STEPS) * 100}%` }}
-            />
-          </div>
-        </div>
-
         {/* Card */}
         <div
           className="motion-surface animate-slide-up rounded-lg border border-gray-100 bg-white p-6 shadow-sm"
           style={{ animationDelay: "120ms" }}
-          key={step}
         >
-          {step === 1 ? (
-            <form onSubmit={handleNextStep} className="flex flex-col gap-4">
-              {/* Business name */}
-              <div className="animate-fade-up" style={{ animationDelay: "160ms" }}>
-                <label htmlFor="biz-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <Building2 className="h-4 w-4 text-brand-600" />
-                  {tx.bizName}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Business name */}
+            <div className="animate-fade-up" style={{ animationDelay: "160ms" }}>
+              <label htmlFor="biz-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Building2 className="h-4 w-4 text-brand-600" />
+                {tx.bizName}
+              </label>
+              <input
+                id="biz-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={tx.bizNamePlaceholder}
+                autoFocus
+                className={cn(fieldClass, "py-3.5")}
+              />
+            </div>
+
+            {/* City */}
+            <div className="animate-fade-up" style={{ animationDelay: "200ms" }}>
+              <label htmlFor="biz-city" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <MapPin className="h-4 w-4 text-brand-600" />
+                {tx.city}{" "}
+                <span className="font-normal text-gray-500">{tx.cityOptional}</span>
+              </label>
+              <input
+                id="biz-city"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder={tx.cityPlaceholder}
+                className={cn(fieldClass, "py-3.5")}
+              />
+            </div>
+
+            {/* VAT is opt-in: most home businesses are not registered */}
+            <button
+              type="button"
+              aria-expanded={vatEnabled}
+              onClick={() => {
+                setVatEnabled((v) => !v);
+                setError(null);
+              }}
+              className="flex min-h-11 items-center gap-2 self-start text-sm font-semibold text-brand-700"
+            >
+              <Receipt className="h-4 w-4" />
+              {vatEnabled ? tx.noVat : tx.hasVat}
+            </button>
+
+            {vatEnabled && (
+              <div className="animate-fade-up" style={{ animationDelay: "60ms" }}>
+                <label htmlFor="biz-vat" className="mb-1.5 block text-sm font-semibold text-gray-700">
+                  {tx.vatNumber}
                 </label>
                 <input
-                  id="biz-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={tx.bizNamePlaceholder}
+                  id="biz-vat"
+                  value={vatNumber}
+                  onChange={(e) => setVatNumber(e.target.value)}
+                  dir="ltr"
+                  placeholder={tx.vatNumberPlaceholder}
                   autoFocus
-                  className={cn(fieldClass, "py-3.5")}
+                  className={cn(fieldClass, "py-3.5 text-left")}
                 />
               </div>
+            )}
 
-              {/* City */}
-              <div className="animate-fade-up" style={{ animationDelay: "200ms" }}>
-                <label htmlFor="biz-city" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <MapPin className="h-4 w-4 text-brand-600" />
-                  {tx.city}{" "}
-                  <span className="font-normal text-gray-500">{tx.cityOptional}</span>
-                </label>
-                <input
-                  id="biz-city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder={tx.cityPlaceholder}
-                  className={cn(fieldClass, "py-3.5")}
-                />
-              </div>
+            {error && (
+              <p className="animate-scale-in rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-600">
+                {error}
+              </p>
+            )}
 
-              {error && (
-                <p className="animate-scale-in rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-600">
-                  {error}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                className="motion-press mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800"
-              >
-                {tx.next}
-                {language === "ar" ? (
-                  <ChevronLeft className="h-5 w-5" />
-                ) : (
-                  <ChevronRight className="h-5 w-5" />
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              {/* VAT toggle */}
-              <div className="animate-fade-up" style={{ animationDelay: "160ms" }}>
-                <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <Receipt className="h-4 w-4 text-brand-600" />
-                  {tx.vatQuestion}
-                </label>
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3.5">
-                  <span className="text-sm font-medium text-gray-600">
-                    {vatEnabled
-                      ? language === "ar" ? "مفعّل" : "Enabled"
-                      : language === "ar" ? "غير مفعّل" : "Disabled"}
-                  </span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={vatEnabled}
-                    onClick={() => {
-                      setVatEnabled((v) => !v);
-                      setError(null);
-                    }}
-                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${
-                      vatEnabled ? "bg-brand-700" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all duration-200 ${
-                        language === "ar"
-                          ? vatEnabled ? "right-1" : "right-6"
-                          : vatEnabled ? "left-6" : "left-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {/* VAT number (conditional) */}
-              {vatEnabled && (
-                <div className="animate-fade-up" style={{ animationDelay: "60ms" }}>
-                  <label htmlFor="biz-vat" className="mb-1.5 block text-sm font-semibold text-gray-700">
-                    {tx.vatNumber}
-                  </label>
-                  <input
-                    id="biz-vat"
-                    value={vatNumber}
-                    onChange={(e) => setVatNumber(e.target.value)}
-                    dir="ltr"
-                    placeholder={tx.vatNumberPlaceholder}
-                    autoFocus
-                    className={cn(fieldClass, "py-3.5 text-left")}
-                  />
-                </div>
-              )}
-
-              {error && (
-                <p className="animate-scale-in rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-600">
-                  {error}
-                </p>
-              )}
-
-              <div className="mt-1 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => { setStep(1); setError(null); }}
-                  className="motion-press flex w-14 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white py-3.5 text-gray-600 transition-all active:scale-[0.98] active:bg-gray-50"
-                  aria-label={tx.back}
-                >
-                  {language === "ar" ? (
-                    <ChevronRight className="h-5 w-5" />
-                  ) : (
-                    <ChevronLeft className="h-5 w-5" />
-                  )}
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="motion-press flex-1 rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-60"
-                >
-                  {loading ? tx.saving : tx.save}
-                </button>
-              </div>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="motion-press mt-1 w-full rounded-2xl bg-brand-700 py-3.5 text-base font-bold text-white transition-all active:scale-[0.98] active:bg-brand-800 disabled:opacity-60"
+            >
+              {loading ? tx.saving : tx.save}
+            </button>
+          </form>
         </div>
       </div>
     </main>

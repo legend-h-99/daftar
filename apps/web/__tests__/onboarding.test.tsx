@@ -51,15 +51,6 @@ function renderWithToken() {
   render(<OnboardingPage />);
 }
 
-async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
-  const input = screen.getByLabelText(/اسم المحل/);
-  await user.type(input, "بيت الحلا");
-  await user.click(screen.getByRole("button", { name: "التالي" }));
-  await waitFor(() =>
-    expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-  );
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("صفحة الإعداد الأولي (Onboarding)", () => {
@@ -88,100 +79,62 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
     });
   });
 
-  // ── الخطوة الأولى ────────────────────────────────────────────────────────
+  // ── النموذج ──────────────────────────────────────────────────────────────
 
-  describe("الخطوة الأولى – معلومات المحل", () => {
-    it("يعرض العنوان وحقلَي الاسم والمدينة", () => {
+  describe("نموذج المحل", () => {
+    it("يعرض العنوان وحقلَي الاسم والمدينة في شاشة واحدة", () => {
       renderWithToken();
       expect(screen.getByText("بيانات المحل")).toBeInTheDocument();
       expect(screen.getByLabelText(/اسم المحل/)).toBeInTheDocument();
       expect(screen.getByLabelText(/المدينة/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "حفظ والمتابعة" })).toBeInTheDocument();
+      expect(screen.queryByText(/الخطوة/)).not.toBeInTheDocument();
     });
 
-    it("يعرض 'الخطوة 1 من 2' في شريط التقدم", () => {
-      renderWithToken();
-      expect(screen.getByText("الخطوة 1 من 2")).toBeInTheDocument();
-    });
-
-    it("يعرض خطأ إذا ضغط التالي بدون اسم", async () => {
+    it("يعرض خطأ ولا يرسل الطلب إذا كان الاسم فارغاً", async () => {
       const user = userEvent.setup();
       renderWithToken();
-      await user.click(screen.getByRole("button", { name: "التالي" }));
+      await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       expect(screen.getByText("اكتب اسم المحل أولاً")).toBeInTheDocument();
-    });
-
-    it("لا يتقدم للخطوة الثانية إذا كان الاسم فارغاً", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      expect(screen.queryByText("إعدادات الضريبة")).not.toBeInTheDocument();
-    });
-
-    it("يتقدم للخطوة الثانية عند إدخال اسم صحيح", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      await user.type(screen.getByLabelText(/اسم المحل/), "بيت الحلا");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
-    });
-
-    it("يقبل المدينة كحقل اختياري دون خطأ", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      await user.type(screen.getByLabelText(/اسم المحل/), "المطعم");
-      await user.type(screen.getByLabelText(/المدينة/), "جدة");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
+      expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
     });
   });
 
-  // ── الخطوة الثانية ───────────────────────────────────────────────────────
+  // ── الرقم الضريبي ────────────────────────────────────────────────────────
 
-  describe("الخطوة الثانية – إعدادات الضريبة", () => {
-    it("يعرض 'الخطوة 2 من 2' في شريط التقدم", async () => {
-      const user = userEvent.setup();
+  describe("الرقم الضريبي الاختياري", () => {
+    it("لا يسأل عن الضريبة افتراضياً", () => {
       renderWithToken();
-      await advanceToStep2(user);
-      expect(screen.getByText("الخطوة 2 من 2")).toBeInTheDocument();
+      const option = screen.getByRole("button", { name: "عندي رقم ضريبي" });
+      expect(option).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByLabelText(/الرقم الضريبي/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/ضريبة القيمة المضافة/)).not.toBeInTheDocument();
     });
 
-    it("المفتاح مغلق افتراضياً ولا يظهر حقل الرقم الضريبي", async () => {
+    it("يظهر الحقل عند اختيار 'عندي رقم ضريبي' ويختفي عند التراجع", async () => {
       const user = userEvent.setup();
       renderWithToken();
-      await advanceToStep2(user);
-      const toggle = screen.getByRole("switch");
-      expect(toggle).toHaveAttribute("aria-checked", "false");
+      await user.click(screen.getByRole("button", { name: "عندي رقم ضريبي" }));
+      expect(screen.getByLabelText(/الرقم الضريبي/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "ما عندي رقم ضريبي" }));
       expect(screen.queryByLabelText(/الرقم الضريبي/)).not.toBeInTheDocument();
     });
 
-    it("يظهر حقل الرقم الضريبي بعد تفعيل المفتاح", async () => {
+    it("يُظهر خطأ إذا فُتح الحقل وبقي فارغاً", async () => {
       const user = userEvent.setup();
       renderWithToken();
-      await advanceToStep2(user);
-      await user.click(screen.getByRole("switch"));
-      expect(screen.getByLabelText(/الرقم الضريبي/)).toBeInTheDocument();
-    });
-
-    it("يُظهر خطأ إذا كانت الضريبة مفعّلة والرقم فارغ", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      await advanceToStep2(user);
-      await user.click(screen.getByRole("switch"));
+      await user.type(screen.getByLabelText(/اسم المحل/), "بيت الحلا");
+      await user.click(screen.getByRole("button", { name: "عندي رقم ضريبي" }));
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
-      expect(
-        screen.getByText("أدخل الرقم الضريبي أو أوقف تفعيل الضريبة"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("أدخل الرقم الضريبي أو اختر «ما عندي رقم ضريبي»")).toBeInTheDocument();
+      expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
     });
 
     it("يرفض رقماً ضريبياً لا يطابق الصيغة ولا يرسل الطلب", async () => {
       const user = userEvent.setup();
       renderWithToken();
-      await advanceToStep2(user);
-      await user.click(screen.getByRole("switch"));
+      await user.type(screen.getByLabelText(/اسم المحل/), "بيت الحلا");
+      await user.click(screen.getByRole("button", { name: "عندي رقم ضريبي" }));
       await user.type(screen.getByLabelText(/الرقم الضريبي/), "ABC123");
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       expect(
@@ -194,37 +147,12 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockResolvedValue({ accessToken: "tok", business: { id: "b1", name: "المحل", vatEnabled: true } });
       renderWithToken();
-      await advanceToStep2(user);
-      await user.click(screen.getByRole("switch"));
+      await user.type(screen.getByLabelText(/اسم المحل/), "بيت الحلا");
+      await user.click(screen.getByRole("button", { name: "عندي رقم ضريبي" }));
       await user.type(screen.getByLabelText(/الرقم الضريبي/), "٣٠٠٠٠٠٠٠٠٠٠٠٠٠٣");
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", expect.objectContaining({ vatNumber: "300000000000003" })),
-      );
-    });
-
-    it("زر الرجوع يعيد للخطوة الأولى", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      await advanceToStep2(user);
-      await user.click(screen.getByRole("button", { name: "رجوع" }));
-      await waitFor(() =>
-        expect(screen.getByText("معلومات المحل")).toBeInTheDocument(),
-      );
-    });
-
-    it("يحفظ الاسم بعد الرجوع والتقدم مجدداً", async () => {
-      const user = userEvent.setup();
-      renderWithToken();
-      const nameInput = screen.getByLabelText(/اسم المحل/);
-      await user.type(nameInput, "كافيه الورد");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
-      await user.click(screen.getByRole("button", { name: "رجوع" }));
-      await waitFor(() =>
-        expect(screen.getByLabelText(/اسم المحل/)).toHaveValue("كافيه الورد"),
       );
     });
   });
@@ -240,10 +168,6 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       });
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "المحل");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(vi.mocked(apiPost)).toHaveBeenCalledWith("/onboarding", {
@@ -264,11 +188,7 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "مطعم السلام");
       await user.type(screen.getByLabelText(/المدينة/), "الرياض");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
-      await user.click(screen.getByRole("switch"));
+      await user.click(screen.getByRole("button", { name: "عندي رقم ضريبي" }));
       await user.type(screen.getByLabelText(/الرقم الضريبي/), "300000000000003");
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
@@ -289,10 +209,6 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       });
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "محل");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() => {
         expect(mockSetToken).toHaveBeenCalledWith("fresh-token");
@@ -306,10 +222,6 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       vi.mocked(apiPost).mockRejectedValue(new Error("network error"));
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "محل");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(screen.getByText("تعذر حفظ بيانات المحل")).toBeInTheDocument(),
@@ -322,10 +234,6 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       vi.mocked(apiPost).mockRejectedValue(new ApiError("اسم المحل مكرر", 409));
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "محل");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(screen.getByText("اسم المحل مكرر")).toBeInTheDocument(),
@@ -337,10 +245,6 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       vi.mocked(apiPost).mockReturnValue(new Promise(() => {})); // never resolves
       renderWithToken();
       await user.type(screen.getByLabelText(/اسم المحل/), "محل");
-      await user.click(screen.getByRole("button", { name: "التالي" }));
-      await waitFor(() =>
-        expect(screen.getByText("إعدادات الضريبة")).toBeInTheDocument(),
-      );
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() =>
         expect(

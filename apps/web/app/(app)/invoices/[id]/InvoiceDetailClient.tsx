@@ -14,6 +14,7 @@ import ZatcaQr from "@/components/invoices/ZatcaQr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
+import { buildPaymentReminder } from "@/lib/invoice-reminder";
 
 export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
@@ -124,6 +125,14 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     ? normalizeSaudiPhone(invoice.customer.phone)
     : "";
   const waHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(waText)}`;
+  const reminderText = buildPaymentReminder({
+    language,
+    customerName: invoice.customer?.name,
+    invoiceNumber: invoice.number,
+    businessName,
+    remaining,
+  });
+  const reminderHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(reminderText)}`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -280,6 +289,18 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
           >
             {en ? "Record a partial payment" : "تسجيل دفع جزئي"}
           </button>
+
+          {remaining > 0 && (
+            <a
+              href={reminderHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-green-600 py-3 text-sm font-semibold text-green-700 active:bg-green-50"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {en ? "Send a friendly reminder" : "تذكير ودّي عبر واتساب"}
+            </a>
+          )}
 
           {showPartialForm && (
             <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
