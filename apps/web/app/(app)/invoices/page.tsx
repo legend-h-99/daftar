@@ -5,10 +5,12 @@ import Link from "next/link";
 import { ChevronRight, FileText, Plus } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
 import { DEMO_MODE } from "@/lib/demo-api";
+import { fetchAllPages, invoicesCsv } from "@/lib/exports";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Invoice } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
+import ExportCsvButton from "@/components/ExportCsvButton";
 import StatusBadge from "@/components/StatusBadge";
 import { MonthNav } from "@/components/ui/month-nav";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -119,6 +121,14 @@ export default function InvoicesPage() {
                 <span className="text-sm font-bold text-red-600">{formatSAR(outstanding, language)}</span>
               </div>
             )}
+            <ExportCsvButton
+              className="mt-3"
+              filename={`${language === "ar" ? "فواتير" : "invoices"}${tab === "ALL" ? "" : `-${TABS.find((t) => t.key === tab)?.label[language].replace(/\s+/g, "-")}`}-${month}.csv`}
+              buildCsv={async () => {
+                const all = await fetchAllPages<Invoice>(`/invoices?month=${month}`);
+                return invoicesCsv(tab === "ALL" ? all : all.filter((inv) => inv.status === tab), language);
+              }}
+            />
           </div>
         )}
       </section>

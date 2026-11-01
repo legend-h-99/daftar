@@ -46,6 +46,20 @@ export function formatDate(date: string | Date | null | undefined): string {
   });
 }
 
+/**
+ * Local calendar date as YYYY-MM-DD, which spreadsheets read as a date in any locale.
+ * Uses the same local day that formatDate shows on screen.
+ */
+export function formatIsoDate(date: string | Date | null | undefined): string {
+  if (!date) return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 export function formatMonthLabel(monthStr: string, locale: "ar" | "en" = "ar"): string {
   // monthStr: "YYYY-MM"
   const [year, month] = monthStr.split("-").map(Number);

@@ -46,6 +46,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [theme]);
 
+  useEffect(() => {
+    // Paper is always light: dark tokens print near-white text on white.
+    const root = document.documentElement;
+    let wasDark = false;
+    const beforePrint = () => {
+      if (!root.classList.contains("dark")) return;
+      wasDark = true;
+      root.classList.remove("dark");
+    };
+    const afterPrint = () => {
+      if (wasDark) root.classList.add("dark");
+      wasDark = false;
+    };
+    window.addEventListener("beforeprint", beforePrint);
+    window.addEventListener("afterprint", afterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint);
+      window.removeEventListener("afterprint", afterPrint);
+    };
+  }, []);
+
   function setTheme(t: Theme) {
     setThemeState(t);
     localStorage.setItem("daftar-theme", t);

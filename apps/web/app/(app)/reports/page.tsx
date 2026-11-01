@@ -4,9 +4,11 @@ import ReportDataQuality from "@/components/reports/ReportDataQuality";
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank, Printer } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
+import { useBusiness } from "@/lib/business-context";
 import {
+  formatDate,
   formatSAR,
   formatMonthLabel,
   percentOf,
@@ -27,6 +29,7 @@ interface ReportsPageData {
 
 export default function ReportsPage() {
   const { language } = useLanguage();
+  const { business } = useBusiness();
   const en = language === "en";
   const {
     month,
@@ -67,10 +70,26 @@ export default function ReportsPage() {
       }));
   }, [expenses]);
 
+  function printReport() {
+    // Browsers name the saved PDF after the page title, so give each month its own name.
+    const previousTitle = document.title;
+    document.title = en ? `Daftar report ${month}` : `تقرير دفتر ${month}`;
+    window.addEventListener("afterprint", () => { document.title = previousTitle; }, { once: true });
+    window.print();
+  }
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+      {/* Print-only heading: the page chrome and month stepper are hidden on paper */}
+      <div className="hidden print:block">
+        {business?.name && <p className="text-lg font-extrabold text-gray-900">{business.name}</p>}
+        <p className="text-sm font-semibold text-gray-600">
+          {en ? "Monthly report" : "التقرير الشهري"} · {formatMonthLabel(month, language)}
+        </p>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 print:hidden">
         <Link
           href="/dashboard"
           aria-label={en ? "Back" : "رجوع"}
@@ -129,7 +148,7 @@ export default function ReportsPage() {
           const marginPct = percentOf(summary.netProfit, summary.totalSales);
 
           return (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 print:[&>*]:break-inside-avoid">
               {/* Net profit hero — same language as the dashboard hero (white/wash, never solid brand) */}
               <div
                 className={`flex flex-col gap-1 rounded-lg border p-5 shadow-sm ${
@@ -210,7 +229,24 @@ export default function ReportsPage() {
                 </div>
               )}
 
-              <ReportQuickLinks />
+              <button
+                type="button"
+                onClick={printReport}
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50 print:hidden"
+              >
+                <Printer className="h-4 w-4" aria-hidden="true" />
+                {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
+              </button>
+
+              <p className="hidden text-center text-xs text-gray-500 print:block">
+                {en
+                  ? `Issued ${formatDate(new Date())} · Prepared with Daftar · daftar1.com`
+                  : `صدر في ${formatDate(new Date())} · أُعد عبر دفتر · daftar1.com`}
+              </p>
+
+              <div className="print:hidden">
+                <ReportQuickLinks />
+              </div>
             </div>
           );
         })()}

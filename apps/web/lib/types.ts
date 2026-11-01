@@ -163,6 +163,18 @@ export interface Customer {
 
 export type InvoiceStatus = "PAID" | "UNPAID" | "PARTIAL";
 
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  PAID: "مدفوعة",
+  UNPAID: "غير مدفوعة",
+  PARTIAL: "جزئي",
+};
+
+export const INVOICE_STATUS_LABELS_EN: typeof INVOICE_STATUS_LABELS = {
+  PAID: "Paid",
+  UNPAID: "Unpaid",
+  PARTIAL: "Partial",
+};
+
 export interface InvoiceItem {
   id?: string;
   productId?: string | null;

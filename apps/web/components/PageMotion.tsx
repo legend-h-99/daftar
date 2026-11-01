@@ -12,7 +12,8 @@ export default function PageMotion({ children, className }: PageMotionProps) {
   const pathname = usePathname();
 
   return (
-    <main key={pathname} className={cn("motion-page", className)}>
+    // The entrance animation starts fully transparent, so printing during it gives a blank page.
+    <main key={pathname} className={cn("motion-page print:animate-none", className)}>
       {children}
     </main>
   );

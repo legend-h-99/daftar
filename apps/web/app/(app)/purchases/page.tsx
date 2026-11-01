@@ -5,10 +5,12 @@ import { SCAN_ENABLED } from "@/lib/features";
 import Link from "next/link";
 import { Camera, Plus, ShoppingCart, Truck } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
+import { fetchAllPages, purchasesCsv } from "@/lib/exports";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { Purchase, PurchasesSummary } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
+import ExportCsvButton from "@/components/ExportCsvButton";
 import { MonthNav } from "@/components/ui/month-nav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -95,6 +97,16 @@ export default function PurchasesPage() {
               {formatSAR(monthTotal, language)}
             </span>
           </div>
+        )}
+        {filtered && filtered.length > 0 && (
+          <ExportCsvButton
+            className="mt-3"
+            filename={`${language === "ar" ? "مشتريات" : "purchases"}-${month}.csv`}
+            buildCsv={async () => purchasesCsv(
+              await fetchAllPages<Purchase & { id: string }>(`/purchases?month=${month}`),
+              language,
+            )}
+          />
         )}
       </section>
 

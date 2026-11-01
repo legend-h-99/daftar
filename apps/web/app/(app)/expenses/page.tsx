@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import { Plus, Trash2, Wallet } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
+import { expensesCsv, fetchAllPages } from "@/lib/exports";
 import { formatDate, formatMonthLabel, formatSAR } from "@/lib/format";
 import { DashboardSummary, EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_LABELS_EN, Expense } from "@/lib/types";
 import { useMonthResource } from "@/lib/use-month-resource";
 import EmptyState from "@/components/EmptyState";
+import ExportCsvButton from "@/components/ExportCsvButton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import AddExpenseSheet from "@/components/expenses/AddExpenseSheet";
@@ -139,6 +141,15 @@ export default function ExpensesPage() {
               ))}
             </div>
           )}
+          <ExportCsvButton
+            className="mt-4"
+            filename={`${language === "ar" ? "مصاريف" : "expenses"}-${month}.csv`}
+            buildCsv={async () => expensesCsv(
+              await fetchAllPages<Expense>(`/expenses?month=${month}`),
+              costOfGoodsSold,
+              language,
+            )}
+          />
         </div>
       )}
 

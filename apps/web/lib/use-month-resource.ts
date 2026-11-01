@@ -21,7 +21,8 @@ export function useMonthResource<T>({
   const [month, setMonth] = useState(currentMonthStr());
 
   const { data, error, isLoading, refetch } = useQuery<T, unknown>({
-    queryKey: ["month-resource", month, load.toString().slice(0, 60)],
+    // The whole source: pages' loaders can share a long prefix, and a shared key hands one page another's data.
+    queryKey: ["month-resource", month, load.toString()],
     queryFn: () => load(month),
     staleTime: staleMs,
     gcTime: 5 * 60_000,
