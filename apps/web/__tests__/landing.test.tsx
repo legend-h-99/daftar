@@ -257,21 +257,21 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getAllByText("الأسئلة الشائعة").length).toBeGreaterThanOrEqual(1);
     });
 
-    it("يعرض 7 أسئلة على الأقل", () => {
+    it("يعرض 15 سؤالًا ضمن خمس فئات", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
+      const dl = document.querySelector("#faq");
       expect(dl).not.toBeNull();
       const questions = within(dl!).getAllByRole("term");
-      expect(questions.length).toBeGreaterThanOrEqual(7);
+      expect(questions).toHaveLength(15);
     });
 
-    it("يعرض سؤال 'ما هو تطبيق دفتر؟' وإجابته", () => {
+    it("يعرض سؤال 'وش هو دفتر، ولمن يناسب؟' وإجابته", () => {
       render(<LandingPage />);
-      expect(screen.getByText("ما هو تطبيق دفتر؟")).toBeInTheDocument();
+      expect(screen.getByText("وش هو دفتر، ولمن يناسب؟")).toBeInTheDocument();
       // الإجابة مقيّدة بالـ dl لتجنّب تعارض مع الـ blockquote في Hero
       const dl = document.querySelector("dl")!;
       expect(
-        within(dl).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
+        within(dl).getByText(/تطبيق محاسبة مبسّط للأسر المنتجة/),
       ).toBeInTheDocument();
     });
 
@@ -283,16 +283,16 @@ describe("صفحة الـ Landing", () => {
       ).toBeInTheDocument();
     });
 
-    it("يعرض سؤال الفرق عن QuickBooks", () => {
+    it("يوضح أن قراءة الفواتير الآلية قادمة", () => {
       render(<LandingPage />);
       expect(
-        screen.getByText("كيف يختلف دفتر عن QuickBooks أو برامج المحاسبة الأخرى؟"),
+        screen.getByText("هل يقرأ الفواتير تلقائيًا من صورة أو PDF؟"),
       ).toBeInTheDocument();
     });
 
     it("كل إجابة FAQ أقل من 50 كلمة", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
+      const dl = document.querySelector("#faq");
       const answers = within(dl!).getAllByRole("definition");
       for (const ans of answers) {
         const wordCount = ans.textContent!.trim().split(/\s+/).length;
