@@ -8,6 +8,12 @@
       "port": 3000
     },
     {
+      "name": "web-phone",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["NEXT_PUBLIC_PHONE_LOGIN_ENABLED=true", "pnpm", "--filter", "web", "dev"],
+      "port": 3000
+    },
+    {
       "name": "api",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "api", "start:dev"],

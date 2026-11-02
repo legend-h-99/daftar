@@ -32,11 +32,18 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
-// Phone sign-in stays off unless it is deliberately enabled in the Edge Function.
-// This server-side gate also protects native clients that do not use the web flag.
-const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
+// Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
+// secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
+const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
+const AUTHENTICA_TEMPLATE_ID = Number.parseInt(Deno.env.get('AUTHENTICA_TEMPLATE_ID') ?? '1', 10)
+// Must match the OTP length set on the Authentica application; the web form shows this many boxes.
+const AUTHENTICA_OTP_LENGTH = Number.parseInt(Deno.env.get('AUTHENTICA_OTP_LENGTH') ?? '6', 10)
+const AUTHENTICA_API_URL = 'https://api.authentica.sa/api/v2'
+// Phone sign-in stays off unless it is deliberately enabled in the Edge Function and the
+// Authentica key is set. This server-side gate also protects native clients that do not use the web flag.
+const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true' && AUTHENTICA_API_KEY !== ''
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
-// Google is the only public sign-in method. Email/password routes stay closed unless
+// Google (and phone, once enabled above) are the public sign-in methods. Email/password routes stay closed unless
 // deliberately re-enabled; existing password users sign in with Google on the same email.
 const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
 // Platform admins, by sign-in email. Kept in the function's secrets, not in
@@ -259,7 +266,7 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const occurredAt = Math.abs(Date.now() - Date.parse(body.occurredAt)) <= 15 * 60_000 ? body.occurredAt : new Date().toISOString();
   const props = body.properties;
   if (!props || typeof props !== 'object' || Array.isArray(props)) return err('Invalid properties', 400);
-  const allowed: Record<string, readonly unknown[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
+  const allowed: Record<string, readonly unknown[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ['google','email','phone'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
   for (const [key, value] of Object.entries(props)) {
     const valid = ['has_business','vat_enabled'].includes(key) ? typeof value === 'boolean'
       : ['items_count','recipe_items','days_since_last','status'].includes(key) ? typeof value === 'number' && Number.isInteger(value) && value >= -1 && value <= 599
@@ -323,37 +330,56 @@ async function authDemoLogin(phone: string) {
   return json({ accessToken, user: { id: userId, phone: normalized, businessId: bizId }, hasBusiness: true, business: { id: bizId, ...store, vatEnabled: true } })
 }
 
+// One call to Authentica. A network failure or timeout comes back as status 0 so the
+// caller can tell an outage apart from a rejected code.
+async function authentica(path: 'send-otp' | 'verify-otp', body: Record<string, unknown>) {
+  try {
+    const res = await fetch(`${AUTHENTICA_API_URL}/${path}`, {
+      method: 'POST',
+      headers: { 'X-Authorization': AUTHENTICA_API_KEY, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    const data = await res.json().catch(() => null) as Record<string, unknown> | null
+    return { status: res.status, data }
+  } catch {
+    return { status: 0, data: null }
+  }
+}
+
 async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
   if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
 
-  const { error } = await db().auth.signInWithOtp({
-    phone,
-    options: { shouldCreateUser: true },
-  })
-  if (error) {
+  const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
+  if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  if (sent.status !== 200 || sent.data?.success !== true) {
     // Keep provider details and phone numbers out of the public response/logs.
+    console.error(`Authentica send-otp failed with status ${sent.status}`)
     return err('Phone verification is temporarily unavailable', 503)
   }
-  return json({ sent: true })
+  return json({ sent: true, codeLength: AUTHENTICA_OTP_LENGTH })
 }
 
 async function authOtpVerify(phoneInput: unknown, code: unknown) {
-  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{4,8}$/.test(code)) {
     return err('Invalid or expired verification code', 400)
   }
   const normalized = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(normalized)) return err('Invalid or expired verification code', 400)
+  const verified = await authentica('verify-otp', { phone: normalized, otp: code })
+  if (verified.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  // No answer, a rejected key or an outage: the code itself was never judged.
+  if (verified.status === 0 || verified.status === 401 || verified.status === 403 || verified.status >= 500) {
+    console.error(`Authentica verify-otp failed with status ${verified.status}`)
+    return err('Phone verification is temporarily unavailable', 503)
+  }
+  if (verified.status !== 200 || verified.data?.status !== true) return err('Invalid or expired verification code', 401)
   const supabase = db()
-  const { data: verification, error: verificationError } = await supabase.auth.verifyOtp({
-    phone: normalized,
-    token: code,
-    type: 'sms',
-  })
-  if (verificationError || !verification.user) return err('Invalid or expired verification code', 401)
   let { data: user } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
+  let isNewUser = false
   if (!user) {
     const { data: created, error } = await supabase
       .from('User').insert({ id: newId('user'), phone: normalized }).select('*').single()
@@ -364,10 +390,11 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       user = raced
     } else {
       user = created
+      isNewUser = true
     }
   }
   const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
-  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
+  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
 async function authMe(user: Record<string, unknown>) {
@@ -1201,13 +1228,16 @@ async function handleRequest(req: Request) {
     if (req.method === 'POST' && path === '/auth/otp/request') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      const limited = await rateLimit(req, 'otp-request', body.phone, 3)
+      // Keyed by the normalized number so 05… and +9665… share one budget.
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      const limited = await rateLimit(req, 'otp-request', phoneKey, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 
 const SERVER_DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === "true";
-// Keep the UI hidden until a real SMS provider is enabled in Supabase Auth.
+// Keep the UI hidden until the Edge Function has PHONE_LOGIN_ENABLED and the Authentica key.
 const PHONE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_PHONE_LOGIN_ENABLED === "true";
 // Google is the only public sign-in/sign-up method; email/password stays off unless re-enabled.
 const EMAIL_LOGIN_ENABLED = process.env.NEXT_PUBLIC_EMAIL_LOGIN_ENABLED === "true";
@@ -90,23 +90,29 @@ export default function LoginPage() {
 
     const normalizedPhone = `+966${localDigits}`;
     setPhoneLoading(true);
+    track("login_started", { method: "phone" });
     try {
-      const result = await apiPost<{ sent: boolean; devCode?: string }>(
+      const result = await apiPost<{ sent: boolean; devCode?: string; codeLength?: number }>(
         "/auth/otp/request", { phone: normalizedPhone }, { auth: false },
       );
       sessionStorage.setItem("daftar_otp_flow", JSON.stringify({
         phone: normalizedPhone,
         devCode: result.devCode ?? "",
+        codeLength: result.codeLength,
       }));
       router.replace("/otp");
     } catch (err) {
-      setPhoneError(err instanceof ApiError && err.status === 503
-        ? language === "ar"
-          ? "الدخول بالجوال غير مفعّل بعد. يلزم إعداد مزود رسائل SMS أولًا."
-          : "Phone sign-in is not enabled yet. An SMS provider must be configured first."
-        : err instanceof ApiError
-          ? err.message
-          : language === "ar" ? "تعذر إرسال رمز التحقق، حاول مرة أخرى" : "Could not send the verification code. Please try again.");
+      const status = err instanceof ApiError ? err.status : 0;
+      track("login_failed", { method: "phone", status });
+      setPhoneError(status === 429
+        ? language === "ar" ? "طلبت الرمز أكثر من مرة، انتظر دقيقة ثم حاول" : "Too many code requests. Wait a minute and try again."
+        : status === 503
+          ? language === "ar"
+            ? "إرسال الرسائل غير متاح الآن. ادخل عبر Google أو حاول لاحقًا."
+            : "Text messages are unavailable right now. Sign in with Google or try later."
+          : err instanceof ApiError
+            ? err.message
+            : language === "ar" ? "تعذر إرسال رمز التحقق، حاول مرة أخرى" : "Could not send the verification code. Please try again.");
     } finally {
       setPhoneLoading(false);
     }
@@ -229,7 +235,7 @@ export default function LoginPage() {
           {PHONE_LOGIN_ENABLED && <form onSubmit={handlePhoneSubmit} className="px-6 pb-5">
             <label htmlFor="phone" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Smartphone className="h-3.5 w-3.5 text-primary" />
-              {language === "ar" ? "الدخول برقم الجوال" : "Sign in with mobile"}
+              {language === "ar" ? "الدخول أو التسجيل برقم الجوال" : "Sign in or sign up with your mobile"}
             </label>
             <div className="flex gap-2" dir="ltr">
               <input
