@@ -598,15 +598,12 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
   if (invalidBusinessName(body.name)) return err('Business name is required', 400, 'INVALID_BUSINESS_NAME')
   const supabase = db()
   const userId = user.sub as string
-  const bizId = newId('biz')
-  const ownerPhone = (user.phone as string | undefined) ?? null
-  const { data: business, error } = await supabase.from('Business').insert({
-    id: bizId, ownerPhone, name: body.name.trim(), city: body.city,
-    vatEnabled: body.vatEnabled ?? false, vatNumber: body.vatNumber ?? null,
-  }).select().single()
-  if (error) return err('Could not save record', 400)
-  await supabase.from('User').update({ businessId: bizId }).eq('id', userId)
-  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: bizId })
+  const { data: business, error } = await supabase.rpc('onboard_business', {
+    p_user_id: userId, p_name: body.name.trim(), p_city: body.city ?? null,
+    p_vat_enabled: body.vatEnabled ?? false, p_vat_number: body.vatNumber ?? null,
+  })
+  if (error || !business) return err('تعذر إعداد النشاط؛ حدّث الصفحة وحاول مجددًا', 409)
+  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id })
   return json({ accessToken, business }, 201)
 }
 
@@ -636,14 +633,14 @@ async function handleDashboard(user: Record<string, unknown>) {
     loadSummary(bizId, null),
     loadSummary(bizId, currentRiyadhMonth()),
     db().from('Invoice').select('id,total,paidAmount,status,createdAt,customer:Customer(name)').eq('businessId', bizId)
-      .order('createdAt', { ascending: false }).limit(5),
+      .is('voidedAt', null).order('createdAt', { ascending: false }).limit(5),
   ])
   if (all.error || month.error || recent.error) return err('Could not load report', 503)
   const a = all.data ?? {}, m = month.data ?? {}
   return json({
     revenue: { total: a.totalSales ?? 0, thisMonth: m.totalSales ?? 0 },
     expenses: { total: a.operatingExpenses ?? 0, thisMonth: m.operatingExpenses ?? 0 },
-    profit: { total: (a.totalSales ?? 0) - (a.operatingExpenses ?? 0), thisMonth: (m.totalSales ?? 0) - (m.operatingExpenses ?? 0) },
+    profit: { total: (a.totalSales ?? 0) - (a.operatingExpenses ?? 0) - (a.costOfGoodsSold ?? 0), thisMonth: (m.totalSales ?? 0) - (m.operatingExpenses ?? 0) - (m.costOfGoodsSold ?? 0) },
     invoiceCount: a.invoiceCount ?? 0,
     paidInvoices: a.paidInvoicesCount ?? 0,
     pendingInvoices: a.unpaidInvoicesCount ?? 0,
@@ -878,6 +875,11 @@ function hasImmutableFields(row: Record<string, unknown>): boolean {
 
 async function handlePurchase(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
   if (req.method === 'POST' && id) return err('Method not allowed', 405)
+  if (req.method === 'DELETE' && id) {
+    const { data, error } = await db().rpc('void_purchase_with_inventory', { p_business_id: user.businessId, p_purchase_id: id })
+    if (error) return err('تعذر عكس الشراء: توجد حركة لاحقة أو لا تتوفر بيانات عكس آمنة', 409)
+    return data === true ? new Response(null, { status: 204, headers: CORS }) : err('Not found', 404)
+  }
   if (req.method !== 'POST') return handleCrud(req, user, 'Purchase', id, url)
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid purchase', 400) }
@@ -890,7 +892,11 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
       (body.source != null && !['MANUAL', 'OCR'].includes(body.source as string))) {
     return err('Invalid purchase', 400)
   }
+  if ((body.items as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantity) || !validAmount(item.unitPrice, true))) return err('Invalid line item', 400)
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) return err('Invalid idempotency key', 400)
   const { data, error } = await db().rpc('create_purchase_with_inventory', {
+    p_idempotency_key: idempotencyKey,
     p_business_id: user.businessId as string,
     p_supplier_id: (body.supplierId as string | undefined) ?? null,
     p_supplier_name: (body.supplierName as string | undefined) ?? null,
@@ -900,11 +906,12 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
     p_items: body.items,
   })
   if (error) {
-    console.error('Purchase transaction failed', error.code, error.message)
+    console.error('Purchase transaction failed', error.code)
+    if (error.message === 'Idempotency key reused') return err('تغيرت بيانات الشراء بعد محاولة حفظ سابقة؛ راجع المشتريات قبل المحاولة مجددًا', 422, 'PURCHASE_IDEMPOTENCY_KEY_REUSED')
     return err(error.message.includes('Material not found') || error.message.includes('Supplier not found')
-      ? error.message : 'Could not save purchase', 400)
+      ? error.message : 'Could not save purchase', /not found|Invalid purchase/.test(error.message) ? 400 : 500)
   }
-  return json(data, 201)
+  return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
 }
 
 async function handleProduct(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
@@ -918,6 +925,9 @@ async function handleProduct(req: Request, user: Record<string, unknown>, id?: s
       (body.profitMargin != null && typeof body.profitMargin !== 'number') ||
       (body.recipeItems != null && !Array.isArray(body.recipeItems)) ||
       (req.method === 'POST' && (!body.name || !Array.isArray(body.recipeItems)))) return err('Invalid product', 400)
+  if (body.overheadCost != null && !validAmount(body.overheadCost, true)) return err('Invalid product cost', 400)
+  if (body.profitMargin != null && (!validAmount(body.profitMargin, true) || Number(body.profitMargin) > 95)) return err('Invalid profit margin', 400)
+  if (body.recipeItems != null && (body.recipeItems as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantityUsed, true) || (!item.materialId && !validAmount(item.unitPrice, true)))) return err('Invalid recipe item', 400)
   const { data, error } = await db().rpc('save_product_with_recipe', {
     p_business_id: user.businessId as string, p_product_id: id ?? null,
     p_name: (body.name as string | undefined) ?? null, p_category: (body.category as string | undefined) ?? null,
@@ -942,7 +952,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
     })
     if (error) {
       console.error('Invoice delete failed', error.code)
-      return err('Could not delete invoice', 500)
+      return err('Could not cancel invoice', 500)
     }
     if (deleted !== true) return err('Not found', 404)
     return new Response(null, { status: 204, headers: CORS })
@@ -956,6 +966,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
       (body.dueDate != null && typeof body.dueDate !== 'string') ||
       (body.notes != null && typeof body.notes !== 'string') ||
       !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) return err('Invalid invoice', 400)
+  if ((body.items as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantity) || !validAmount(item.unitPrice, true))) return err('Invalid line item', 400)
   const idempotencyKey = req.headers.get('Idempotency-Key')
   if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) {
     return err('Invalid idempotency key', 400, 'INVALID_IDEMPOTENCY_KEY')
@@ -1012,6 +1023,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return err('Business not set up', 403)
+  if (table === 'StockMovement' && req.method !== 'GET') return err('حركات المخزون للقراءة فقط؛ استخدم التسوية أو العملية الأصلية', 405)
   const sel = TABLE_SELECTS[table] ?? '*'
 
   if (req.method === 'GET') {
@@ -1025,7 +1037,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     }
     const range = monthRange(url?.searchParams.get('month') ?? null)
     const { from, to } = pageOf(url)
-    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range(from, to)
+    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).order('id', { ascending: false }).range(from, to)
+    if (table === 'Invoice' || table === 'Purchase') q = q.is('voidedAt', null)
     if (range) {
       // Expenses and purchases are filtered by their business date, matching the dashboard.
       if (table === 'Expense' || table === 'Purchase') {
@@ -1082,6 +1095,24 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record update', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Material') {
+      const allowed = ['name', 'purchasePrice', 'vatRate', 'reorderLevel']
+      if (Object.keys(body).some(key => !allowed.includes(key)) ||
+          ('name' in body && (typeof body.name !== 'string' || !body.name.trim())) ||
+          ('purchasePrice' in body && !validAmount(body.purchasePrice, true)) ||
+          ('vatRate' in body && (!validAmount(body.vatRate, true) || Number(body.vatRate) > 100)) ||
+          (body.reorderLevel != null && !validAmount(body.reorderLevel, true))) return err('Invalid material update', 400)
+      const { data, error } = await supabase.rpc('update_material_details', { p_business_id: bizId, p_material_id: id, p_body: body })
+      if (error) return err('تعذر تحديث الصنف', 400)
+      return json(data)
+    }
+    const allowedUpdates: Record<string, string[]> = {
+      Customer: ['name', 'phone'], Supplier: ['name', 'phone'],
+      Expense: ['amount', 'category', 'date', 'note'],
+      Invoice: ['status', 'paidAmount', 'expectedPaidAmount', 'dueDate', 'notes', 'customerId'],
+      Purchase: ['notes'],
+    }
+    if (!allowedUpdates[table] || Object.keys(body).some(key => !allowedUpdates[table].includes(key))) return err('Field cannot be changed', 400)
     if (table === 'Expense') {
       const invalid = validateExpense(body, false)
       if (invalid) return err(invalid, 400)
@@ -1089,6 +1120,15 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     if (table === 'Invoice') {
       const invalid = await normalizeInvoiceUpdate(supabase, id, bizId, body)
       if (invalid) return invalid
+    }
+    if (table === 'Invoice' && ('status' in body || 'paidAmount' in body)) {
+      if (Object.keys(body).some(key => !['status', 'paidAmount', 'expectedPaidAmount'].includes(key))) return err('Save payment separately', 400)
+      const { data, error } = await supabase.rpc('set_invoice_payment', {
+        p_business_id: bizId, p_invoice_id: id, p_status: body.status,
+        p_paid_amount: body.paidAmount, p_expected_paid_amount: body.expectedPaidAmount ?? null,
+      })
+      if (error) return err('تغيرت الفاتورة أو تعذر حفظ السداد؛ حدّث الصفحة قبل المحاولة', 409)
+      return json(data)
     }
     // Purchase totals and numbers come from create_purchase_with_inventory and
     // already moved stock; editing them alone would desync the books.
@@ -1254,6 +1294,20 @@ async function handleRequest(req: Request) {
     if (path === '/auth/me' && req.method === 'GET') return authMe(user)
     if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
     if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
+    // Coordinate database/API upgrades without accepting financial writes from
+    // web or native clients. Keep sign-out available during maintenance.
+    if (Deno.env.get('MAINTENANCE_MODE') === 'true') return disabled('دفتر قيد التحديث، حاول مجددًا بعد قليل')
+    if (path === '/business/export' && req.method === 'GET') {
+      if (!user.businessId) return err('Business not set up', 403)
+      const limited = await rateLimit(req, 'business-export', user.sub, 3, { includeIp: false })
+      if (limited) return limited
+      const { data, error } = await db().rpc('export_business_data', { p_business_id: user.businessId })
+      if (error) return err('تعذر تصدير البيانات، حاول مجددًا', 503)
+      const response = json(data)
+      response.headers.set('Content-Disposition', 'attachment; filename="daftar-business-export.json"')
+      response.headers.set('Cache-Control', 'no-store')
+      return response
+    }
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)

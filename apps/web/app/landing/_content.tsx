@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SupportLink from "@/components/SupportLink";
 import PricingSection from "@/components/pricing/PricingSection";
 import CurrentMonth from "./_current-month";
 import LandingTracker from "./_tracker";
@@ -308,8 +309,8 @@ export default function LandingContent() {
         <div className="mx-auto grid w-full max-w-5xl grid-cols-3 gap-4 px-5 py-10 text-center">
           {[
             { num: "0", label: "ريال رسوم اشتراك" },
-            { num: "10×", label: "أسرع من الورقة والقلم" },
-            { num: "<10 ث", label: "لمعرفة ربحك الشهري" },
+            { num: "بخطوات بسيطة", label: "لتسجيل البيع والمصروف" },
+            { num: "بوضوح", label: "لمراجعة نتيجتك الشهرية" },
           ].map(({ num, label }) => (
             <div key={label}>
               <p className="text-2xl font-extrabold text-brand-700 sm:text-3xl">
@@ -539,6 +540,7 @@ export default function LandingContent() {
           </nav>
         </div>
       </footer>
+      <div className="flex justify-center px-5 pb-6"><SupportLink /></div>
 
     </main>
   );

@@ -38,7 +38,7 @@ export default function DashboardScreen() {
     select: (res) => res.data,
   });
 
-  const profit = data?.profit ?? 0;
+  const profit = data?.netProfit ?? 0;
   const isProfitPositive = profit >= 0;
 
   return (
@@ -73,7 +73,7 @@ export default function DashboardScreen() {
               { color: isProfitPositive ? Colors.success : Colors.danger },
             ]}
           >
-            {isLoading ? '—' : formatAmount(profit)}
+            {isLoading || isError ? '—' : formatAmount(profit)}
           </Text>
           <View style={styles.heroDivider} />
           <Text style={styles.heroPeriod}>{getCurrentMonthLabel()}</Text>
@@ -86,12 +86,12 @@ export default function DashboardScreen() {
         <View style={styles.grid}>
           <StatCard
             label="إجمالي المبيعات"
-            value={isLoading ? '—' : formatAmount(data?.totalRevenue ?? 0)}
+            value={isLoading || isError ? '—' : formatAmount(data?.totalSales ?? 0)}
             variant="brand"
           />
           <StatCard
             label="إجمالي المصاريف"
-            value={isLoading ? '—' : formatAmount(data?.totalExpenses ?? 0)}
+            value={isLoading || isError ? '—' : formatAmount(data?.totalExpenses ?? 0)}
             variant="danger"
           />
         </View>

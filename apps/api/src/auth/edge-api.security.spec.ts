@@ -422,6 +422,37 @@ describe('deployed Supabase API security', () => {
   });
 });
 
+describe('audit financial write boundaries', () => {
+  it.each([
+    ['/materials/m-a', 'PATCH', { stockQty: -99 }],
+    ['/materials/m-a', 'PATCH', { unitPrice: -2 }],
+    ['/stock-movements', 'POST', { type: 'SALE', qty: -1, costAmount: 9999 }],
+    ['/stock-movements/s-a', 'DELETE', undefined],
+  ])('rejects generic financial writes: %s %s', async (path, method, body) => {
+    const { handler, user, database, secret } = edgeApi(); user.businessId = 'business-a';
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now()/1000)+3600 });
+    const response = await handler(request(path, method, body, token));
+    expect([400,405]).toContain(response.status);
+    expect(database.from).not.toHaveBeenCalledWith('Material');
+    expect(database.from).not.toHaveBeenCalledWith('StockMovement');
+  });
+  it('maintenance blocks financial operations without blocking sign-out or leaking database faults', async () => {
+    const { handler, database, user, secret } = edgeApi({ MAINTENANCE_MODE: 'true' }); user.businessId = 'business-a';
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now()/1000)+3600 });
+    expect((await handler(request('/invoices','POST',{ items: [] },token))).status).toBe(503);
+    expect(database.rpc).not.toHaveBeenCalledWith('create_invoice_with_inventory',expect.anything());
+    expect((await handler(request('/auth/me','GET',undefined,token))).status).toBe(200);
+  });
+  it('returns failure when the atomic onboarding operation fails', async () => {
+    const { handler, database, secret } = edgeApi();
+    database.rpc.mockImplementation(async (name: string) => name === 'onboard_business' ? { data: null, error: { message: 'link failed' } } : { data: true, error: null });
+    const token = signedJwt(secret, { sub: 'user-1', exp: Math.floor(Date.now()/1000)+3600 });
+    const response = await handler(request('/onboarding','POST',{ name: 'Test' },token));
+    expect(response.status).toBe(409);
+    expect(database.from).not.toHaveBeenCalledWith('Business');
+  });
+});
+
 describe('deleting records', () => {
   function withExpenses(rows: Array<{ id: string; businessId: string }>) {
     const api = edgeApi();
@@ -522,7 +553,7 @@ describe('review findings 2026-10-03', () => {
   // A chainable PostgREST stand-in: every filter returns itself, awaiting yields `result`.
   function query(result: Result) {
     const q: any = {};
-    for (const m of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range', 'limit', 'insert', 'update', 'delete']) q[m] = jest.fn(() => q);
+    for (const m of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range', 'limit', 'is', 'insert', 'update', 'delete']) q[m] = jest.fn(() => q);
     q.single = jest.fn(async () => result);
     q.maybeSingle = jest.fn(async () => result);
     q.then = (resolve: (v: unknown) => unknown, reject: (r: unknown) => unknown) => Promise.resolve(result).then(resolve, reject);

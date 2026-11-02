@@ -42,22 +42,22 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
   return (
     <header className="print:hidden sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className={`mx-auto flex items-center justify-between px-4 py-3 ${wide ? "max-w-7xl sm:px-6 lg:px-8" : "max-w-md"}`}>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span
             className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white"
             style={{ backgroundImage: "linear-gradient(135deg, #4C1D95, #7C3AED)" }}
           >
             {language === "ar" ? "د" : "D"}
           </span>
-          <span className="text-lg font-extrabold text-foreground">
+          <span className="hidden text-lg font-extrabold text-foreground min-[360px]:inline">
             {language === "ar" ? "دفتر" : "Daftar"}
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <Link href="/plans" className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground">{language === "ar" ? "الباقات" : "Plans"}</Link>
           {businessName && (
-            <span className={`${user?.isAdmin ? "max-w-[64px]" : "max-w-[100px]"} truncate text-sm font-medium text-muted-foreground`}>
+            <span title={businessName} className={`${user?.isAdmin ? "max-w-[64px]" : "max-w-[100px]"} hidden min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground min-[420px]:block`}>
               {businessName}
             </span>
           )}

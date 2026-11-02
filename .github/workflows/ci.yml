@@ -130,3 +130,29 @@ jobs:
             test-results/ux-release/
             test-results/session-browser/
             test-results/behavior-browser/
+
+  financial-integrity:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        existing-ledger: ["false", "true"]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: daftar_audit_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AUDIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/daftar_audit_ci
+      AUDIT_BASELINE_LEDGER: ${{ matrix.existing-ledger }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap the production schema fixture and apply remediation migrations
+        run: python3 tests/red-team/bootstrap-audit.py
+      - name: Exercise financial rollback, concurrency and tenant boundaries
+        run: python3 tests/red-team/audit-remediation.py

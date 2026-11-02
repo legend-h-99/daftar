@@ -1,17 +1,24 @@
 import { apiClient } from '../api';
 
 export interface DashboardSummary {
-  totalRevenue: number;
+  totalSales: number;
   totalExpenses: number;
-  profit: number;
+  netProfit: number;
   unpaidInvoicesCount: number;
   unpaidInvoicesTotal: number;
-  month: string; // ISO month string e.g. "2026-07"
+  month?: string;
 }
 
 export const dashboardService = {
-  summary: (month?: string) =>
-    apiClient.get<DashboardSummary>('/dashboard/summary', {
+  summary: async (month = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) => {
+    const response = await apiClient.get<DashboardSummary>('/dashboard/summary', {
       params: month ? { month } : undefined,
-    }),
+    });
+    for (const key of ['totalSales', 'totalExpenses', 'netProfit', 'unpaidInvoicesCount', 'unpaidInvoicesTotal'] as const) {
+      if (typeof response.data[key] !== 'number' || !Number.isFinite(response.data[key])) {
+        throw new Error('تعذر قراءة التقرير؛ بيانات الخادم غير مكتملة');
+      }
+    }
+    return response;
+  },
 };

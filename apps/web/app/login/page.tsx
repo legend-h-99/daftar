@@ -9,6 +9,7 @@ import { track } from "@/lib/analytics";
 import { DEMO_MODE, DEMO_TOKEN } from "@/lib/demo-api";
 import { setToken } from "@/lib/auth";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import SupportLink from "@/components/SupportLink";
 import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
@@ -403,6 +404,7 @@ export default function LoginPage() {
             <Link href="/privacy" className="mt-4 flex min-h-11 items-center justify-center rounded-lg text-sm text-primary underline underline-offset-4">
               {language === "ar" ? "إشعار الخصوصية" : "Privacy notice"}
             </Link>
+            <div className="text-center"><SupportLink ar={language === "ar"} /></div>
           </div>
         </div>
 
