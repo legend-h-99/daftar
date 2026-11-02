@@ -14,6 +14,7 @@ This change prepares the technical repairs from the 2 November audit. It does no
 - F11/F12: future pricing is marked beside the proposed limits. Unmeasured speed claims are removed. Browser print checks cover a long Arabic invoice with 75 lines; physical phone sharing remains a release acceptance task.
 - F13/F14: compatible dependency security updates, runtime mobile report validation, and matching report field names. The release-web audit has zero findings. Remaining native-only dependency findings are listed in the delivery notes rather than hidden by the web filter.
 - Maintenance mode gates authenticated business operations during a coordinated upgrade, including direct native calls. It does not replace a production backup.
+- Cloudflare branch previews are denied API access by default. Configure an isolated staging API before opting in with `DAFTAR_PREVIEW_API_ENABLED=true`; do not review draft financial writes against production.
 
 ## Rollout order — requires a verified production backup
 
