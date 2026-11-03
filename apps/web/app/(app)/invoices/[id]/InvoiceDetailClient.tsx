@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, CheckCircle2, Trash2, ArrowRight, ArrowLeft, Printer } from "lucide-react";
+import { CheckCircle2, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { apiGet, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { fieldClass } from "@/components/ui/form-field";
@@ -11,6 +11,7 @@ import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import StatusBadge from "@/components/StatusBadge";
 import ZatcaQr from "@/components/invoices/ZatcaQr";
+import InvoiceFileActions from "@/components/invoices/InvoiceFileActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
@@ -315,25 +316,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </div>
       )}
 
-      <div className="flex gap-3 print:hidden">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50"
-        >
-          <Printer className="h-4 w-4" />
-          {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
-        </button>
-        <a
-          href={waHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-green-500 py-3 text-sm font-semibold text-white active:bg-green-600"
-        >
-          <MessageCircle className="h-4 w-4" />
-          {en ? "Share on WhatsApp" : "مشاركة عبر واتساب"}
-        </a>
-      </div>
+      {business && <InvoiceFileActions invoice={invoice} business={business} language={language} text={waText} textLink={waHref} />}
 
       {error && (
         <ErrorAlert>{error}</ErrorAlert>

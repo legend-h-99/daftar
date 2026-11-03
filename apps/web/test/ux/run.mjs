@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { PDFDocument } from 'pdf-lib';
 
 const base = process.env.UX_BASE_URL || 'https://daftar-ead.pages.dev';
 const out = path.resolve(process.env.UX_OUTPUT_DIR || '../../outputs/ux-2026-09-06');
@@ -193,13 +194,29 @@ await scenario('Arabic multipage invoice printing preserves amounts and long nam
  const invoice={id:'print-test',number:77,status:'UNPAID',paidAmount:0,subtotal:7500,vatAmount:1125,total:8625,createdAt:'2026-11-03T10:00:00Z',customer:{name:'عميلة اختبار باسم عربي طويل للتأكد من التفاف النص'},items:Array.from({length:75},(_,i)=>({name:`منتج تجريبي بوصف عربي طويل للمكونات والتغليف رقم ${i+1}`,unitPrice:100,quantity:1,lineTotal:100}))};
  await context.route(endpoint('/invoices/print-test'),r=>r.fulfill({json:invoice}));
  await page.goto(`${base}/invoices/detail/view/?id=print-test`,{waitUntil:'networkidle'});
- await page.getByText(invoice.customer.name,{exact:true}).waitFor();
- assert.equal(await page.getByText(invoice.items[74].name,{exact:true}).count(),1);
+ await page.locator('main').getByText(invoice.customer.name,{exact:true}).waitFor();
+ assert.equal(await page.locator('main').getByText(invoice.items[74].name,{exact:true}).count(),1);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Invoice overflows mobile width: '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>{const r=e.getBoundingClientRect();return r.left<0||r.right>innerWidth}).slice(0,12).map(e=>({tag:e.tagName,text:e.textContent?.slice(0,50),width:e.getBoundingClientRect().width})))));
  await page.evaluate(()=>document.fonts.ready);
  await page.emulateMedia({media:'print'});
  await page.pdf({path:path.join(out,'arabic-invoice.pdf'),format:'A4',printBackground:true,margin:{top:'12mm',bottom:'12mm',left:'10mm',right:'10mm'}});
  await page.screenshot({path:path.join(out,'arabic-invoice-print.png')});
+ await page.emulateMedia({media:'screen'});
+ const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'تنزيل PDF',exact:true}).click()]);
+ assert.equal(download.suggestedFilename(),'Daftar-Invoice-77.pdf');
+ const pdfPath=path.join(out,'arabic-invoice-export.pdf');await download.saveAs(pdfPath);
+ const {readFile}=await import('node:fs/promises');
+ const exported=await PDFDocument.load(await readFile(pdfPath));
+ assert(exported.getPageCount()>=3,'Long exported invoice must span pages');
+ await page.evaluate(()=>{
+   Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>files?.[0]?.type==='application/pdf'});
+   Object.defineProperty(navigator,'share',{configurable:true,value:data=>{window.__invoiceShare=data;return Promise.resolve();}});
+ });
+ await page.getByRole('button',{name:'مشاركة PDF مع نص',exact:true}).click();
+ const shared=await page.evaluate(async()=>({type:window.__invoiceShare.files[0].type,name:window.__invoiceShare.files[0].name,header:await window.__invoiceShare.files[0].slice(0,5).text(),text:window.__invoiceShare.text}));
+ assert.equal(shared.header,'%PDF-');assert.equal(shared.type,'application/pdf');
+ assert(shared.text.includes('77')&&shared.text.includes('8,625'),'Message must contain invoice number and total');
+
 });
 await browser.close();
 await writeFile(path.join(out,'results.json'),JSON.stringify({base,runAt:new Date().toISOString(),scope:'Browser UI only; application API calls intercepted with synthetic responses; no production records created',results},null,2));
