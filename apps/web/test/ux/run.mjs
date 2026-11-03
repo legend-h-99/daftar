@@ -11,12 +11,14 @@ const browser = await chromium.launch({
     ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
     : {}),
 });
+const phoneEnabled = process.env.UX_PHONE_LOGIN_ENABLED === 'true';
 const emailEnabled = process.env.UX_EMAIL_LOGIN_ENABLED === 'true';
 const results=[];
 // Match pathname, including API URLs with region/query parameters.
 const endpoint = suffix => url => url.pathname.endsWith(suffix);
 const summary={totalSales:100,totalPurchases:20,costOfGoodsSold:20,operatingExpenses:10,totalExpenses:30,netProfit:70,unpaidInvoices:[],unpaidInvoicesCount:0,unpaidInvoicesTotal:0,lowStock:[]};
 async function scenario(name, options, run){
+ if(process.env.UX_SCENARIO && !name.includes(process.env.UX_SCENARIO))return;
  const context=await browser.newContext({viewport:{width:390,height:844},...options});
  await context.addInitScript(() => {
   let callback;
@@ -51,7 +53,7 @@ async function fixtures(context, failures=false){
 for(const width of [320,390,768,1440]){
  await scenario(`login responsive ${width}px`,{viewport:{width,height:900}},async page=>{
   await login(page);assert.equal(await page.getByLabel('البريد الإلكتروني',{exact:true}).count(),emailEnabled ? 1 : 0);
-  assert.equal(await page.getByText('رقم الجوال',{exact:true}).count(),0);
+  assert.equal(await page.getByLabel('الدخول أو التسجيل برقم الجوال',{exact:true}).count(),phoneEnabled ? 1 : 0);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow');
   const target=emailEnabled ? page.locator('#email') : page.getByRole('button',{name:'Google',exact:true});
   const input=await target.boundingBox();assert(input.width>0 && input.x>=0 && input.x+input.width<=width);
@@ -128,9 +130,9 @@ if (emailEnabled) await scenario('keyboard accessible password visibility contro
 await scenario('reports links distinct and usable at mobile width',{},async(page,context)=>{
  await fixtures(context);await page.goto(`${base}/reports/`,{waitUntil:'networkidle'});
  const section=page.getByRole('region',{name:'تفاصيل التقرير'});await section.waitFor();
- const links=section.locator('a');assert.equal(await links.count(),3);
+ const links=section.locator('a');assert.equal(await links.count(),4);
  const boxes=await links.evaluateAll(es=>es.map(e=>({y:e.getBoundingClientRect().y,height:e.getBoundingClientRect().height,position:getComputedStyle(e).position})));
- assert(boxes[0].y<boxes[1].y && boxes[1].y<boxes[2].y);assert(boxes.every(b=>b.position==='static'&&b.height>=44));
+ assert(boxes.every((b,i)=>i===0||b.y>boxes[i-1].y));assert(boxes.every(b=>b.position==='static'&&b.height>=44));
  await section.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'reports-mobile.png'),fullPage:true});
  await links.first().click();await page.waitForFunction(()=>/\/invoices\/list\/?$/.test(location.pathname));
  assert.equal(await page.locator('nav a[aria-current=page]').innerText(),'الفواتير');
@@ -175,7 +177,7 @@ await scenario('unavailable OCR offers a private manual fallback',{},async(page,
  assert.equal(await page.locator('input[type="file"]').count(),0,'Invoice photos must stay on the device while OCR is disabled');
  await page.getByRole('link',{name:'إدخال الشراء يدويًا'}).waitFor();
 });
-await scenario('privacy discoverability from login',{},async page=>{await login(page);const link=page.getByRole('link',{name:/خصوصية|privacy/i});assert(await link.count(),'No privacy notice link on login');await link.click();await page.getByRole('heading',{level:1,name:/خصوصية|privacy/i}).waitFor();});
+await scenario('privacy discoverability from login',{},async page=>{await login(page);const link=page.getByRole('link',{name:/^(إشعار الخصوصية|Privacy notice)$/i});assert.equal(await page.locator('a[href="mailto:info@daftar1.com"]').count(),1);assert(await link.count(),'No privacy notice link on login');await link.click();await page.getByRole('heading',{level:1,name:/خصوصية|privacy/i}).waitFor();});
 if (emailEnabled) await scenario('dark input text contrast', {colorScheme:'dark'}, async page=>{
  await login(page);await page.locator('#email').fill('ux@example.invalid');
  const contrast=await page.locator('#email').evaluate(e=>{
@@ -184,6 +186,20 @@ if (emailEnabled) await scenario('dark input text contrast', {colorScheme:'dark'
   const luminance=color=>rgb(color).map(c=>{c/=255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4}).reduce((s,c,i)=>s+c*[0.2126,0.7152,0.0722][i],0);
   const style=getComputedStyle(e),a=luminance(style.color),b=luminance(style.backgroundColor);return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
  });assert(contrast>=4.5,`Input text contrast ${contrast.toFixed(2)} is below 4.5`);
+});
+await scenario('Arabic multipage invoice printing preserves amounts and long names',{},async(page,context)=>{
+ await fixtures(context);
+ await context.route(endpoint('/auth/me'),r=>r.fulfill({json:{user:{id:'print-test'},business:{id:'print-business',name:'منشأة اختبار الطباعة العربية',vatEnabled:true,vatNumber:'300000000000003'}}}));
+ const invoice={id:'print-test',number:77,status:'UNPAID',paidAmount:0,subtotal:7500,vatAmount:1125,total:8625,createdAt:'2026-11-03T10:00:00Z',customer:{name:'عميلة اختبار باسم عربي طويل للتأكد من التفاف النص'},items:Array.from({length:75},(_,i)=>({name:`منتج تجريبي بوصف عربي طويل للمكونات والتغليف رقم ${i+1}`,unitPrice:100,quantity:1,lineTotal:100}))};
+ await context.route(endpoint('/invoices/print-test'),r=>r.fulfill({json:invoice}));
+ await page.goto(`${base}/invoices/detail/view/?id=print-test`,{waitUntil:'networkidle'});
+ await page.getByText(invoice.customer.name,{exact:true}).waitFor();
+ assert.equal(await page.getByText(invoice.items[74].name,{exact:true}).count(),1);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Invoice overflows mobile width: '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>{const r=e.getBoundingClientRect();return r.left<0||r.right>innerWidth}).slice(0,12).map(e=>({tag:e.tagName,text:e.textContent?.slice(0,50),width:e.getBoundingClientRect().width})))));
+ await page.evaluate(()=>document.fonts.ready);
+ await page.emulateMedia({media:'print'});
+ await page.pdf({path:path.join(out,'arabic-invoice.pdf'),format:'A4',printBackground:true,margin:{top:'12mm',bottom:'12mm',left:'10mm',right:'10mm'}});
+ await page.screenshot({path:path.join(out,'arabic-invoice-print.png')});
 });
 await browser.close();
 await writeFile(path.join(out,'results.json'),JSON.stringify({base,runAt:new Date().toISOString(),scope:'Browser UI only; application API calls intercepted with synthetic responses; no production records created',results},null,2));

@@ -25,10 +25,9 @@ export class PrismaDashboardQuery implements IDashboardQuery {
       this.prisma.invoice.aggregate({
         where: {
           businessId,
-          status: InvoiceStatus.PAID,
           issueDate: { gte: range.start, lt: range.end },
         },
-        _sum: { total: true },
+        _sum: { subtotal: true },
       }),
       this.prisma.purchase.aggregate({
         where: { businessId, date: { gte: range.start, lt: range.end } },
@@ -91,7 +90,7 @@ export class PrismaDashboardQuery implements IDashboardQuery {
       `,
     ]);
 
-    const totalSales = salesAgg._sum.total ?? 0;
+    const totalSales = salesAgg._sum.subtotal ?? 0;
     const totalPurchases = purchasesAgg._sum.total ?? 0;
     const operatingExpenses = expensesAgg._sum.amount ?? 0;
     const costOfGoodsSold = Number(cogsResult[0]?.cogs ?? 0);

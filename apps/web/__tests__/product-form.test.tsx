@@ -2,6 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@/test/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import ProductForm from "@/components/ProductForm";
+import { apiGet, apiPatch } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/lib/language", () => ({ useLanguage: () => ({ language: "ar" }) }));
@@ -12,6 +13,13 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("product margin controls", () => {
+  it("uses the current linked material price in both preview and saved recipe", async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce([{ id: "m-current", name: "مادة", unit: "PIECE", unitPrice: 3 }]);
+    render(<ProductForm product={{ id: "p-current", name: "منتج", profitMargin: 0, recipeItems: [{ materialId: "m-current", name: "مادة", unit: "PIECE", unitPrice: 1, quantityUsed: 2, type: "RAW" }] } as never} />);
+    await waitFor(() => expect(screen.getAllByText(/6\.00/).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith("/products/p-current", expect.objectContaining({ recipeItems: expect.arrayContaining([expect.objectContaining({ unitPrice: 3, quantityUsed: 2 })]) })));
+  });
   it("keeps the slider and numeric field consistent at the upper boundary", async () => {
     render(<ProductForm />);
     expect(screen.getByRole("note")).toHaveTextContent("تُحسب تكلفة المنتج صفراً");

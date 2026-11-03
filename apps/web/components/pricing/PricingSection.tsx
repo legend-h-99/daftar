@@ -14,6 +14,7 @@ export default function PricingSection() {
               <h3 className="text-xl font-bold">{plan.name}</h3>
               <p className="mt-4"><span className="text-4xl font-extrabold">{plan.monthly}</span><span className="mr-2 text-sm text-gray-600">ريال / شهر</span></p>
               <p className="mt-2 min-h-7 text-sm text-gray-600">{plan.annual ? `${plan.annual} ريال سنويًا، تُدفع مقدمًا عند تفعيل الاشتراكات` : "بدون بطاقة ائتمانية"}</p>
+              <p className="mt-3 text-xs text-amber-800">حدود مقترحة — غير مطبقة حاليًا</p>
               <ul className="mt-6 space-y-3 text-sm leading-6">
                 <li>{plan.invoices} فواتير شهريًا</li>
                 <li>{plan.products} منتجات ووصفات نشطة</li>

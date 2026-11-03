@@ -27,6 +27,13 @@ function request(path: string, method = "GET", headers: Record<string, string> =
 beforeEach(() => { fetchMock.mockReset(); assets.mockClear(); });
 
 describe("Cloudflare session boundary", () => {
+  it("blocks branch previews before they can reach production records", async () => {
+    const req = new Request("https://review.daftar-ead.pages.dev/api-proxy/invoices", {
+      method: "POST", headers: { Origin: "https://review.daftar-ead.pages.dev" }, body: "{}",
+    });
+    expect((await worker.fetch(req, env)).status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it.each(["/auth/google", "/auth/email/login", "/auth/email/verify", "/auth/password/reset", "/onboarding"])("keeps %s credentials out of JSON and sets a secure cookie", async path => {
     const issued = token();
     fetchMock.mockResolvedValue(response({ accessToken: issued, hasBusiness: true }));

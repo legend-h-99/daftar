@@ -66,7 +66,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       throw new Error(`Unexpected import: ${name}`);
     },
     Deno: { env: { get: (key: string) => env[key] }, serve: (fn: Handler) => { handler = fn; } },
-    Request, Response, URL, TextEncoder, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
+    Request, Response, URL, TextEncoder, AbortSignal, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
   };
   runInNewContext(compiled, sandbox);
   if (!handler) throw new Error('Edge handler not registered');
@@ -254,6 +254,57 @@ describe('deployed Supabase API security', () => {
     expect(database.rpc).toHaveBeenCalledTimes(2); // global IP limit only; no SMS budget/provider calls
   });
 
+  const phoneLogin = { PHONE_LOGIN_ENABLED: 'true', AUTHENTICA_API_KEY: 'authentica-test-key', AUTHENTICA_TEMPLATE_ID: '31' };
+  const authenticaReply = (status: number, body: unknown) => ({ status, json: async () => body });
+
+  it('keeps phone OTP disabled while the Authentica key is missing', async () => {
+    const { handler, fetchMock } = edgeApi({ PHONE_LOGIN_ENABLED: 'true' });
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the SMS code through Authentica without exposing the key', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValue(authenticaReply(200, { success: true, data: null, message: 'OTP send successfully' }));
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({ sent: true, codeLength: 6 });
+    expect(text).not.toContain('authentica-test-key');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.authentica.sa/api/v2/send-otp');
+    expect(init.headers['X-Authorization']).toBe('authentica-test-key');
+    expect(JSON.parse(init.body)).toEqual({ method: 'sms', phone: '+966551234567', template_id: 31 });
+  });
+
+  it('signs in only when Authentica confirms the code', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(400, { status: false, message: 'Invalid OTP' }));
+    const rejected = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '111111' }));
+    fetchMock.mockResolvedValueOnce(authenticaReply(200, { status: true, message: 'OTP verified successfully' }));
+    const accepted = await handler(request('/auth/otp/verify', 'POST', { phone: '+966551234567', code: '123456' }));
+
+    expect(rejected.status).toBe(401);
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({ accessToken: expect.any(String), user: { phone: '+966551234567' } });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ phone: '+966551234567', otp: '123456' });
+  });
+
+  it('reports an Authentica outage instead of a wrong code', async () => {
+    const { handler, fetchMock, database } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(401, { errors: [{ message: 'Unauthorized' }] }));
+    const badKey = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '123456' }));
+    fetchMock.mockRejectedValueOnce(new Error('network down'));
+    const offline = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(badKey.status).toBe(503);
+    expect(offline.status).toBe(503);
+    expect(database.from).not.toHaveBeenCalledWith('User');
+  });
+
   it('rejects a Google token issued for another client', async () => {
     const { handler, database, fetchMock } = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
     const response = await handler(request('/auth/google', 'POST', { credential: 'wrong-audience-token' }));
@@ -422,6 +473,37 @@ describe('deployed Supabase API security', () => {
   });
 });
 
+describe('audit financial write boundaries', () => {
+  it.each([
+    ['/materials/m-a', 'PATCH', { stockQty: -99 }],
+    ['/materials/m-a', 'PATCH', { unitPrice: -2 }],
+    ['/stock-movements', 'POST', { type: 'SALE', qty: -1, costAmount: 9999 }],
+    ['/stock-movements/s-a', 'DELETE', undefined],
+  ])('rejects generic financial writes: %s %s', async (path, method, body) => {
+    const { handler, user, database, secret } = edgeApi(); user.businessId = 'business-a';
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now()/1000)+3600 });
+    const response = await handler(request(path, method, body, token));
+    expect([400,405]).toContain(response.status);
+    expect(database.from).not.toHaveBeenCalledWith('Material');
+    expect(database.from).not.toHaveBeenCalledWith('StockMovement');
+  });
+  it('maintenance blocks financial operations without blocking sign-out or leaking database faults', async () => {
+    const { handler, database, user, secret } = edgeApi({ MAINTENANCE_MODE: 'true' }); user.businessId = 'business-a';
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now()/1000)+3600 });
+    expect((await handler(request('/invoices','POST',{ items: [] },token))).status).toBe(503);
+    expect(database.rpc).not.toHaveBeenCalledWith('create_invoice_with_inventory',expect.anything());
+    expect((await handler(request('/auth/me','GET',undefined,token))).status).toBe(200);
+  });
+  it('returns failure when the atomic onboarding operation fails', async () => {
+    const { handler, database, secret } = edgeApi();
+    database.rpc.mockImplementation(async (name: string) => name === 'onboard_business' ? { data: null, error: { message: 'link failed' } } : { data: true, error: null });
+    const token = signedJwt(secret, { sub: 'user-1', exp: Math.floor(Date.now()/1000)+3600 });
+    const response = await handler(request('/onboarding','POST',{ name: 'Test' },token));
+    expect(response.status).toBe(409);
+    expect(database.from).not.toHaveBeenCalledWith('Business');
+  });
+});
+
 describe('deleting records', () => {
   function withExpenses(rows: Array<{ id: string; businessId: string }>) {
     const api = edgeApi();
@@ -522,7 +604,7 @@ describe('review findings 2026-10-03', () => {
   // A chainable PostgREST stand-in: every filter returns itself, awaiting yields `result`.
   function query(result: Result) {
     const q: any = {};
-    for (const m of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range', 'limit', 'insert', 'update', 'delete']) q[m] = jest.fn(() => q);
+    for (const m of ['select', 'eq', 'gte', 'lt', 'gt', 'order', 'range', 'limit', 'is', 'insert', 'update', 'delete']) q[m] = jest.fn(() => q);
     q.single = jest.fn(async () => result);
     q.maybeSingle = jest.fn(async () => result);
     q.then = (resolve: (v: unknown) => unknown, reject: (r: unknown) => unknown) => Promise.resolve(result).then(resolve, reject);

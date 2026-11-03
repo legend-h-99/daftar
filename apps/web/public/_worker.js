@@ -21,6 +21,12 @@ function failure(message, status, clear = false) {
 async function proxy(request, env, url) {
   const path = url.pathname.slice("/api-proxy".length).replace(/\/$/, "");
   const logout = request.method === "POST" && path === "/auth/logout";
+  // Cloudflare branch previews must not silently use the production database.
+  // Enable only after configuring an isolated staging API for that preview.
+  if (url.hostname.endsWith(".pages.dev") && url.hostname !== "daftar-ead.pages.dev" &&
+      env.DAFTAR_PREVIEW_API_ENABLED !== "true") {
+    return failure("هذه نسخة معاينة؛ استخدم daftar1.com لحسابات نشاطك", 503, logout);
+  }
   const safe = request.method === "GET" || request.method === "HEAD";
   const origin = request.headers.get("Origin");
   // Validate the browser's origin even for login (login CSRF). Do not trust

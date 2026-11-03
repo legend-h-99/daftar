@@ -73,7 +73,7 @@ function safeProps(props: Props): Props {
   for (const key of ["items_count", "recipe_items", "days_since_last", "status"]) {
     const value = props[key]; if (typeof value === "number" && Number.isInteger(value) && value >= -1 && value <= 599) safe[key] = value;
   }
-  const enums: Record<string, string[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ["google", "email"], location: ["header", "body"], workflow: ["onboarding", "product", "invoice", "expense", "purchase"] };
+  const enums: Record<string, string[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ["google", "email", "phone"], location: ["header", "body"], workflow: ["onboarding", "product", "invoice", "expense", "purchase"] };
   for (const [key, values] of Object.entries(enums)) if (typeof props[key] === "string" && values.includes(props[key] as string)) safe[key] = props[key];
   return safe;
 }

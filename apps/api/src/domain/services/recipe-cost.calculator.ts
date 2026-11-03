@@ -7,7 +7,7 @@ export interface ComputedCosts {
   sellingPrice: number;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
  * Single source of truth for recipe costing math.
@@ -26,15 +26,17 @@ export function computeRecipeCosts(
   overheadCost: number,
   profitMargin: number,
 ): ComputedCosts {
-  const rawCost = items
+  const rawSum = items
     .filter((i) => i.type === 'RAW')
     .reduce((sum, i) => sum + i.unitPrice * i.quantityUsed, 0);
 
-  const packagingCost = items
+  const packagingSum = items
     .filter((i) => i.type === 'PACKAGING')
     .reduce((sum, i) => sum + i.unitPrice * i.quantityUsed, 0);
 
-  const totalCost = rawCost + packagingCost + overheadCost;
+  const rawCost = round2(rawSum);
+  const packagingCost = round2(packagingSum);
+  const totalCost = round2(rawCost + packagingCost + overheadCost);
   const divisor = 1 - profitMargin / 100;
   const sellingPrice = divisor > 0 ? totalCost / divisor : totalCost;
 
