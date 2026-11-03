@@ -66,7 +66,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       throw new Error(`Unexpected import: ${name}`);
     },
     Deno: { env: { get: (key: string) => env[key] }, serve: (fn: Handler) => { handler = fn; } },
-    Request, Response, URL, TextEncoder, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
+    Request, Response, URL, TextEncoder, AbortSignal, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
   };
   runInNewContext(compiled, sandbox);
   if (!handler) throw new Error('Edge handler not registered');
@@ -252,6 +252,57 @@ describe('deployed Supabase API security', () => {
     expect(await response.text()).not.toMatch(/devCode|123456/);
     expect(database.from).not.toHaveBeenCalled();
     expect(database.rpc).toHaveBeenCalledTimes(2); // global IP limit only; no SMS budget/provider calls
+  });
+
+  const phoneLogin = { PHONE_LOGIN_ENABLED: 'true', AUTHENTICA_API_KEY: 'authentica-test-key', AUTHENTICA_TEMPLATE_ID: '31' };
+  const authenticaReply = (status: number, body: unknown) => ({ status, json: async () => body });
+
+  it('keeps phone OTP disabled while the Authentica key is missing', async () => {
+    const { handler, fetchMock } = edgeApi({ PHONE_LOGIN_ENABLED: 'true' });
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the SMS code through Authentica without exposing the key', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValue(authenticaReply(200, { success: true, data: null, message: 'OTP send successfully' }));
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({ sent: true, codeLength: 6 });
+    expect(text).not.toContain('authentica-test-key');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.authentica.sa/api/v2/send-otp');
+    expect(init.headers['X-Authorization']).toBe('authentica-test-key');
+    expect(JSON.parse(init.body)).toEqual({ method: 'sms', phone: '+966551234567', template_id: 31 });
+  });
+
+  it('signs in only when Authentica confirms the code', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(400, { status: false, message: 'Invalid OTP' }));
+    const rejected = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '111111' }));
+    fetchMock.mockResolvedValueOnce(authenticaReply(200, { status: true, message: 'OTP verified successfully' }));
+    const accepted = await handler(request('/auth/otp/verify', 'POST', { phone: '+966551234567', code: '123456' }));
+
+    expect(rejected.status).toBe(401);
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({ accessToken: expect.any(String), user: { phone: '+966551234567' } });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ phone: '+966551234567', otp: '123456' });
+  });
+
+  it('reports an Authentica outage instead of a wrong code', async () => {
+    const { handler, fetchMock, database } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(401, { errors: [{ message: 'Unauthorized' }] }));
+    const badKey = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '123456' }));
+    fetchMock.mockRejectedValueOnce(new Error('network down'));
+    const offline = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(badKey.status).toBe(503);
+    expect(offline.status).toBe(503);
+    expect(database.from).not.toHaveBeenCalledWith('User');
   });
 
   it('rejects a Google token issued for another client', async () => {

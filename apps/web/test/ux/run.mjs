@@ -11,6 +11,7 @@ const browser = await chromium.launch({
     ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
     : {}),
 });
+const phoneEnabled = process.env.UX_PHONE_LOGIN_ENABLED === 'true';
 const emailEnabled = process.env.UX_EMAIL_LOGIN_ENABLED === 'true';
 const results=[];
 // Match pathname, including API URLs with region/query parameters.
@@ -52,7 +53,7 @@ async function fixtures(context, failures=false){
 for(const width of [320,390,768,1440]){
  await scenario(`login responsive ${width}px`,{viewport:{width,height:900}},async page=>{
   await login(page);assert.equal(await page.getByLabel('البريد الإلكتروني',{exact:true}).count(),emailEnabled ? 1 : 0);
-  assert.equal(await page.getByText('رقم الجوال',{exact:true}).count(),0);
+  assert.equal(await page.getByText('رقم الجوال',{exact:true}).count(),phoneEnabled ? 1 : 0);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow');
   const target=emailEnabled ? page.locator('#email') : page.getByRole('button',{name:'Google',exact:true});
   const input=await target.boundingBox();assert(input.width>0 && input.x>=0 && input.x+input.width<=width);
