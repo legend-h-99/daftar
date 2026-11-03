@@ -9,6 +9,28 @@ permissions:
   contents: read
 
 jobs:
+  mobile-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - run: pnpm install --frozen-lockfile
+      - name: Audit workspace dependencies for high and critical advisories
+        run: pnpm audit --prod --audit-level high
+      - name: Verify parser and Metro compatibility
+        run: node --test apps/mobile/test/dependency-security.test.cjs
+      - name: Type-check mobile
+        run: pnpm --filter @daftar/mobile type-check
+      - name: Build Android and iOS Hermes bundles
+        run: pnpm --filter @daftar/mobile exec expo export --platform ios --platform android --output-dir dist-security --max-workers 2
+        env:
+          CI: "true"
+
   scale-tests:
     runs-on: ubuntu-latest
     services:
