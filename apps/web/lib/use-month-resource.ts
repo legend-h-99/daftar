@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { currentMonthStr, shiftMonth } from "@/lib/format";
 
 interface UseMonthResourceOptions<T> {
+  /** Unique per resource — pages share one QueryClient, so two pages with the same key share cached data. */
+  key: string;
   load: (month: string) => Promise<T>;
   errorMessage: (error: unknown) => string;
   /** محتفظ بها للتوافق مع الكود القديم — React Query يتولى الكاش */
@@ -14,6 +16,7 @@ interface UseMonthResourceOptions<T> {
 }
 
 export function useMonthResource<T>({
+  key,
   load,
   errorMessage,
   staleMs = 30_000,
@@ -21,7 +24,7 @@ export function useMonthResource<T>({
   const [month, setMonth] = useState(currentMonthStr());
 
   const { data, error, isLoading, refetch } = useQuery<T, unknown>({
-    queryKey: ["month-resource", month, load.toString().slice(0, 60)],
+    queryKey: ["month-resource", key, month],
     queryFn: () => load(month),
     staleTime: staleMs,
     gcTime: 5 * 60_000,
