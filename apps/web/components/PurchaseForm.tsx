@@ -15,6 +15,7 @@ import PurchaseRow, {
 } from "@/components/purchases/PurchaseRow";
 import { useLanguage } from "@/lib/language";
 import { currentDateStr } from "@/lib/format";
+import posthog from "posthog-js";
 
 /**
  * Shared purchase entry form. Used empty for manual entry, or pre-filled
@@ -129,6 +130,7 @@ export default function PurchaseForm({
         items,
       }, { headers: { "Idempotency-Key": pendingKey.current } });
       track("purchase_recorded", { items_count: items.length, source });
+      posthog.capture("purchase_recorded", { items_count: items.length, source });
       try { sessionStorage.removeItem("daftar_pending_purchase"); } catch { /* Storage is optional. */ }
       router.push("/inventory?purchaseUpdated=1");
     } catch (err) {

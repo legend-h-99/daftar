@@ -3,10 +3,12 @@
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import * as Sentry from "@sentry/nextjs";
+import posthog from "posthog-js";
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     Sentry.captureException(error);
+    posthog.captureException(error);
   }, [error]);
 
   return (

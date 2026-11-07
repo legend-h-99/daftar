@@ -6,6 +6,7 @@ import { roundQty } from "@/lib/format";
 import { InventoryMaterial, UNIT_LABELS } from "@/lib/types";
 import BottomSheet from "@/components/BottomSheet";
 import { ErrorAlert, Field, fieldClass } from "@/components/ui/form-field";
+import posthog from "posthog-js";
 
 /** نافذة تعديل كمية/سعر/حد إعادة طلب صنف موجود في المخزون. */
 export default function AdjustStockSheet({
@@ -61,6 +62,10 @@ export default function AdjustStockSheet({
       if (Object.keys(patch).length > 0) {
         await apiPatch(`/materials/${material.id}`, patch);
       }
+      posthog.capture("inventory_stock_adjusted", {
+        stock_changed: qty !== material.stockQty,
+        material_settings_changed: Object.keys(patch).length > 0,
+      });
       onSaved();
       onClose();
     } catch (err) {
