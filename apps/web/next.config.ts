@@ -62,15 +62,22 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     const isDev = process.env.NODE_ENV !== "production";
+    const posthogCspHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+    const posthogAssetCspHost = posthogCspHost
+      ?.replace("://us.i.", "://us-assets.i.")
+      .replace("://eu.i.", "://eu-assets.i.");
+    const posthogScriptSrc = posthogCspHost
+      ? ` ${posthogCspHost}${posthogAssetCspHost !== posthogCspHost ? ` ${posthogAssetCspHost}` : ""}`
+      : "";
     const scriptSrc = isDev
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com"
-      : "script-src 'self' 'unsafe-inline' https://accounts.google.com";
+      ? `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com${posthogScriptSrc}`
+      : `script-src 'self' 'unsafe-inline' https://accounts.google.com${posthogScriptSrc}`;
     // In dev, allow the API on any local IP or HTTPS origin (for mobile testing via tunnel).
     // In production, restrict to the known API origin.
     const productionApiOrigin = new URL(apiProxyTarget ?? productionApiUrl).origin;
     const connectSrc = isDev
       ? "connect-src 'self' http://*:3001 https://* https://wa.me"
-      : `connect-src 'self' ${productionApiOrigin} https://accounts.google.com https://wa.me`;
+      : `connect-src 'self' ${productionApiOrigin} https://accounts.google.com https://wa.me${posthogScriptSrc}`;
 
     return [
       {
@@ -88,6 +95,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://accounts.google.com",
               "img-src 'self' data: blob: https://accounts.google.com https://www.gstatic.com",
               "font-src 'self'",
+              "worker-src 'self' blob:",
               connectSrc,
               "frame-src https://accounts.google.com",
               "frame-ancestors 'none'",

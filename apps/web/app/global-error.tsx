@@ -2,12 +2,16 @@
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
+import posthog from "posthog-js";
 
 export default function GlobalError({ error, reset }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => { Sentry.captureException(error); }, [error]);
+  useEffect(() => {
+    Sentry.captureException(error);
+    posthog.captureException(error);
+  }, [error]);
 
   // The root layout/providers/CSS may have failed, so this screen is self-contained.
   return (

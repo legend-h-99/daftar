@@ -7,6 +7,7 @@ import { Supplier } from "@/lib/types";
 import { useLanguage } from "@/lib/language";
 import BottomSheet from "@/components/BottomSheet";
 import { ErrorAlert, Field, fieldClass } from "@/components/ui/form-field";
+import posthog from "posthog-js";
 
 export default function SupplierSheet({
   supplier,
@@ -40,8 +41,10 @@ export default function SupplierSheet({
       const body = { name: trimmed, phone: phone.trim() || undefined };
       if (isEdit) {
         await apiPatch(`/suppliers/${supplier.id}`, body);
+        posthog.capture("supplier_updated");
       } else {
         await apiPost("/suppliers", body);
+        posthog.capture("supplier_created");
       }
       onSaved();
       onClose();

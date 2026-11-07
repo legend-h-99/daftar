@@ -15,6 +15,7 @@ import InvoiceCustomerField from "@/components/invoices/InvoiceCustomerField";
 import InvoiceItemsEditor from "@/components/invoices/InvoiceItemsEditor";
 import InvoiceSummary from "@/components/invoices/InvoiceSummary";
 import { useLanguage } from "@/lib/language";
+import posthog from "posthog-js";
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -126,6 +127,7 @@ export default function NewInvoicePage() {
         notes: notes.trim() || undefined,
       }, { headers: { "Idempotency-Key": idempotencyKey.current } });
       track("invoice_created", { items_count: items.length });
+      posthog.capture("invoice_created", { items_count: items.length });
       router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
       track("workflow_failed", { workflow: "invoice", status: err instanceof ApiError ? err.status : 0 });

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useBusiness } from "@/lib/business-context";
 import { useLanguage } from "@/lib/language";
 import { useTheme } from "@/lib/theme";
+import posthog from "posthog-js";
 
 interface TopBarProps {
   businessName?: string | null;
@@ -35,6 +36,7 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
       }
       // The Worker clears the cookie even when its upstream logout fails.
     }
+    posthog.reset();
     clearToken();
     router.replace("/login");
   }
