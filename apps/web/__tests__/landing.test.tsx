@@ -268,11 +268,11 @@ describe("صفحة الـ Landing", () => {
       expect(questions.length).toBeGreaterThanOrEqual(7);
     });
 
-    it("يوضح موقف دفتر من فوترة هيئة الزكاة والضريبة والجمارك", () => {
+    it("يوضح أنه لا يوجد ربط حاليًا مع هيئة الزكاة والضريبة والجمارك", () => {
       render(<LandingPage />);
       const faq = document.getElementById("faq")!;
       expect(within(faq).getByRole("heading", { name: /هيئة الزكاة والضريبة والجمارك/ })).toBeInTheDocument();
-      expect(within(faq).getByText(/للمرحلة الثانية غير متاح حاليًا/)).toBeInTheDocument();
+      expect(within(faq).getByText(/لا يوجد حاليًا ربط بين دفتر ومنصة «فاتورة»/)).toBeInTheDocument();
     });
 
     it("يعرض سؤال 'ما هو تطبيق دفتر؟' وإجابته", () => {
