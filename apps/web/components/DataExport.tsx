@@ -8,7 +8,9 @@ export default function DataExport({ ar }: { ar: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   useEffect(() => setSignedIn(isAuthenticated()), []);
-  if (!signedIn) return null;
+  if (!signedIn) {
+    return <p className="mt-6 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">{ar ? "زر تنزيل بيانات نشاطك يظهر هنا بعد تسجيل الدخول." : "The button to download your business data appears here after you sign in."}</p>;
+  }
   async function download() {
     setBusy(true); setError(null);
     try {
