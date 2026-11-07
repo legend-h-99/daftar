@@ -4,7 +4,7 @@ import * as bcrypt from 'https://esm.sh/bcryptjs@3.0.3'
 const CORS = {
   'access-control-allow-origin': 'https://daftar-ead.pages.dev',
   'access-control-allow-credentials': 'true',
-  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info, idempotency-key',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info, idempotency-key, x-daftar-analytics-id, x-daftar-analytics-device, x-daftar-analytics-session, x-daftar-analytics-source',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   // Chrome caps this at 2 hours; without it every authorized call pays a preflight.
   'access-control-max-age': '7200',
@@ -32,11 +32,18 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
-// Phone sign-in stays off unless it is deliberately enabled in the Edge Function.
-// This server-side gate also protects native clients that do not use the web flag.
-const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
+// Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
+// secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
+const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
+const AUTHENTICA_TEMPLATE_ID = Number.parseInt(Deno.env.get('AUTHENTICA_TEMPLATE_ID') ?? '1', 10)
+// Must match the OTP length set on the Authentica application; the web form shows this many boxes.
+const AUTHENTICA_OTP_LENGTH = Number.parseInt(Deno.env.get('AUTHENTICA_OTP_LENGTH') ?? '6', 10)
+const AUTHENTICA_API_URL = 'https://api.authentica.sa/api/v2'
+// Phone sign-in stays off unless it is deliberately enabled in the Edge Function and the
+// Authentica key is set. This server-side gate also protects native clients that do not use the web flag.
+const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true' && AUTHENTICA_API_KEY !== ''
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
-// Google is the only public sign-in method. Email/password routes stay closed unless
+// Google (and phone, once enabled above) are the public sign-in methods. Email/password routes stay closed unless
 // deliberately re-enabled; existing password users sign in with Google on the same email.
 const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
 // Platform admins, by sign-in email. Kept in the function's secrets, not in
@@ -101,6 +108,9 @@ async function verifyJwt(token: string): Promise<Record<string, unknown> | null>
     if (parts.length !== 3 || !JWT_SECRET) return null
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
     const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4)
+    // Pin the algorithm: only HS256 tokens this server issues are accepted,
+    // removing any algorithm-confusion/`alg:none` surface.
+    if (JSON.parse(atob(pad(parts[0].replace(/-/g, '+').replace(/_/g, '/')))).alg !== 'HS256') return null
     const sig = Uint8Array.from(atob(pad(parts[2].replace(/-/g, '+').replace(/_/g, '/'))), c => c.charCodeAt(0))
     const valid = await crypto.subtle.verify('HMAC', key, sig, new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
     if (!valid) return null
@@ -235,7 +245,7 @@ function currentRiyadhMonth(): string {
   return new Date(Date.now() + RIYADH_OFFSET_MS).toISOString().slice(0, 7)
 }
 
-const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
+const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "login_method_selected", "otp_stage_reached", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "exit_survey_shown", "exit_survey_answered", "exit_survey_dismissed", "workflow_started", "workflow_failed"]);
 const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -259,7 +269,15 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const occurredAt = Math.abs(Date.now() - Date.parse(body.occurredAt)) <= 15 * 60_000 ? body.occurredAt : new Date().toISOString();
   const props = body.properties;
   if (!props || typeof props !== 'object' || Array.isArray(props)) return err('Invalid properties', 400);
-  const allowed: Record<string, readonly unknown[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
+  const allowed: Record<string, readonly unknown[]> = {
+    stage: ["validation", "api", "network"],
+    reason: ["invalid_amount", "missing_date", "need_more_info", "not_ready", "trust", "pricing", "missing_feature", "prefer_other", "technical_issue"],
+    method: ['google','email','phone'],
+    location: ['header','body','footer'],
+    cta: ['nav_start','hero_try','final_signup','footer_login'],
+    otp_stage: ['request_started','request_succeeded','code_entry_started','verification_started','verified','resent'],
+    workflow: ['onboarding','product','invoice','expense','purchase'],
+  };
   for (const [key, value] of Object.entries(props)) {
     const valid = ['has_business','vat_enabled'].includes(key) ? typeof value === 'boolean'
       : ['items_count','recipe_items','days_since_last','status'].includes(key) ? typeof value === 'number' && Number.isInteger(value) && value >= -1 && value <= 599
@@ -271,6 +289,27 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const { error } = await db().rpc('record_product_event', { p_id: body.id, p_device_id: body.deviceId, p_session_id: body.sessionId, p_event: body.event, p_path: body.path, p_source: body.source, p_properties: props, p_occurred_at: occurredAt });
   if (error) return err('Measurement temporarily unavailable', 503);
   return new Response(null, { status: 204 });
+}
+
+// The browser provides random measurement IDs with an authenticated write.
+// Recording is best-effort and happens only after the database operation has
+// succeeded, so a transport failure can never turn a failed save into a
+// completed analytics event.
+async function recordConfirmedAnalytics(req: Request, event: string, path: string, properties: Record<string, unknown> = {}) {
+  if (Deno.env.get('ANALYTICS_ENABLED') === 'false') return
+  const id = req.headers.get('X-Daftar-Analytics-Id')
+  const deviceId = req.headers.get('X-Daftar-Analytics-Device')
+  const sessionId = req.headers.get('X-Daftar-Analytics-Session')
+  const requestedSource = req.headers.get('X-Daftar-Analytics-Source') ?? 'direct'
+  if (![id, deviceId, sessionId].every(value => typeof value === 'string' && ANALYTICS_UUID.test(value)) ||
+      !ANALYTICS_EVENTS.has(event) || !ANALYTICS_PATHS.has(path)) return
+  const source = ANALYTICS_SOURCES.has(requestedSource) ? requestedSource : 'direct'
+  try {
+    await db().rpc('record_product_event', {
+      p_id: id, p_device_id: deviceId, p_session_id: sessionId, p_event: event,
+      p_path: path, p_source: source, p_properties: properties, p_occurred_at: new Date().toISOString(),
+    })
+  } catch { /* measurement must never affect the accounting response */ }
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -323,37 +362,56 @@ async function authDemoLogin(phone: string) {
   return json({ accessToken, user: { id: userId, phone: normalized, businessId: bizId }, hasBusiness: true, business: { id: bizId, ...store, vatEnabled: true } })
 }
 
+// One call to Authentica. A network failure or timeout comes back as status 0 so the
+// caller can tell an outage apart from a rejected code.
+async function authentica(path: 'send-otp' | 'verify-otp', body: Record<string, unknown>) {
+  try {
+    const res = await fetch(`${AUTHENTICA_API_URL}/${path}`, {
+      method: 'POST',
+      headers: { 'X-Authorization': AUTHENTICA_API_KEY, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    const data = await res.json().catch(() => null) as Record<string, unknown> | null
+    return { status: res.status, data }
+  } catch {
+    return { status: 0, data: null }
+  }
+}
+
 async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
   if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
 
-  const { error } = await db().auth.signInWithOtp({
-    phone,
-    options: { shouldCreateUser: true },
-  })
-  if (error) {
+  const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
+  if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  if (sent.status !== 200 || sent.data?.success !== true) {
     // Keep provider details and phone numbers out of the public response/logs.
+    console.error(`Authentica send-otp failed with status ${sent.status}`)
     return err('Phone verification is temporarily unavailable', 503)
   }
-  return json({ sent: true })
+  return json({ sent: true, codeLength: AUTHENTICA_OTP_LENGTH })
 }
 
 async function authOtpVerify(phoneInput: unknown, code: unknown) {
-  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{4,8}$/.test(code)) {
     return err('Invalid or expired verification code', 400)
   }
   const normalized = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(normalized)) return err('Invalid or expired verification code', 400)
+  const verified = await authentica('verify-otp', { phone: normalized, otp: code })
+  if (verified.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  // No answer, a rejected key or an outage: the code itself was never judged.
+  if (verified.status === 0 || verified.status === 401 || verified.status === 403 || verified.status >= 500) {
+    console.error(`Authentica verify-otp failed with status ${verified.status}`)
+    return err('Phone verification is temporarily unavailable', 503)
+  }
+  if (verified.status !== 200 || verified.data?.status !== true) return err('Invalid or expired verification code', 401)
   const supabase = db()
-  const { data: verification, error: verificationError } = await supabase.auth.verifyOtp({
-    phone: normalized,
-    token: code,
-    type: 'sms',
-  })
-  if (verificationError || !verification.user) return err('Invalid or expired verification code', 401)
   let { data: user } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
+  let isNewUser = false
   if (!user) {
     const { data: created, error } = await supabase
       .from('User').insert({ id: newId('user'), phone: normalized }).select('*').single()
@@ -364,10 +422,11 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       user = raced
     } else {
       user = created
+      isNewUser = true
     }
   }
   const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
-  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
+  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
 async function authMe(user: Record<string, unknown>) {
@@ -875,6 +934,23 @@ async function normalizeInvoiceUpdate(
 function hasImmutableFields(row: Record<string, unknown>): boolean {
   return ['id', 'businessId', 'createdAt', 'updatedAt', 'invoiceId', 'purchaseId'].some(key => key in row)
 }
+// Positive allow-list of client-editable columns for the generic CRUD handler.
+// A denylist alone let a crafted body overwrite server-computed/ledger columns
+// (e.g. Material.stockQty/unitPrice, StockMovement.*) — mass assignment. Only the
+// fields the UI actually edits are accepted; everything else (including computed
+// cost and ledger balances) stays server-authoritative. Material POST is handled
+// by createMaterial (its own allow-list); this covers Material PATCH.
+const MUTABLE_FIELDS: Record<string, string[]> = {
+  Customer: ['name', 'phone'],
+  Supplier: ['name', 'phone'],
+  Expense: ['category', 'amount', 'date', 'note'],
+  Material: ['reorderLevel', 'purchasePrice', 'vatRate'],
+}
+function onlyMutableFields(table: string, row: Record<string, unknown>): boolean {
+  const allowed = MUTABLE_FIELDS[table]
+  if (!allowed) return true
+  return Object.keys(row).every(key => allowed.includes(key))
+}
 
 async function handlePurchase(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
   if (req.method === 'POST' && id) return err('Method not allowed', 405)
@@ -904,6 +980,7 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
     return err(error.message.includes('Material not found') || error.message.includes('Supplier not found')
       ? error.message : 'Could not save purchase', 400)
   }
+  await recordConfirmedAnalytics(req, 'purchase_recorded', '/purchases/new', { items_count: body.items.length })
   return json(data, 201)
 }
 
@@ -981,7 +1058,9 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
   }
   // Apply invoice_paid_amount_atomic before deploying this version: paidAmount
   // is now part of the same transaction as the invoice and stock movements.
-  return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
+  const replayed = (data as { replayed?: boolean } | null)?.replayed === true
+  if (!replayed) await recordConfirmedAnalytics(req, 'invoice_created', '/invoices/new', { items_count: body.items.length })
+  return json(data, replayed ? 200 : 201)
 }
 
 async function createMaterial(supabase: ReturnType<typeof db>, bizId: string, body: Record<string, unknown>) {
@@ -1012,6 +1091,9 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return err('Business not set up', 403)
+  // StockMovement is a ledger: rows are written only by adjust_material_stock
+  // (via /inventory/adjust), never by direct client writes. Expose read-only.
+  if (table === 'StockMovement' && req.method !== 'GET') return err('Method not allowed', 405)
   const sel = TABLE_SELECTS[table] ?? '*'
 
   if (req.method === 'GET') {
@@ -1046,6 +1128,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
     if (table === 'Material') return createMaterial(supabase, bizId, body)
+    if (!onlyMutableFields(table, body)) return err('Invalid field', 400)
     if (table === 'Expense') {
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
@@ -1075,6 +1158,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
       }
     }
     const { data: full } = await supabase.from(table).select(sel).eq('id', rowId).single()
+    if (table === 'Expense') await recordConfirmedAnalytics(req, 'expense_added', '/expenses')
     return json(full ?? data, 201)
   }
 
@@ -1082,6 +1166,12 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record update', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (!onlyMutableFields(table, body)) return err('Invalid field', 400)
+    if (table === 'Material') {
+      if ('purchasePrice' in body && !validAmount(body.purchasePrice, true)) return err('Invalid value', 400)
+      if ('vatRate' in body && (!validAmount(body.vatRate, true) || Number(body.vatRate) > 100)) return err('Invalid value', 400)
+      if ('reorderLevel' in body && !validAmount(body.reorderLevel, true)) return err('Invalid value', 400)
+    }
     if (table === 'Expense') {
       const invalid = validateExpense(body, false)
       if (invalid) return err(invalid, 400)
@@ -1201,13 +1291,16 @@ async function handleRequest(req: Request) {
     if (req.method === 'POST' && path === '/auth/otp/request') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      const limited = await rateLimit(req, 'otp-request', body.phone, 3)
+      // Keyed by the normalized number so 05… and +9665… share one budget.
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      const limited = await rateLimit(req, 'otp-request', phoneKey, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()
