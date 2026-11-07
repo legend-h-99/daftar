@@ -25,9 +25,11 @@ function corsFor(req: Request): Record<string, string> {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-// Prefer a separate signing secret. The service key is a private, deployment-stable
-// fallback until JWT_SECRET is provisioned; never use a source-code literal.
-const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? SERVICE_KEY
+const JWT_SECRET = Deno.env.get('JWT_SECRET')
+if (!JWT_SECRET) throw new Error('JWT_SECRET is required')
+const JWT_ISSUER = 'https://daftar1.com'
+const JWT_AUDIENCE = 'daftar-app'
+const JWT_KEY_ID = 'daftar-session-v1'
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
@@ -63,7 +65,10 @@ const DEMO_STORES: Record<string, { name: string; city: string }> = {
 }
 
 function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
+  const digits = phone
+    .replace(/[\u0660-\u0669]/g, digit => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/\D/g, '')
   if (digits.startsWith('966')) return `+${digits}`
   if (digits.startsWith('0')) return `+966${digits.slice(1)}`
   return `+966${digits}`
@@ -92,9 +97,11 @@ function db() {
 
 async function signJwt(payload: Record<string, unknown>): Promise<string> {
   const enc = (s: string) => btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-  const header = enc(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  if (!JWT_SECRET) throw new Error('JWT configuration missing')
-  const claims = enc(JSON.stringify({ ...payload, jti: crypto.randomUUID(), iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600 }))
+  const header = enc(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: JWT_KEY_ID }))
+  const claims = enc(JSON.stringify({
+    ...payload, iss: JWT_ISSUER, aud: JWT_AUDIENCE,
+    jti: crypto.randomUUID(), iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+  }))
   const data = `${header}.${claims}`
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))
@@ -105,18 +112,21 @@ async function signJwt(payload: Record<string, unknown>): Promise<string> {
 async function verifyJwt(token: string): Promise<Record<string, unknown> | null> {
   try {
     const parts = token.split('.')
-    if (parts.length !== 3 || !JWT_SECRET) return null
+    if (parts.length !== 3) return null
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
     const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4)
     // Pin the algorithm: only HS256 tokens this server issues are accepted,
     // removing any algorithm-confusion/`alg:none` surface.
-    if (JSON.parse(atob(pad(parts[0].replace(/-/g, '+').replace(/_/g, '/')))).alg !== 'HS256') return null
+    const header = JSON.parse(atob(pad(parts[0].replace(/-/g, '+').replace(/_/g, '/'))))
+    if (header.alg !== 'HS256' || header.typ !== 'JWT' || header.kid !== JWT_KEY_ID) return null
     const sig = Uint8Array.from(atob(pad(parts[2].replace(/-/g, '+').replace(/_/g, '/'))), c => c.charCodeAt(0))
     const valid = await crypto.subtle.verify('HMAC', key, sig, new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
     if (!valid) return null
     const p = JSON.parse(atob(pad(parts[1].replace(/-/g, '+').replace(/_/g, '/'))))
     if (typeof p.exp !== 'number' || p.exp <= Math.floor(Date.now() / 1000) ||
-      typeof p.sub !== 'string' || typeof p.jti !== 'string' || !p.jti) return null
+      p.iss !== JWT_ISSUER || p.aud !== JWT_AUDIENCE ||
+      typeof p.sub !== 'string' || typeof p.jti !== 'string' || !p.jti ||
+      typeof p.sv !== 'number' || !Number.isInteger(p.sv) || p.sv < 0) return null
     return p
   } catch { return null }
 }
@@ -133,11 +143,11 @@ async function getUser(req: Request): Promise<Record<string, unknown> | Response
   // One parallel round trip: revocation, account and the per-account rate limit.
   const [blacklist, account, limited] = await Promise.all([
     supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
-    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified').eq('id', claims.sub).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified,sessionVersion').eq('id', claims.sub).maybeSingle(),
     rateLimit(req, 'api-account', claims.sub, 100, { includeIp: false }),
   ])
   if (blacklist.error || account.error) return err('Service temporarily unavailable', 503)
-  if (blacklist.data || !account.data) return err('Unauthorized', 401)
+  if (blacklist.data || !account.data || claims.sv !== account.data.sessionVersion) return err('Unauthorized', 401)
   if (limited) return limited
   const row = account.data
   return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified }
@@ -319,7 +329,9 @@ async function recordConfirmedAnalytics(req: Request, event: string, path: strin
 
 async function authGoogle(credential: string) {
   if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
-  const tokenRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`)
+  const tokenRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, {
+    signal: AbortSignal.timeout(10_000),
+  })
   if (!tokenRes.ok) return err('Invalid Google token', 401)
   const payload = await tokenRes.json()
   if (payload.aud !== GOOGLE_CLIENT_ID || payload.email_verified !== 'true' && payload.email_verified !== true) return err('Invalid Google token', 401)
@@ -335,11 +347,17 @@ async function authGoogle(credential: string) {
   if (!user) {
     const { data: byEmail } = await supabase.from('User').select('*').eq('email', email).maybeSingle()
     if (byEmail) {
-      await supabase.from('User').update({ googleId, name: byEmail.name ?? name }).eq('id', byEmail.id)
-      user = { ...byEmail, googleId }
+      if (byEmail.emailVerified !== true) {
+        return err('Verify the existing email account before linking Google', 409, 'ACCOUNT_LINK_REQUIRES_VERIFICATION')
+      }
+      const { error: linkError } = await supabase.from('User')
+        .update({ googleId, name: byEmail.name ?? name }).eq('id', byEmail.id)
+      if (linkError) return err('Could not link account', 500)
+      user = { ...byEmail, googleId, emailVerified: true }
     } else {
       const userId = newId('user')
-      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name }).select().single()
+      const { data: created, error: insertErr } = await supabase.from('User')
+        .insert({ id: userId, email, googleId, name, emailVerified: true }).select().single()
       if (insertErr) return err('Could not create account', 500)
       user = created
       isNewUser = true
@@ -347,7 +365,7 @@ async function authGoogle(credential: string) {
   }
   if (!user) return err('Could not create user', 500)
 
-  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId, sv: user.sessionVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, email, name: user.name ?? name, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -361,7 +379,7 @@ async function authDemoLogin(phone: string) {
   const userId = `user_demo_${normalized.replace(/\+/g, '')}`
   await supabase.from('Business').upsert({ id: bizId, ownerPhone: normalized, name: store.name, city: store.city, vatEnabled: true, vatNumber: '300000000000003' }, { onConflict: 'id' })
   await supabase.from('User').upsert({ id: userId, phone: normalized, businessId: bizId }, { onConflict: 'id' })
-  const accessToken = await signJwt({ sub: userId, phone: normalized, businessId: bizId })
+  const accessToken = await signJwt({ sub: userId, phone: normalized, businessId: bizId, sv: 0 })
   return json({ accessToken, user: { id: userId, phone: normalized, businessId: bizId }, hasBusiness: true, business: { id: bizId, ...store, vatEnabled: true } })
 }
 
@@ -428,7 +446,7 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       isNewUser = true
     }
   }
-  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId, sv: user.sessionVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -441,7 +459,7 @@ async function authMe(user: Record<string, unknown>) {
 
 function validEmailInput(email: unknown, password: unknown): email is string {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    typeof password === 'string' && password.length >= 8 && password.length <= 128
+    typeof password === 'string' && password.length >= 8 && new TextEncoder().encode(password).byteLength <= 72
 }
 
 async function sendVerificationEmail(email: string, token: string): Promise<boolean> {
@@ -457,6 +475,7 @@ async function sendVerificationEmail(email: string, token: string): Promise<bool
       subject: 'Confirm your Daftar email address',
       html: `<p>Confirm your Daftar account:</p><p><a href="${link}">Confirm email</a></p><p>This link expires in 24 hours.</p>`,
     }),
+    signal: AbortSignal.timeout(10_000),
   })
   return response.ok
 }
@@ -474,6 +493,7 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
       subject: 'Reset your Daftar password',
       html: `<p>We received a request to reset your Daftar password.</p><p><a href="${link}">Choose a new password</a></p><p>This link expires in 1 hour.</p>`,
     }),
+    signal: AbortSignal.timeout(10_000),
   })
   return response.ok
 }
@@ -484,19 +504,18 @@ async function authEmailRegister(body: Record<string, unknown>) {
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
-  const { data: existing } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
-  if (existing?.emailVerified) return err('Email already registered', 400)
-  const passwordHash = await bcrypt.hash(body.password as string, 12)
-  let userId: string
+  const { data: existing, error: lookupError } = await supabase.from('User').select('id').eq('email', email).maybeSingle()
+  if (lookupError) return err('Could not register', 500)
+  // Never replace credentials from registration. The response is deliberately
+  // indistinguishable so the endpoint cannot be used to enumerate accounts.
   if (existing) {
-    userId = existing.id
-    const { error } = await supabase.from('User').update({ passwordHash, name }).eq('id', userId)
-    if (error) return err('Could not register', 500)
-  } else {
-    userId = newId('user')
-    const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
-    if (error) return err('Could not register', 500)
+    await bcrypt.hash(body.password as string, 12)
+    return json({ sent: true })
   }
+  const passwordHash = await bcrypt.hash(body.password as string, 12)
+  const userId = newId('user')
+  const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
+  if (error) return err('Could not register', 500)
   const issued = await issueVerificationLink(userId, email)
   if (issued === 'FAILED') return err('Could not register', 500)
   if (issued === 'UNDELIVERED') return err('Could not send verification email', 503)
@@ -508,6 +527,11 @@ function randomToken(): string {
   return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 type LinkOutcome = 'SENT' | 'FAILED' | 'UNDELIVERED'
 
 // Replaces any pending verification link with a new one and emails it.
@@ -516,7 +540,7 @@ async function issueVerificationLink(userId: string, email: string): Promise<Lin
   await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
   const token = randomToken()
   const { error } = await supabase.from('EmailVerification').insert({
-    id: newId('verification'), userId, token,
+    id: newId('verification'), userId, token: await hashToken(token),
     expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
   })
   if (error) return 'FAILED'
@@ -529,7 +553,7 @@ async function issuePasswordResetLink(userId: string, email: string): Promise<Li
   await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
   const token = randomToken()
   const { error } = await supabase.from('PasswordReset').insert({
-    id: newId('reset'), userId, token,
+    id: newId('reset'), userId, token: await hashToken(token),
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   })
   if (error) return 'FAILED'
@@ -545,12 +569,12 @@ async function authEmailLogin(body: Record<string, unknown>) {
   if (typeof body.email !== 'string' || typeof body.password !== 'string') return invalid()
   const supabase = db()
   const email = body.email.trim().toLowerCase()
-  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
+  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified,sessionVersion').eq('email', email).maybeSingle()
   if (error) return err('Service temporarily unavailable', 503)
   const passwordMatches = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH) && Boolean(user?.passwordHash)
   if (!passwordMatches) return invalid()
   if (!user.emailVerified) return err('Please verify your email address first', 403, 'EMAIL_NOT_VERIFIED')
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, sv: user.sessionVersion ?? 0 })
   return json({
     accessToken,
     user: { id: user.id, email: user.email, name: user.name, businessId: user.businessId },
@@ -577,38 +601,34 @@ async function authPasswordForgot(body: Record<string, unknown>) {
 
 async function authPasswordReset(body: Record<string, unknown>) {
   if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token) ||
-      typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 128) {
+      typeof body.password !== 'string' || body.password.length < 8 || new TextEncoder().encode(body.password).byteLength > 72) {
     return err('Invalid or expired password reset link', 400)
   }
   const supabase = db()
-  const { data: record } = await supabase.from('PasswordReset').select('id,userId').eq('token', body.token)
-    .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
-  if (!record) return err('Invalid or expired password reset link', 400)
-
   const passwordHash = await bcrypt.hash(body.password, 12)
-  const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true })
-    .eq('id', record.userId).select('id,email,phone,name,businessId').single()
-  const { error: resetError } = await supabase.from('PasswordReset').update({ consumed: true })
-    .eq('id', record.id).eq('consumed', false)
-  if (userError || resetError || !user) return err('Could not reset password', 500)
+  const { data: user, error } = await supabase.rpc('reset_password_and_revoke_sessions', {
+    p_token_hash: await hashToken(body.token), p_password_hash: passwordHash,
+  })
+  if (error) return err('Could not reset password', 500)
+  if (!user) return err('Invalid or expired password reset link', 400)
 
-  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId, sv: user.sessionVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
 async function authEmailVerify(body: Record<string, unknown>) {
   if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) return err('Invalid verification link', 400)
   const supabase = db()
-  const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', body.token)
+  const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', await hashToken(body.token))
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
   if (!record) return err('Invalid or expired verification link', 400)
   const { data: consumed } = await supabase.from('EmailVerification').update({ consumed: true })
     .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
   if (!consumed) return err('Invalid or expired verification link', 400)
   const { data: user, error } = await supabase.from('User').update({ emailVerified: true })
-    .eq('id', record.userId).select('id,email,phone,name,businessId').single()
+    .eq('id', record.userId).select('id,email,phone,name,businessId,sessionVersion').single()
   if (error || !user) return err('Could not verify email', 500)
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, sv: user.sessionVersion ?? 0 })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
@@ -668,7 +688,7 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
   }).select().single()
   if (error) return err('Could not save record', 400)
   await supabase.from('User').update({ businessId: bizId }).eq('id', userId)
-  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: bizId })
+  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: bizId, sv: user.sv })
   return json({ accessToken, business }, 201)
 }
 
@@ -957,6 +977,13 @@ function onlyMutableFields(table: string, row: Record<string, unknown>): boolean
 
 async function handlePurchase(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
   if (req.method === 'POST' && id) return err('Method not allowed', 405)
+  if (req.method === 'DELETE' && id) {
+    const { data, error } = await db().rpc('void_purchase_with_inventory', {
+      p_business_id: user.businessId, p_purchase_id: id,
+    })
+    if (error) return err('تعذر عكس الشراء: توجد حركة لاحقة أو لا تتوفر بيانات عكس آمنة', 409)
+    return data === true ? new Response(null, { status: 204, headers: CORS }) : err('Not found', 404)
+  }
   if (req.method !== 'POST') return handleCrud(req, user, 'Purchase', id, url)
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid purchase', 400) }
@@ -969,7 +996,11 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
       (body.source != null && !['MANUAL', 'OCR'].includes(body.source as string))) {
     return err('Invalid purchase', 400)
   }
+  if ((body.items as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantity) || !validAmount(item.unitPrice, true))) return err('Invalid line item', 400)
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) return err('Invalid idempotency key', 400)
   const { data, error } = await db().rpc('create_purchase_with_inventory', {
+    p_idempotency_key: idempotencyKey,
     p_business_id: user.businessId as string,
     p_supplier_id: (body.supplierId as string | undefined) ?? null,
     p_supplier_name: (body.supplierName as string | undefined) ?? null,
@@ -1110,7 +1141,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     }
     const range = monthRange(url?.searchParams.get('month') ?? null)
     const { from, to } = pageOf(url)
-    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range(from, to)
+    let q = supabase.from(table).select(sel).eq('businessId', bizId)
+      .order('createdAt', { ascending: false }).order('id', { ascending: false }).range(from, to)
     if (range) {
       // Expenses and purchases are filtered by their business date, matching the dashboard.
       if (table === 'Expense' || table === 'Purchase') {
@@ -1171,9 +1203,16 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     if (hasOversizedText(body)) return err('Text is too long', 400)
     if (!onlyMutableFields(table, body)) return err('Invalid field', 400)
     if (table === 'Material') {
-      if ('purchasePrice' in body && !validAmount(body.purchasePrice, true)) return err('Invalid value', 400)
-      if ('vatRate' in body && (!validAmount(body.vatRate, true) || Number(body.vatRate) > 100)) return err('Invalid value', 400)
-      if ('reorderLevel' in body && !validAmount(body.reorderLevel, true)) return err('Invalid value', 400)
+      if (Object.keys(body).some(key => !['name', 'purchasePrice', 'vatRate', 'reorderLevel'].includes(key)) ||
+          ('name' in body && (typeof body.name !== 'string' || !body.name.trim())) ||
+          ('purchasePrice' in body && !validAmount(body.purchasePrice, true)) ||
+          ('vatRate' in body && (!validAmount(body.vatRate, true) || Number(body.vatRate) > 100)) ||
+          (body.reorderLevel != null && !validAmount(body.reorderLevel, true))) return err('Invalid material update', 400)
+      const { data, error } = await supabase.rpc('update_material_details', {
+        p_business_id: bizId, p_material_id: id, p_body: body,
+      })
+      if (error) return err('تعذر تحديث الصنف', 400)
+      return json(data)
     }
     if (table === 'Expense') {
       const invalid = validateExpense(body, false)
@@ -1303,43 +1342,43 @@ async function handleRequest(req: Request) {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
-      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
+      return (await rateLimit(req, 'otp-verify', phoneKey, 5)) ?? await authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()
       if (!DEMO_AUTH_ENABLED) return err('Demo login is disabled', 404)
-      return await rateLimit(req, 'demo', body.phone, 10) ?? authDemoLogin(body.phone)
+      return (await rateLimit(req, 'demo', body.phone, 10)) ?? await authDemoLogin(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/google') {
       const body = await req.json()
       if (!GOOGLE_CLIENT_ID) return disabled('Google login is not configured')
-      return await rateLimit(req, 'google', body.credential, 20) ?? authGoogle(body.credential)
+      return (await rateLimit(req, 'google', body.credential, 20)) ?? await authGoogle(body.credential)
     }
     if (req.method === 'POST' && path === '/auth/email/register') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
       if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
-      return await rateLimit(req, 'email-register', body.email, 5) ?? authEmailRegister(body)
+      return (await rateLimit(req, 'email-register', body.email, 5)) ?? await authEmailRegister(body)
     }
     if (req.method === 'POST' && path === '/auth/email/login') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
-      return await rateLimit(req, 'email-login', body.email, 10) ?? authEmailLogin(body)
+      return (await rateLimit(req, 'email-login', body.email, 10)) ?? await authEmailLogin(body)
     }
     if (req.method === 'POST' && path === '/auth/email/verify') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
-      return await rateLimit(req, 'email-verify', body.token, 10) ?? authEmailVerify(body)
+      return (await rateLimit(req, 'email-verify', body.token, 10)) ?? await authEmailVerify(body)
     }
     if (req.method === 'POST' && path === '/auth/password/forgot') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
-      return await rateLimit(req, 'password-forgot', body.email, 3) ?? authPasswordForgot(body)
+      return (await rateLimit(req, 'password-forgot', body.email, 3)) ?? await authPasswordForgot(body)
     }
     if (req.method === 'POST' && path === '/auth/password/reset') {
       if (!EMAIL_LOGIN_ENABLED) return err('Email sign-in is disabled', 404)
       const body = await req.json()
-      return await rateLimit(req, 'password-reset', body.token, 10) ?? authPasswordReset(body)
+      return (await rateLimit(req, 'password-reset', body.token, 10)) ?? await authPasswordReset(body)
     }
 
     // getUser also applies the per-account cap in the same round trip.
@@ -1347,15 +1386,15 @@ async function handleRequest(req: Request) {
     if (ipLimited) return ipLimited
     if (user instanceof Response) return user
 
-    if (path === '/auth/me' && req.method === 'GET') return authMe(user)
+    if (path === '/auth/me' && req.method === 'GET') return await authMe(user)
     if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
-    if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
-    if (seg[0] === 'business') return handleBusiness(req, user)
-    if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
-    if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)
-    if (path === '/dashboard/summary' && req.method === 'GET') return handleDashboardSummary(user, url.searchParams.get('month'))
-    if (seg[0] === 'inventory') return handleInventory(req, user, seg[1], url)
-    if (path === '/purchases/summary' && req.method === 'GET') return handlePurchasesSummary(user)
+    if (path === '/auth/logout' && req.method === 'POST') return await authLogout(req.headers.get('Authorization')!.slice(7))
+    if (seg[0] === 'business') return await handleBusiness(req, user)
+    if (path === '/onboarding' && req.method === 'POST') return await handleOnboarding(req, user)
+    if (path === '/dashboard' && req.method === 'GET') return await handleDashboard(user)
+    if (path === '/dashboard/summary' && req.method === 'GET') return await handleDashboardSummary(user, url.searchParams.get('month'))
+    if (seg[0] === 'inventory') return await handleInventory(req, user, seg[1], url)
+    if (path === '/purchases/summary' && req.method === 'GET') return await handlePurchasesSummary(user)
     if (path === '/purchases/scan' && req.method === 'POST') return err('ميزة المسح غير متاحة في هذه النسخة', 501)
     if (seg[0] === 'invoices' && seg[2] === 'pdf') return err('تحميل PDF غير متاح حالياً', 501)
     if (seg[0] === 'invoices') return await handleInvoice(req, user, seg[1], url)
@@ -1387,5 +1426,8 @@ Deno.serve(async (req: Request) => {
   const headers: Record<string, string> = {}
   response.headers.forEach((value, key) => { if (key !== EXPECTED_HEADER) headers[key] = value })
   Object.entries(corsFor(req)).forEach(([key, value]) => { headers[key] = value })
+  headers['cache-control'] = 'no-store'
+  headers['x-content-type-options'] = 'nosniff'
+  headers.vary = headers.vary ? `${headers.vary}, Origin` : 'Origin'
   return new Response(response.body, { status: response.status, headers })
 })

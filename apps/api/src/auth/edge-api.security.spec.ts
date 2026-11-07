@@ -17,8 +17,8 @@ function edgeApi(settings: Record<string, string> = {}) {
   let handler: Handler | undefined;
   const clientOptions: unknown[] = [];
   const revoked = new Set<string>();
-  const user: { id: string; phone: string | null; email: string; googleId: string | null; businessId: string | null; passwordHash?: string; emailVerified?: boolean } = {
-    id: 'user-1', phone: null, email: 'audit@example.invalid', googleId: null, businessId: null,
+  const user: { id: string; phone: string | null; email: string; googleId: string | null; businessId: string | null; passwordHash?: string; emailVerified?: boolean; sessionVersion: number } = {
+    id: 'user-1', phone: null, email: 'audit@example.invalid', googleId: null, businessId: null, sessionVersion: 0,
   };
   const database = {
     rpc: jest.fn().mockResolvedValue({ data: true, error: null }),
@@ -52,6 +52,7 @@ function edgeApi(settings: Record<string, string> = {}) {
   const env: Record<string, string> = {
     SUPABASE_URL: 'https://project.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key-with-enough-entropy',
+    JWT_SECRET: 'test-jwt-secret-with-enough-entropy',
     ...settings,
   };
   const fetchMock = jest.fn().mockResolvedValue({
@@ -66,7 +67,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       throw new Error(`Unexpected import: ${name}`);
     },
     Deno: { env: { get: (key: string) => env[key] }, serve: (fn: Handler) => { handler = fn; } },
-    Request, Response, URL, TextEncoder, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
+    Request, Response, URL, TextEncoder, AbortSignal, crypto: webcrypto, btoa, atob, console, fetch: fetchMock,
   };
   runInNewContext(compiled, sandbox);
   if (!handler) throw new Error('Edge handler not registered');
@@ -83,8 +84,11 @@ function request(path: string, method = 'GET', body?: unknown, bearer?: string):
 }
 
 function signedJwt(secret: string, claims: Record<string, unknown>, includeJti = true): string {
-  const head = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ ...(includeJti ? { jti: 'test-token' } : {}), ...claims })).toString('base64url');
+  const head = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: 'daftar-session-v1' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    ...(includeJti ? { jti: 'test-token' } : {}),
+    iss: 'https://daftar1.com', aud: 'daftar-app', sv: 0, ...claims,
+  })).toString('base64url');
   const data = `${head}.${payload}`;
   return `${data}.${createHmac('sha256', secret).update(data).digest('base64url')}`;
 }
@@ -226,11 +230,39 @@ describe('deployed Supabase API security', () => {
       expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(204);
       expect(database.rpc).not.toHaveBeenCalled();
     });
+    it('accepts only enumerated journey properties', async () => {
+      const { handler, database } = edgeApi();
+      const response = await handler(request('/analytics/events', 'POST', {
+        ...event, event: 'exit_survey_answered', path: '/', properties: { reason: 'pricing' },
+      }));
+      expect(response.status).toBe(204);
+      expect(database.rpc).toHaveBeenCalledWith('record_product_event', expect.objectContaining({
+        p_event: 'exit_survey_answered', p_properties: { reason: 'pricing' },
+      }));
+    });
     it('rate limits collection before writing any event', async () => {
       const { handler, database } = edgeApi(); database.rpc.mockResolvedValue({ data: false, error: null });
       expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
       expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
     });
+  });
+
+  it('records a server-confirmed invoice only after the transaction succeeds', async () => {
+    const { handler, database, user, secret } = edgeApi();
+    user.businessId = 'business-1';
+    database.rpc.mockImplementation(async (name: string) => name === 'create_invoice_with_inventory'
+      ? { data: { id: 'invoice-confirmed', replayed: false }, error: null }
+      : { data: true, error: null });
+    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const req = request('/invoices', 'POST', { items: [{ name: 'Cake', unitPrice: 10, quantity: 1 }] }, token);
+    req.headers.set('X-Daftar-Analytics-Id', '11111111-1111-4111-8111-111111111111');
+    req.headers.set('X-Daftar-Analytics-Device', '22222222-2222-4222-8222-222222222222');
+    req.headers.set('X-Daftar-Analytics-Session', '33333333-3333-4333-8333-333333333333');
+    req.headers.set('X-Daftar-Analytics-Source', 'direct');
+    expect((await handler(req)).status).toBe(201);
+    expect(database.rpc).toHaveBeenCalledWith('record_product_event', expect.objectContaining({
+      p_event: 'invoice_created', p_path: '/invoices/new', p_properties: { items_count: 1 },
+    }));
   });
 
   it('routes both the production and candidate function prefixes', async () => {
@@ -252,6 +284,57 @@ describe('deployed Supabase API security', () => {
     expect(await response.text()).not.toMatch(/devCode|123456/);
     expect(database.from).not.toHaveBeenCalled();
     expect(database.rpc).toHaveBeenCalledTimes(2); // global IP limit only; no SMS budget/provider calls
+  });
+
+  const phoneLogin = { PHONE_LOGIN_ENABLED: 'true', AUTHENTICA_API_KEY: 'authentica-test-key', AUTHENTICA_TEMPLATE_ID: '31' };
+  const authenticaReply = (status: number, body: unknown) => ({ status, json: async () => body });
+
+  it('keeps phone OTP disabled while the Authentica key is missing', async () => {
+    const { handler, fetchMock } = edgeApi({ PHONE_LOGIN_ENABLED: 'true' });
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the SMS code through Authentica without exposing the key', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValue(authenticaReply(200, { success: true, data: null, message: 'OTP send successfully' }));
+    const response = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({ sent: true, codeLength: 6 });
+    expect(text).not.toContain('authentica-test-key');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.authentica.sa/api/v2/send-otp');
+    expect(init.headers['X-Authorization']).toBe('authentica-test-key');
+    expect(JSON.parse(init.body)).toEqual({ method: 'sms', phone: '+966551234567', template_id: 31 });
+  });
+
+  it('signs in only when Authentica confirms the code', async () => {
+    const { handler, fetchMock } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(400, { status: false, message: 'Invalid OTP' }));
+    const rejected = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '111111' }));
+    fetchMock.mockResolvedValueOnce(authenticaReply(200, { status: true, message: 'OTP verified successfully' }));
+    const accepted = await handler(request('/auth/otp/verify', 'POST', { phone: '+966551234567', code: '123456' }));
+
+    expect(rejected.status).toBe(401);
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({ accessToken: expect.any(String), user: { phone: '+966551234567' } });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ phone: '+966551234567', otp: '123456' });
+  });
+
+  it('reports an Authentica outage instead of a wrong code', async () => {
+    const { handler, fetchMock, database } = edgeApi(phoneLogin);
+    fetchMock.mockResolvedValueOnce(authenticaReply(401, { errors: [{ message: 'Unauthorized' }] }));
+    const badKey = await handler(request('/auth/otp/verify', 'POST', { phone: '0551234567', code: '123456' }));
+    fetchMock.mockRejectedValueOnce(new Error('network down'));
+    const offline = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
+
+    expect(badKey.status).toBe(503);
+    expect(offline.status).toBe(503);
+    expect(database.from).not.toHaveBeenCalledWith('User');
   });
 
   it('rejects a Google token issued for another client', async () => {
@@ -360,7 +443,7 @@ describe('deployed Supabase API security', () => {
     expect(result.user).not.toHaveProperty('passwordHash');
   });
 
-  it('sends verification without returning the token to the registrant', async () => {
+  it('does not overwrite or reveal an existing unverified account during registration', async () => {
     const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
     user.emailVerified = false;
 
@@ -370,7 +453,7 @@ describe('deployed Supabase API security', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ sent: true });
-    expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
+    expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 
   it('rejects the same JWT after logout adds its identifier to the blacklist', async () => {
@@ -815,14 +898,14 @@ describe('reading a product for editing', () => {
 
 describe('platform admin and support', () => {
   type Row = Record<string, unknown>;
-  const ADMIN = { id: 'user-admin', email: 'owner@example.invalid', googleId: 'g-1', emailVerified: false, phone: null, businessId: 'business-a', name: 'حسام' };
+  const ADMIN = { id: 'user-admin', email: 'owner@example.invalid', googleId: 'g-1', emailVerified: false, phone: null, businessId: 'business-a', name: 'حسام', sessionVersion: 0 };
 
   // Users are looked up by id; every other table records what was written.
   function adminApi(options: { caller?: Row; target?: Row | null; settings?: Record<string, string> } = {}) {
     const api = edgeApi({ ADMIN_EMAILS: 'Owner@Example.invalid', RESEND_API_KEY: 'test-delivery-key', ...options.settings });
     const caller = { ...ADMIN, ...options.caller };
     const target = options.target === undefined
-      ? { id: 'user-target', email: 'customer@example.invalid', googleId: null, emailVerified: true, passwordHash: 'hash', name: 'زبون' }
+      ? { id: 'user-target', email: 'customer@example.invalid', googleId: null, emailVerified: true, passwordHash: 'hash', name: 'زبون', sessionVersion: 0 }
       : options.target;
     const inserts: Record<string, Row[]> = {};
     api.database.from.mockImplementation((table: string) => {

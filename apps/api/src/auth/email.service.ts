@@ -26,9 +26,15 @@ export class EmailService {
     }
   }
 
+  private escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]!);
+  }
+
   async sendVerificationEmail(email: string, token: string, name?: string | null) {
     const link = `${this.appUrl}/verify-email?token=${token}`;
-    const greeting = name ? `مرحباً ${name}` : 'مرحباً';
+    const greeting = name ? `مرحباً ${this.escapeHtml(name)}` : 'مرحباً';
 
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -88,7 +94,7 @@ export class EmailService {
 
     if (!this.resend) {
       if (this.isDev) {
-        this.logger.warn(`[DEV] Verification link for ${email}: ${link}`);
+        this.logger.warn('[DEV] Verification email requested; token omitted from logs.');
         return;
       }
       throw new InternalServerErrorException('Email service not configured');
@@ -102,16 +108,16 @@ export class EmailService {
     });
 
     if (error) {
-      this.logger.error(`Resend error for ${email}:`, error);
+      this.logger.error('Resend verification email failed', error);
       throw new Error(error.message);
     }
 
-    this.logger.log(`Verification email sent to ${email}`);
+    this.logger.log('Verification email sent');
   }
 
   async sendPasswordResetEmail(email: string, token: string, name?: string | null) {
     const link = `${this.appUrl}/reset-password?token=${token}`;
-    const greeting = name ? `مرحباً ${name}` : 'مرحباً';
+    const greeting = name ? `مرحباً ${this.escapeHtml(name)}` : 'مرحباً';
 
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -171,7 +177,7 @@ export class EmailService {
 
     if (!this.resend) {
       if (this.isDev) {
-        this.logger.warn(`[DEV] Password reset link for ${email}: ${link}`);
+        this.logger.warn('[DEV] Password reset email requested; token omitted from logs.');
         return;
       }
       throw new InternalServerErrorException('Email service not configured');
@@ -185,10 +191,10 @@ export class EmailService {
     });
 
     if (error) {
-      this.logger.error(`Resend error for ${email}:`, error);
+      this.logger.error('Resend password reset email failed', error);
       throw new Error(error.message);
     }
 
-    this.logger.log(`Password reset email sent to ${email}`);
+    this.logger.log('Password reset email sent');
   }
 }
