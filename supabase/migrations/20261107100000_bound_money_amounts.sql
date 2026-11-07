@@ -19,8 +19,7 @@
 -- Verified read-only before writing: 0 existing violations; max invoice total 138,
 -- max purchase total 4000 -> constraints validate cleanly against current data.
 --
--- REVIEW ONLY — NOT YET DEPLOYED. Test on a Supabase branch before merging;
--- merging into the deploy branch will apply it to production.
+-- Applied to production on 2026-11-07 after confirming zero existing violations.
 
 alter table public."Invoice" drop constraint if exists invoice_subtotal_finite;
 alter table public."Invoice" add  constraint invoice_subtotal_finite
