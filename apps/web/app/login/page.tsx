@@ -198,11 +198,17 @@ export default function LoginPage() {
         type="button"
         onClick={toggleLanguage}
         className="absolute end-4 top-4 z-20 flex min-h-11 items-center gap-1.5 rounded-full bg-card/90 px-3 text-xs font-bold text-muted-foreground shadow-sm ring-1 ring-border"
-        aria-label={language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
       >
-        <Languages className="h-4 w-4" />
-        {language === "ar" ? "EN" : "عربي"}
+        <Languages className="h-4 w-4" aria-hidden="true" />
+        {language === "ar" ? <span lang="en">English</span> : <span lang="ar">عربي</span>}
       </button>
+
+      <Link
+        href="/"
+        className="absolute start-4 top-4 z-20 flex min-h-11 items-center rounded-full bg-card/90 px-3 text-xs font-bold text-muted-foreground shadow-sm ring-1 ring-border"
+      >
+        {language === "ar" ? "الصفحة الرئيسية" : "Home"}
+      </Link>
 
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-56 border-b border-border bg-accent/40" />
 
@@ -210,9 +216,13 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="mb-8 flex animate-fade-up flex-col items-center gap-3 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-brand-700 text-3xl font-extrabold text-white shadow-sm">
-            {language === "ar" ? "د" : "D"}
-          </span>
+          <Link
+            href="/"
+            aria-label={language === "ar" ? "دفتر — الصفحة الرئيسية" : "Daftar — home"}
+            className="flex h-16 w-16 items-center justify-center rounded-lg bg-brand-700 text-3xl font-extrabold text-white shadow-sm"
+          >
+            <span aria-hidden="true">{language === "ar" ? "د" : "D"}</span>
+          </Link>
           <h1 className="text-2xl font-extrabold text-foreground">
             {language === "ar" ? "دفتر" : "Daftar"}
           </h1>
@@ -235,18 +245,20 @@ export default function LoginPage() {
 
           {PHONE_LOGIN_ENABLED && <form onSubmit={handlePhoneSubmit} className="px-6 pb-5">
             <label htmlFor="phone" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-              <Smartphone className="h-3.5 w-3.5 text-primary" />
+              <Smartphone className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               {language === "ar" ? "الدخول أو التسجيل برقم الجوال" : "Sign in or sign up with your mobile"}
             </label>
-            <div className="flex gap-2" dir="ltr">
+            <div className="flex gap-2">
               <input
                 id="phone"
                 type="tel"
+                dir="ltr"
                 value={phone}
                 onChange={(e) => { setPhone(e.target.value); setPhoneError(null); }}
                 autoComplete="tel"
                 inputMode="tel"
                 placeholder="05xxxxxxxx"
+                maxLength={16}
                 className={cn(fieldClass, "min-w-0 flex-1 py-3 text-left")}
                 aria-invalid={!!phoneError}
                 aria-describedby={phoneError ? "phone-error" : undefined}

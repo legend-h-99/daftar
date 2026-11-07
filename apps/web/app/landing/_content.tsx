@@ -3,6 +3,8 @@ import SupportLink from "@/components/SupportLink";
 import PricingSection from "@/components/pricing/PricingSection";
 import CurrentMonth from "./_current-month";
 import LandingTracker from "./_tracker";
+import MobileMenu from "./_mobile-menu";
+import { PRICING_PLANS } from "@/lib/pricing";
 import {
   FileText,
   Wallet,
@@ -69,7 +71,11 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "هل يعمل على الجوال؟",
-    a: "نعم. دفتر تطبيق ويب تقدر تضيفه لشاشتك الرئيسية مثل أي تطبيق، ويعمل بسلاسة على iOS وAndroid.",
+    a: "نعم. دفتر تطبيق ويب تقدر تضيفه لشاشتك الرئيسية مثل أي تطبيق، ويعمل من متصفح الآيفون والأندرويد.",
+  },
+  {
+    q: "هل دفتر مربوط مع هيئة الزكاة والضريبة والجمارك؟",
+    a: "لا، لا يوجد حاليًا ربط بين دفتر ومنصة «فاتورة» التابعة للهيئة. إذا كانت منشأتك ملزمة بالربط في الفوترة الإلكترونية، استخدم حلًا مربوطًا بالمنصة لفواتيرك الضريبية. وإذا فعّلت ضريبة القيمة المضافة في دفتر، تظهر في الفاتورة رقمك الضريبي ورمز QR.",
   },
   {
     q: "كيف يختلف دفتر عن QuickBooks أو برامج المحاسبة الأخرى؟",
@@ -97,45 +103,105 @@ const comparisons: { feature: string; daftar: boolean | string; paper: boolean |
 
 const testimonials = [
   {
-    name: "أم فيصل",
-    role: "صاحبة محل معمول ومقبلات — الرياض",
+    name: "محل معمول ومقبلات",
+    role: "مثال توضيحي",
     body: "سيناريو محل معمول: فواتير يومية، طلبات آجلة، وصافي ربح واضح آخر الشهر.",
   },
   {
-    name: "نورة العتيبي",
-    role: "بائعة كيك منزلي — جدة",
+    name: "كيك منزلي",
+    role: "مثال توضيحي",
     body: "سيناريو كيك منزلي: وصفات بمقادير دقيقة، تكلفة إنتاج، وفاتورة جاهزة للإرسال.",
   },
   {
-    name: "أبو خالد",
-    role: "تموينات صغيرة — الدمام",
+    name: "تموينات صغيرة",
+    role: "مثال توضيحي",
     body: "سيناريو تموينات: مشتريات ومصاريف ومخزون منخفض تظهر في نفس الدفتر.",
   },
 ];
 
+const SITE_URL = "https://daftar1.com";
+
+/** Digits only, e.g. 9665XXXXXXXX. The WhatsApp link renders only when this is set at build time. */
+const SUPPORT_WHATSAPP = (process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ?? "").replace(/\D/g, "");
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: "دفتر",
+      alternateName: "Daftar",
+      url: `${SITE_URL}/`,
+      logo: `${SITE_URL}/icon`,
+      email: "info@daftar1.com",
+      areaServed: "SA",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "دفتر",
+      alternateName: "Daftar",
+      url: `${SITE_URL}/`,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web, iOS, Android",
+      inLanguage: ["ar", "en"],
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      // Only the plan that is live today; paid plans are announced but not yet billable.
+      offers: PRICING_PLANS.filter((plan) => plan.monthly === 0).map((plan) => ({
+        "@type": "Offer",
+        name: plan.name,
+        price: "0",
+        priceCurrency: "SAR",
+      })),
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map(({ q, a }) => ({
+        "@type": "Question",
+        name: q,
+        acceptedAnswer: { "@type": "Answer", text: a },
+      })),
+    },
+  ],
+};
+
 const trustSignals: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: MapPin, title: "صنع في السعودية، للسعودية", body: "لغة السوق السعودي اليومية، من أسماء العملاء إلى الريال والفواتير." },
   { icon: Smartphone, title: "جوال أولًا بلا تنازل", body: "مصمّم للإبهام، للجلسات القصيرة، وللتسجيل بعد البيعة مباشرة." },
-  { icon: ShieldCheck, title: "بياناتك لك وحدك", body: "كل حساب معزول تمامًا. لا نبيع بيانات ولا نشارك أي معلومة." },
+  { icon: ShieldCheck, title: "بياناتك لك وحدك", body: "كل حساب معزول عن غيره، وإشعار الخصوصية يوضح البيانات المستخدمة والجهات التي تعالجها." },
 ];
 
 /* ─── Atoms ─────────────────────────────────────────────────────────────────── */
 
 function Logo() {
   return (
-    <span className="flex items-center gap-2">
-      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-700 text-lg font-extrabold text-white">
+    <Link href="/" aria-label="دفتر — الصفحة الرئيسية" className="flex min-h-11 items-center gap-2 rounded-xl">
+      <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-700 text-lg font-extrabold text-white">
         د
       </span>
       <span className="text-lg font-extrabold text-[#101914]">دفتر</span>
-    </span>
+    </Link>
   );
 }
 
 function CellIcon({ val }: { val: boolean | string }) {
-  if (val === true)  return <span className="text-brand-700 font-bold text-lg">✓</span>;
-  if (val === false) return <span className="text-red-400 font-bold text-lg">✗</span>;
-  return <span className="text-gray-500 text-sm">{val}</span>;
+  if (val === true) {
+    return (
+      <span className="text-lg font-bold text-brand-700">
+        <span aria-hidden="true">✓</span>
+        <span className="sr-only">نعم</span>
+      </span>
+    );
+  }
+  if (val === false) {
+    return (
+      <span className="text-lg font-bold text-red-600">
+        <span aria-hidden="true">✗</span>
+        <span className="sr-only">لا</span>
+      </span>
+    );
+  }
+  return <span className="text-sm text-gray-600">{val}</span>;
 }
 
 function DirectionalNumber({ children }: { children: React.ReactNode }) {
@@ -233,31 +299,47 @@ export default function LandingContent() {
   return (
     <main className="min-h-screen bg-[#f7f8f7] text-[#101914]" dir="rtl" lang="ar">
       <LandingTracker />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+      />
+
+      <a
+        href="#content"
+        className="sr-only z-30 rounded-xl bg-brand-700 px-4 py-3 text-sm font-bold text-white focus:not-sr-only focus:fixed focus:right-4 focus:top-3"
+      >
+        تخطَّ إلى المحتوى
+      </a>
 
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5">
+        <div className="relative mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5">
           <Logo />
           <div className="flex items-center gap-1 sm:gap-3">
-            <a href="#pricing" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-gray-600 hover:text-brand-700">الباقات</a>
-            <a href="#faq" className="hidden rounded-2xl px-4 py-2 text-sm font-semibold text-gray-500 transition-colors hover:text-brand-700 sm:inline-block">
-              الأسئلة الشائعة
-            </a>
-            <a href="#features" className="hidden rounded-2xl px-4 py-2 text-sm font-semibold text-gray-500 transition-colors hover:text-brand-700 sm:inline-block">
-              المزايا
-            </a>
+            <nav aria-label="أقسام الصفحة" className="hidden items-center gap-1 sm:flex">
+              <a href="#features" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                المزايا
+              </a>
+              <a href="#pricing" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                الباقات
+              </a>
+              <a href="#faq" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                الأسئلة الشائعة
+              </a>
+            </nav>
             <Link
               href="/login"
-              className="motion-press rounded-2xl bg-brand-700 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-800"
+              className="motion-press inline-flex min-h-11 items-center rounded-2xl bg-brand-700 px-5 text-sm font-bold text-white transition-colors hover:bg-brand-800"
             >
               ابدأ مجانًا
             </Link>
+            <MobileMenu />
           </div>
-        </nav>
+        </div>
       </header>
 
       {/* ── 1. Hero ── */}
-      <section className="mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-12 pt-10 sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
+      <section id="content" tabIndex={-1} className="scroll-mt-16 mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-12 pt-10 outline-none sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
             للأسر المنتجة والبيع من المنزل في السعودية
@@ -273,17 +355,17 @@ export default function LandingContent() {
             دفتر تطبيق محاسبة عربي مبسّط للأسر المنتجة والبيع من المنزل في السعودية. سجّل مبيعاتك ومصاريفك ومكوّنات منتجاتك، وشاهد كم ربحت فعلاً بدون خبرة محاسبية.
           </blockquote>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-5">
             <Link
               href="/login"
               className="motion-press inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-brand-800"
             >
               جرّب مجانًا
-              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
+              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
             </Link>
             <a
               href="#how"
-              className="motion-press inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-6 py-3.5 text-base font-bold text-[#101914] transition-colors hover:border-brand-200 hover:bg-brand-50"
+              className="inline-flex min-h-11 items-center justify-center px-2 text-base font-semibold text-gray-700 underline-offset-4 hover:text-brand-700 hover:underline"
             >
               كيف يشتغل؟
             </a>
@@ -299,9 +381,14 @@ export default function LandingContent() {
           </ul>
         </div>
 
-        <div className="animate-fade-up [animation-delay:120ms]">
-          <LedgerPreview />
-        </div>
+        <figure className="animate-fade-up [animation-delay:120ms]">
+          <div aria-hidden="true">
+            <LedgerPreview />
+          </div>
+          <figcaption className="mt-3 text-center text-xs font-semibold text-gray-600">
+            مثال توضيحي لشاشة دفتر — الأسماء والأرقام ليست بيانات حقيقية.
+          </figcaption>
+        </figure>
       </section>
 
       {/* ── Stats strip ── */}
@@ -330,7 +417,7 @@ export default function LandingContent() {
             <h2 className="mt-4 text-2xl font-extrabold leading-snug tracking-tight sm:text-3xl">
               الأدوات الموجودة صُمِّمت لمحاسبين في شركات، <span className="text-brand-700">ودفتر صُمّم لصاحب المشروع.</span>
             </h2>
-            <p className="mt-5 text-sm leading-relaxed text-gray-600 sm:text-base">
+            <p className="mt-5 text-base leading-relaxed text-gray-700">
               برامج المحاسبة الغربية مليئة بمصطلحات وقوائم طويلة، والورقة والقلم تضيع ولا تحسب التكلفة الحقيقية. دفتر يأخذ شعور الدفتر الورقي ويضيف له فواتير، مصاريف، مخزون، وربح شهري بلغة السوق اليومية.
             </p>
           </div>
@@ -349,13 +436,13 @@ export default function LandingContent() {
       </section>
 
       {/* ── 3. Features as Benefits ── */}
-      <section id="features" className="border-t border-gray-100 bg-white">
+      <section id="features" className="scroll-mt-16 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-5xl px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-xl text-center">
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
             كل حساباتك في دفتر واحد
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+          <p className="mt-3 text-base leading-relaxed text-gray-700">
             أربع أدوات تكفي لتدير مشروعك — بلا تعقيد ولا مصطلحات.
           </p>
         </div>
@@ -367,7 +454,7 @@ export default function LandingContent() {
               </span>
               <h3 className="mt-4 text-base font-bold">{title}</h3>
               <p className="mt-1 text-xs font-semibold text-brand-700">{benefit}</p>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">{body}</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-gray-700">{body}</p>
             </article>
           ))}
         </div>
@@ -395,11 +482,11 @@ export default function LandingContent() {
       </section>
 
       {/* ── 5. How It Works ── */}
-      <section id="how" className="border-t border-gray-100 bg-white">
+      <section id="how" className="scroll-mt-16 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-5xl px-5 py-20">
           <div className="mx-auto max-w-xl text-center">
             <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">ثلاث خطوات، وخلاص</h2>
-            <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+            <p className="mt-3 text-base leading-relaxed text-gray-700">
               من التسجيل إلى معرفة ربحك الشهري — في أقل من دقيقة للبدء.
             </p>
           </div>
@@ -426,28 +513,34 @@ export default function LandingContent() {
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
             دفتر مقارنةً بالبدائل
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+          <p className="mt-3 text-base leading-relaxed text-gray-700">
             مقارنة صادقة — بما فيها نقطة واحدة تفوز فيها البدائل.
           </p>
         </div>
 
         <div className="mt-10 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
-          <table className="w-full table-fixed text-center text-xs">
-            <thead className="bg-white text-gray-500">
+          <table className="w-full table-fixed text-center text-sm">
+            <colgroup>
+              <col className="w-[34%]" />
+              <col />
+              <col />
+              <col />
+            </colgroup>
+            <thead className="bg-white text-xs text-gray-600 sm:text-sm">
               <tr>
-                <th scope="col" className="px-3 py-3 text-right font-semibold">الميزة</th>
-                <th scope="col" className="px-3 py-3 font-extrabold text-brand-700">دفتر</th>
-                <th scope="col" className="px-3 py-3 font-semibold">ورقة وقلم</th>
-                <th scope="col" className="px-3 py-3 font-semibold">QuickBooks</th>
+                <th scope="col" className="px-1.5 py-3 text-right font-semibold sm:px-3">الميزة</th>
+                <th scope="col" className="bg-brand-50 px-1 py-3 font-extrabold text-brand-700 sm:px-3">دفتر</th>
+                <th scope="col" className="px-1 py-3 font-semibold sm:px-3">ورقة وقلم</th>
+                <th scope="col" className="px-1 py-3 font-semibold sm:px-3">QuickBooks</th>
               </tr>
             </thead>
             <tbody>
               {comparisons.map(({ feature, daftar, paper, quickbooks }, i) => (
                 <tr key={feature} className={`${i !== comparisons.length - 1 ? "border-t border-gray-100" : ""} ${i % 2 !== 0 ? "bg-gray-50/50" : ""}`}>
-                  <th scope="row" className="px-3 py-3 text-right font-medium leading-tight text-[#101914]">{feature}</th>
-                  <td className="px-3 py-3"><CellIcon val={daftar} /></td>
-                  <td className="px-3 py-3"><CellIcon val={paper} /></td>
-                  <td className="px-3 py-3"><CellIcon val={quickbooks} /></td>
+                  <th scope="row" className="px-1.5 py-3 text-right text-[13px] font-medium leading-snug text-[#101914] sm:px-3 sm:text-sm">{feature}</th>
+                  <td className="bg-brand-50/70 px-2 py-3 sm:px-3"><CellIcon val={daftar} /></td>
+                  <td className="px-2 py-3 sm:px-3"><CellIcon val={paper} /></td>
+                  <td className="px-2 py-3 sm:px-3"><CellIcon val={quickbooks} /></td>
                 </tr>
               ))}
             </tbody>
@@ -462,19 +555,19 @@ export default function LandingContent() {
       <PricingSection />
 
       {/* ── 7. FAQ ── */}
-      <section id="faq" className="border-t border-gray-100 bg-white">
+      <section id="faq" className="scroll-mt-16 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-3xl px-5 py-20">
           <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
             الأسئلة الشائعة
           </h2>
-          <dl className="mt-10 space-y-6">
+          <ul className="mt-10 space-y-6">
             {faqs.map(({ q, a }) => (
-              <div key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
-                <dt className="text-base font-bold text-[#101914]">{q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-gray-600">{a}</dd>
-              </div>
+              <li key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
+                <h3 className="text-base font-bold text-[#101914]">{q}</h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-gray-700">{a}</p>
+              </li>
             ))}
-          </dl>
+          </ul>
         </div>
       </section>
 
@@ -487,7 +580,7 @@ export default function LandingContent() {
                 <Icon className="h-5 w-5" strokeWidth={2.5} />
               </span>
               <h3 className="mt-3 text-base font-bold">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">{body}</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-gray-700">{body}</p>
             </div>
           ))}
         </div>
@@ -499,7 +592,7 @@ export default function LandingContent() {
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
             ابدأ تتابع حساباتك اليوم — مجانًا
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-gray-600 sm:text-base">
+          <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-gray-700">
             سجّل مبيعات مشروعك المنزلي وتكاليفه، وراجع نتيجته الشهرية بناءً على بياناتك.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -530,7 +623,17 @@ export default function LandingContent() {
           <p className="text-xs text-gray-500">
             دفتر — تطبيق محاسبة للمشاريع الصغيرة · صنع في السعودية، للسعودية.
           </p>
-          <nav aria-label="روابط الموقع" className="flex items-center gap-1 text-xs font-semibold text-gray-500">
+          <nav aria-label="روابط الموقع" className="flex flex-wrap items-center justify-center gap-1 text-xs font-semibold text-gray-600">
+            {SUPPORT_WHATSAPP && (
+              <a
+                href={`https://wa.me/${SUPPORT_WHATSAPP}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center px-3 hover:text-brand-700"
+              >
+                واتساب الدعم
+              </a>
+            )}
             <Link href="/privacy" className="inline-flex min-h-11 items-center px-3 hover:text-brand-700">
               إشعار الخصوصية
             </Link>

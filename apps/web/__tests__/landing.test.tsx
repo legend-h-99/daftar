@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { vi, describe, it, expect } from "vitest";
 
@@ -24,6 +25,8 @@ vi.mock("lucide-react", () => ({
   Smartphone: () => null,
   ShieldCheck: () => null,
   MapPin:     () => null,
+  Menu:       () => null,
+  X:          () => null,
 }));
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -165,11 +168,12 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getByText("سيناريوهات توضيحية للاستخدام")).toBeInTheDocument();
     });
 
-    it("يعرض أسماء أصحاب الشهادات الثلاثة", () => {
+    it("يعرض أنواع المشاريع الثلاثة كأمثلة توضيحية", () => {
       render(<LandingPage />);
-      expect(screen.getByText("أم فيصل")).toBeInTheDocument();
-      expect(screen.getByText("نورة العتيبي")).toBeInTheDocument();
-      expect(screen.getByText("أبو خالد")).toBeInTheDocument();
+      expect(screen.getByText("محل معمول ومقبلات")).toBeInTheDocument();
+      expect(screen.getByText("كيك منزلي")).toBeInTheDocument();
+      expect(screen.getByText("تموينات صغيرة")).toBeInTheDocument();
+      expect(screen.getAllByText("مثال توضيحي")).toHaveLength(3);
     });
 
     it("يعرض نص كل شهادة", () => {
@@ -179,11 +183,11 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getByText(/سيناريو تموينات/)).toBeInTheDocument();
     });
 
-    it("يعرض أدوار ومدن أصحاب الشهادات", () => {
+    it("لا ينسب السيناريوهات لأشخاص بأسماء ومدن", () => {
       render(<LandingPage />);
-      expect(screen.getByText(/صاحبة محل معمول ومقبلات — الرياض/)).toBeInTheDocument();
-      expect(screen.getByText(/بائعة كيك منزلي — جدة/)).toBeInTheDocument();
-      expect(screen.getByText(/تموينات صغيرة — الدمام/)).toBeInTheDocument();
+      for (const name of ["أم فيصل", "نورة العتيبي", "أبو خالد"]) {
+        expect(screen.queryByText(name)).not.toBeInTheDocument();
+      }
     });
   });
 
@@ -257,21 +261,27 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getAllByText("الأسئلة الشائعة").length).toBeGreaterThanOrEqual(1);
     });
 
-    it("يعرض 7 أسئلة على الأقل", () => {
+    it("يعرض 7 أسئلة على الأقل كعناوين", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
-      expect(dl).not.toBeNull();
-      const questions = within(dl!).getAllByRole("term");
+      const faq = document.getElementById("faq")!;
+      const questions = within(faq).getAllByRole("heading", { level: 3 });
       expect(questions.length).toBeGreaterThanOrEqual(7);
+    });
+
+    it("يوضح أنه لا يوجد ربط حاليًا مع هيئة الزكاة والضريبة والجمارك", () => {
+      render(<LandingPage />);
+      const faq = document.getElementById("faq")!;
+      expect(within(faq).getByRole("heading", { name: /هيئة الزكاة والضريبة والجمارك/ })).toBeInTheDocument();
+      expect(within(faq).getByText(/لا يوجد حاليًا ربط بين دفتر ومنصة «فاتورة»/)).toBeInTheDocument();
     });
 
     it("يعرض سؤال 'ما هو تطبيق دفتر؟' وإجابته", () => {
       render(<LandingPage />);
       expect(screen.getByText("ما هو تطبيق دفتر؟")).toBeInTheDocument();
-      // الإجابة مقيّدة بالـ dl لتجنّب تعارض مع الـ blockquote في Hero
-      const dl = document.querySelector("dl")!;
+      // الإجابة مقيّدة بقسم الأسئلة لتجنّب تعارض مع الـ blockquote في Hero
+      const faq = document.getElementById("faq")!;
       expect(
-        within(dl).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
+        within(faq).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
       ).toBeInTheDocument();
     });
 
@@ -292,8 +302,9 @@ describe("صفحة الـ Landing", () => {
 
     it("كل إجابة FAQ أقل من 50 كلمة", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
-      const answers = within(dl!).getAllByRole("definition");
+      const faq = document.getElementById("faq")!;
+      const answers = faq.querySelectorAll("li > p");
+      expect(answers.length).toBeGreaterThanOrEqual(7);
       for (const ans of answers) {
         const wordCount = ans.textContent!.trim().split(/\s+/).length;
         expect(wordCount).toBeLessThanOrEqual(50);
@@ -394,6 +405,68 @@ describe("صفحة الـ Landing", () => {
     it("يعرض 'صافي ربح الشهر'", () => {
       render(<LandingPage />);
       expect(screen.getByText("صافي ربح الشهر")).toBeInTheDocument();
+    });
+  });
+
+  // ── Site review fixes ─────────────────────────────────────────────────────
+
+  describe("إصلاحات مراجعة الموقع", () => {
+    it("الشعار رابط للصفحة الرئيسية", () => {
+      render(<LandingPage />);
+      const logos = screen.getAllByRole("link", { name: "دفتر — الصفحة الرئيسية" });
+      expect(logos.length).toBeGreaterThanOrEqual(1);
+      for (const logo of logos) expect(logo).toHaveAttribute("href", "/");
+    });
+
+    it("أول رابط في الصفحة يتخطى إلى المحتوى", () => {
+      render(<LandingPage />);
+      const skip = screen.getAllByRole("link")[0];
+      expect(skip).toHaveTextContent("تخطَّ إلى المحتوى");
+      expect(skip).toHaveAttribute("href", "#content");
+      expect(document.getElementById("content")).not.toBeNull();
+    });
+
+    it("زر القائمة على الجوال يفتح روابط الأقسام", async () => {
+      const user = userEvent.setup();
+      render(<LandingPage />);
+      const toggle = screen.getByRole("button", { name: "فتح القائمة" });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const panel = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+      expect(panel).toBeVisible();
+      for (const name of ["المزايا", "الباقات", "الأسئلة الشائعة"]) {
+        expect(within(panel).getByRole("link", { name })).toBeInTheDocument();
+      }
+    });
+
+    it("صورة اللوحة التوضيحية مخفية عن قارئ الشاشة ومعلّمة كمثال", () => {
+      render(<LandingPage />);
+      const preview = screen.getByText("صافي ربح الشهر").closest("[aria-hidden='true']");
+      expect(preview).not.toBeNull();
+      expect(screen.getByText(/مثال توضيحي لشاشة دفتر/)).toBeInTheDocument();
+    });
+
+    it("عبارة الثقة لا تعد بعدم مشاركة أي معلومة", () => {
+      render(<LandingPage />);
+      expect(screen.queryByText(/لا نبيع بيانات ولا نشارك أي معلومة/)).not.toBeInTheDocument();
+      expect(screen.getByText(/إشعار الخصوصية يوضح البيانات المستخدمة/)).toBeInTheDocument();
+    });
+
+    it("يضيف بيانات منظمة صالحة بدون باقات مدفوعة غير مفعّلة", () => {
+      render(<LandingPage />);
+      const script = document.querySelector('script[type="application/ld+json"]');
+      const data = JSON.parse(script!.textContent!);
+      const types = data["@graph"].map((node: { "@type": string }) => node["@type"]);
+      expect(types).toEqual(["Organization", "SoftwareApplication", "FAQPage"]);
+      const app = data["@graph"][1];
+      expect(app.offers.every((offer: { price: string }) => offer.price === "0")).toBe(true);
+    });
+
+    it("الباقات المدفوعة لا تعرض زرًا معطّلًا", () => {
+      render(<LandingPage />);
+      expect(screen.queryByRole("button", { name: "الاشتراك قريبًا" })).not.toBeInTheDocument();
+      expect(screen.getAllByText(/الاشتراك المدفوع لم يُفعّل بعد/).length).toBe(2);
     });
   });
 });
