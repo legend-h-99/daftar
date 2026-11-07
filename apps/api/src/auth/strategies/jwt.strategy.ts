@@ -24,6 +24,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: secret,
+      // Pin the algorithm so only HS256 tokens this server issues are accepted,
+      // removing any algorithm-confusion surface (parity with the edge function).
+      algorithms: ['HS256'],
     });
   }
 
