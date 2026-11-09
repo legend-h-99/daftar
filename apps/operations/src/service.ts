@@ -88,7 +88,11 @@ export async function snapshot(db: DB) {
   };
   return out;
 }
-export async function submitTicket(store: Store, input: unknown, key: string) {
+export async function submitTicket(
+  store: Store,
+  input: unknown,
+  key: string | null,
+) {
   const data = z
     .object({
       email: z.string().email().max(254),
@@ -99,8 +103,12 @@ export async function submitTicket(store: Store, input: unknown, key: string) {
     .parse(input);
   if (data.website) throw new Fault("تعذر إرسال الطلب");
   return store.transaction(async (db) => {
-    await limit(db, `support:${key}`, 5, 3600);
+    // Global flood cap always applies. The tighter per-client cap only applies
+    // when a trusted IP header gives a real per-client identity; without one we
+    // must not key on a shared bucket, or five anonymous posts would lock the
+    // public form for every real customer for an hour.
     await limit(db, "support:global", 100, 3600);
+    if (key) await limit(db, `support:${key}`, 5, 3600);
     const ticketId = id();
     await db.query(
       "INSERT INTO ops_tickets(id,email,description) VALUES($1,$2,$3)",

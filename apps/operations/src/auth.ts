@@ -23,16 +23,19 @@ export function sameOrigin(req: Request) {
   if (req.headers.get("origin") !== process.env.OPS_ORIGIN)
     throw new Fault("مصدر الطلب غير مسموح", 403);
 }
-export function ipKey(req: Request) {
+export function ipKey(req: Request): string | null {
   const s = process.env.OPS_IP_HASH_SECRET;
   if (!s || s.length < 32) throw new Fault("إعداد الحماية غير مكتمل", 503);
-  // Trust an upstream address only when the operator explicitly configured the trusted proxy header.
+  // Trust an upstream address only when the operator explicitly configured the
+  // trusted proxy header. Without it there is no per-client identity, so return
+  // null rather than collapsing every caller into one shared rate-limit bucket
+  // (that bucket let an anonymous flood lock out the owner / support form).
   const header = process.env.OPS_TRUSTED_IP_HEADER;
-  const ip = header ? req.headers.get(header) || "unknown" : "shared";
+  if (!header) return null;
+  const ip = req.headers.get(header) || "unknown";
   return createHmac("sha256", s).update(ip.slice(0, 200)).digest("hex");
 }
-export async function login(db: DB, input: unknown, key: string) {
-  await limit(db, `login:${key}`, 10, 900);
+export async function login(db: DB, input: unknown, key: string | null) {
   const { email, password } = z
     .object({
       email: z.string().email().max(254),
@@ -50,8 +53,14 @@ export async function login(db: DB, input: unknown, key: string) {
     expected.length !== actual.length ||
     !timingSafeEqual(actual, expected) ||
     email.toLowerCase() !== process.env.OPS_OWNER_EMAIL.toLowerCase()
-  )
+  ) {
+    // Throttle only FAILED attempts, checked after the credential comparison, so
+    // a flood of wrong guesses throttles brute force without ever blocking the
+    // owner's correct password (CWE-307). Per-client when a trusted IP header is
+    // configured; otherwise a shared failure counter still caps guessing.
+    await limit(db, `login:fail:${key ?? "shared"}`, 10, 900);
     throw new Fault("بيانات الدخول غير صحيحة", 401);
+  }
   const token = randomBytes(32).toString("hex");
   await db.query(
     "INSERT INTO ops_sessions(id,expires_at) VALUES($1,now()+interval '8 hours')",
