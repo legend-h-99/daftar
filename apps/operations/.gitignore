@@ -1,0 +1,7 @@
+.next/
+.env*
+!.env.example
+*.tsbuildinfo
+artifacts/
+
+.local/
