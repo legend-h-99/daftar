@@ -1,0 +1,31 @@
+name: Operations room
+on:
+  pull_request:
+    paths: ['apps/operations/**', 'pnpm-lock.yaml', '.github/workflows/operations.yml']
+  push:
+    branches: [main]
+    paths: ['apps/operations/**', 'pnpm-lock.yaml', '.github/workflows/operations.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @daftar/operations typecheck
+      - run: pnpm --filter @daftar/operations test
+      - run: pnpm --filter @daftar/operations build
+      - run: pnpm --filter @daftar/operations exec playwright install --with-deps chromium
+      - run: pnpm --filter @daftar/operations test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: operations-browser
+          path: test-results/operations/
