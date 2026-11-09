@@ -1,0 +1,3 @@
+id,title,severity,timestamp,file
+vuln-0001,IP-based rate limits bypassable via spoofed client-IP headers on direct-to-origin requests,MEDIUM,2026-11-07 07:55:00 UTC,vulnerabilities/vuln-0001.md
+vuln-0002,Mass Assignment in Generic CRUD Allows Overwriting Material Stock/Cost Columns and Fabricating Stock-Ledger Rows,MEDIUM,2026-11-07 07:55:12 UTC,vulnerabilities/vuln-0002.md
