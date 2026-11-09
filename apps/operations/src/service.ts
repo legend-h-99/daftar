@@ -112,7 +112,7 @@ export async function submitTicket(store: Store, input: unknown, key: string) {
 }
 export async function command(store: Store, input: unknown) {
   const body = z
-    .object({ command: z.string(), data: z.record(z.unknown()).default({}) })
+    .object({ command: z.string(), data: z.record(z.string(), z.unknown()).default({}) })
     .strict()
     .parse(input);
   const d = body.data;
