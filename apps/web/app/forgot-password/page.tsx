@@ -8,8 +8,9 @@ import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import AuthBrand from "@/components/AuthBrand";
+import EmailAuthGate from "@/components/EmailAuthGate";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const { language } = useLanguage();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -121,4 +122,8 @@ export default function ForgotPasswordPage() {
       </div>
     </main>
   );
+}
+
+export default function ForgotPasswordPage() {
+  return <EmailAuthGate><ForgotPasswordContent /></EmailAuthGate>;
 }

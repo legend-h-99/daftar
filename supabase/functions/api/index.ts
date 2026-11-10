@@ -32,11 +32,18 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
-// Phone sign-in stays off unless it is deliberately enabled in the Edge Function.
-// This server-side gate also protects native clients that do not use the web flag.
-const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true'
+// Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
+// secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
+const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
+const AUTHENTICA_TEMPLATE_ID = Number.parseInt(Deno.env.get('AUTHENTICA_TEMPLATE_ID') ?? '1', 10)
+// Must match the OTP length set on the Authentica application; the web form shows this many boxes.
+const AUTHENTICA_OTP_LENGTH = Number.parseInt(Deno.env.get('AUTHENTICA_OTP_LENGTH') ?? '6', 10)
+const AUTHENTICA_API_URL = 'https://api.authentica.sa/api/v2'
+// Phone sign-in stays off unless it is deliberately enabled in the Edge Function and the
+// Authentica key is set. This server-side gate also protects native clients that do not use the web flag.
+const PHONE_LOGIN_ENABLED = Deno.env.get('PHONE_LOGIN_ENABLED') === 'true' && AUTHENTICA_API_KEY !== ''
 const DEMO_AUTH_ENABLED = Deno.env.get('DEMO_AUTH_ENABLED') === 'true'
-// Google is the only public sign-in method. Email/password routes stay closed unless
+// Google (and phone, once enabled above) are the public sign-in methods. Email/password routes stay closed unless
 // deliberately re-enabled; existing password users sign in with Google on the same email.
 const EMAIL_LOGIN_ENABLED = Deno.env.get('EMAIL_LOGIN_ENABLED') === 'true'
 // Platform admins, by sign-in email. Kept in the function's secrets, not in
@@ -235,7 +242,7 @@ function currentRiyadhMonth(): string {
   return new Date(Date.now() + RIYADH_OFFSET_MS).toISOString().slice(0, 7)
 }
 
-const ANALYTICS_EVENTS = new Set(["user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
+const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
 const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -259,7 +266,7 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const occurredAt = Math.abs(Date.now() - Date.parse(body.occurredAt)) <= 15 * 60_000 ? body.occurredAt : new Date().toISOString();
   const props = body.properties;
   if (!props || typeof props !== 'object' || Array.isArray(props)) return err('Invalid properties', 400);
-  const allowed: Record<string, readonly unknown[]> = { method: ['google','email'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
+  const allowed: Record<string, readonly unknown[]> = { stage: ["validation", "api", "network"], reason: ["invalid_amount", "missing_date"], method: ['google','email','phone'], location: ['header','body'], workflow: ['onboarding','product','invoice','expense','purchase'] };
   for (const [key, value] of Object.entries(props)) {
     const valid = ['has_business','vat_enabled'].includes(key) ? typeof value === 'boolean'
       : ['items_count','recipe_items','days_since_last','status'].includes(key) ? typeof value === 'number' && Number.isInteger(value) && value >= -1 && value <= 599
@@ -323,37 +330,56 @@ async function authDemoLogin(phone: string) {
   return json({ accessToken, user: { id: userId, phone: normalized, businessId: bizId }, hasBusiness: true, business: { id: bizId, ...store, vatEnabled: true } })
 }
 
+// One call to Authentica. A network failure or timeout comes back as status 0 so the
+// caller can tell an outage apart from a rejected code.
+async function authentica(path: 'send-otp' | 'verify-otp', body: Record<string, unknown>) {
+  try {
+    const res = await fetch(`${AUTHENTICA_API_URL}/${path}`, {
+      method: 'POST',
+      headers: { 'X-Authorization': AUTHENTICA_API_KEY, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    const data = await res.json().catch(() => null) as Record<string, unknown> | null
+    return { status: res.status, data }
+  } catch {
+    return { status: 0, data: null }
+  }
+}
+
 async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
   if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
 
-  const { error } = await db().auth.signInWithOtp({
-    phone,
-    options: { shouldCreateUser: true },
-  })
-  if (error) {
+  const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
+  if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  if (sent.status !== 200 || sent.data?.success !== true) {
     // Keep provider details and phone numbers out of the public response/logs.
+    console.error(`Authentica send-otp failed with status ${sent.status}`)
     return err('Phone verification is temporarily unavailable', 503)
   }
-  return json({ sent: true })
+  return json({ sent: true, codeLength: AUTHENTICA_OTP_LENGTH })
 }
 
 async function authOtpVerify(phoneInput: unknown, code: unknown) {
-  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+  if (typeof phoneInput !== 'string' || typeof code !== 'string' || !/^\d{4,8}$/.test(code)) {
     return err('Invalid or expired verification code', 400)
   }
   const normalized = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(normalized)) return err('Invalid or expired verification code', 400)
+  const verified = await authentica('verify-otp', { phone: normalized, otp: code })
+  if (verified.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
+  // No answer, a rejected key or an outage: the code itself was never judged.
+  if (verified.status === 0 || verified.status === 401 || verified.status === 403 || verified.status >= 500) {
+    console.error(`Authentica verify-otp failed with status ${verified.status}`)
+    return err('Phone verification is temporarily unavailable', 503)
+  }
+  if (verified.status !== 200 || verified.data?.status !== true) return err('Invalid or expired verification code', 401)
   const supabase = db()
-  const { data: verification, error: verificationError } = await supabase.auth.verifyOtp({
-    phone: normalized,
-    token: code,
-    type: 'sms',
-  })
-  if (verificationError || !verification.user) return err('Invalid or expired verification code', 401)
   let { data: user } = await supabase.from('User').select('*').eq('phone', normalized).maybeSingle()
+  let isNewUser = false
   if (!user) {
     const { data: created, error } = await supabase
       .from('User').insert({ id: newId('user'), phone: normalized }).select('*').single()
@@ -364,10 +390,11 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       user = raced
     } else {
       user = created
+      isNewUser = true
     }
   }
   const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
-  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId })
+  return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
 async function authMe(user: Record<string, unknown>) {
@@ -598,15 +625,12 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
   if (invalidBusinessName(body.name)) return err('Business name is required', 400, 'INVALID_BUSINESS_NAME')
   const supabase = db()
   const userId = user.sub as string
-  const bizId = newId('biz')
-  const ownerPhone = (user.phone as string | undefined) ?? null
-  const { data: business, error } = await supabase.from('Business').insert({
-    id: bizId, ownerPhone, name: body.name.trim(), city: body.city,
-    vatEnabled: body.vatEnabled ?? false, vatNumber: body.vatNumber ?? null,
-  }).select().single()
-  if (error) return err('Could not save record', 400)
-  await supabase.from('User').update({ businessId: bizId }).eq('id', userId)
-  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: bizId })
+  const { data: business, error } = await supabase.rpc('onboard_business', {
+    p_user_id: userId, p_name: body.name.trim(), p_city: body.city ?? null,
+    p_vat_enabled: body.vatEnabled ?? false, p_vat_number: body.vatNumber ?? null,
+  })
+  if (error || !business) return err('تعذر إعداد النشاط؛ حدّث الصفحة وحاول مجددًا', 409)
+  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id })
   return json({ accessToken, business }, 201)
 }
 
@@ -636,14 +660,14 @@ async function handleDashboard(user: Record<string, unknown>) {
     loadSummary(bizId, null),
     loadSummary(bizId, currentRiyadhMonth()),
     db().from('Invoice').select('id,total,paidAmount,status,createdAt,customer:Customer(name)').eq('businessId', bizId)
-      .order('createdAt', { ascending: false }).limit(5),
+      .is('voidedAt', null).order('createdAt', { ascending: false }).limit(5),
   ])
   if (all.error || month.error || recent.error) return err('Could not load report', 503)
   const a = all.data ?? {}, m = month.data ?? {}
   return json({
     revenue: { total: a.totalSales ?? 0, thisMonth: m.totalSales ?? 0 },
     expenses: { total: a.operatingExpenses ?? 0, thisMonth: m.operatingExpenses ?? 0 },
-    profit: { total: (a.totalSales ?? 0) - (a.operatingExpenses ?? 0), thisMonth: (m.totalSales ?? 0) - (m.operatingExpenses ?? 0) },
+    profit: { total: (a.totalSales ?? 0) - (a.operatingExpenses ?? 0) - (a.costOfGoodsSold ?? 0), thisMonth: (m.totalSales ?? 0) - (m.operatingExpenses ?? 0) - (m.costOfGoodsSold ?? 0) },
     invoiceCount: a.invoiceCount ?? 0,
     paidInvoices: a.paidInvoicesCount ?? 0,
     pendingInvoices: a.unpaidInvoicesCount ?? 0,
@@ -878,6 +902,11 @@ function hasImmutableFields(row: Record<string, unknown>): boolean {
 
 async function handlePurchase(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
   if (req.method === 'POST' && id) return err('Method not allowed', 405)
+  if (req.method === 'DELETE' && id) {
+    const { data, error } = await db().rpc('void_purchase_with_inventory', { p_business_id: user.businessId, p_purchase_id: id })
+    if (error) return err('تعذر عكس الشراء: توجد حركة لاحقة أو لا تتوفر بيانات عكس آمنة', 409)
+    return data === true ? new Response(null, { status: 204, headers: CORS }) : err('Not found', 404)
+  }
   if (req.method !== 'POST') return handleCrud(req, user, 'Purchase', id, url)
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid purchase', 400) }
@@ -890,7 +919,11 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
       (body.source != null && !['MANUAL', 'OCR'].includes(body.source as string))) {
     return err('Invalid purchase', 400)
   }
+  if ((body.items as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantity) || !validAmount(item.unitPrice, true))) return err('Invalid line item', 400)
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) return err('Invalid idempotency key', 400)
   const { data, error } = await db().rpc('create_purchase_with_inventory', {
+    p_idempotency_key: idempotencyKey,
     p_business_id: user.businessId as string,
     p_supplier_id: (body.supplierId as string | undefined) ?? null,
     p_supplier_name: (body.supplierName as string | undefined) ?? null,
@@ -900,11 +933,12 @@ async function handlePurchase(req: Request, user: Record<string, unknown>, id?: 
     p_items: body.items,
   })
   if (error) {
-    console.error('Purchase transaction failed', error.code, error.message)
+    console.error('Purchase transaction failed', error.code)
+    if (error.message === 'Idempotency key reused') return err('تغيرت بيانات الشراء بعد محاولة حفظ سابقة؛ راجع المشتريات قبل المحاولة مجددًا', 422, 'PURCHASE_IDEMPOTENCY_KEY_REUSED')
     return err(error.message.includes('Material not found') || error.message.includes('Supplier not found')
-      ? error.message : 'Could not save purchase', 400)
+      ? error.message : 'Could not save purchase', /not found|Invalid purchase/.test(error.message) ? 400 : 500)
   }
-  return json(data, 201)
+  return json(data, (data as { replayed?: boolean } | null)?.replayed ? 200 : 201)
 }
 
 async function handleProduct(req: Request, user: Record<string, unknown>, id?: string, url?: URL) {
@@ -918,6 +952,9 @@ async function handleProduct(req: Request, user: Record<string, unknown>, id?: s
       (body.profitMargin != null && typeof body.profitMargin !== 'number') ||
       (body.recipeItems != null && !Array.isArray(body.recipeItems)) ||
       (req.method === 'POST' && (!body.name || !Array.isArray(body.recipeItems)))) return err('Invalid product', 400)
+  if (body.overheadCost != null && !validAmount(body.overheadCost, true)) return err('Invalid product cost', 400)
+  if (body.profitMargin != null && (!validAmount(body.profitMargin, true) || Number(body.profitMargin) > 95)) return err('Invalid profit margin', 400)
+  if (body.recipeItems != null && (body.recipeItems as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantityUsed, true) || (!item.materialId && !validAmount(item.unitPrice, true)))) return err('Invalid recipe item', 400)
   const { data, error } = await db().rpc('save_product_with_recipe', {
     p_business_id: user.businessId as string, p_product_id: id ?? null,
     p_name: (body.name as string | undefined) ?? null, p_category: (body.category as string | undefined) ?? null,
@@ -942,7 +979,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
     })
     if (error) {
       console.error('Invoice delete failed', error.code)
-      return err('Could not delete invoice', 500)
+      return err('Could not cancel invoice', 500)
     }
     if (deleted !== true) return err('Not found', 404)
     return new Response(null, { status: 204, headers: CORS })
@@ -956,6 +993,7 @@ async function handleInvoice(req: Request, user: Record<string, unknown>, id?: s
       (body.dueDate != null && typeof body.dueDate !== 'string') ||
       (body.notes != null && typeof body.notes !== 'string') ||
       !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) return err('Invalid invoice', 400)
+  if ((body.items as Record<string, unknown>[]).some(item => !item || typeof item !== 'object' || !validAmount(item.quantity) || !validAmount(item.unitPrice, true))) return err('Invalid line item', 400)
   const idempotencyKey = req.headers.get('Idempotency-Key')
   if (idempotencyKey != null && !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) {
     return err('Invalid idempotency key', 400, 'INVALID_IDEMPOTENCY_KEY')
@@ -1012,6 +1050,7 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
   const supabase = db()
   const bizId = user.businessId as string
   if (!bizId) return err('Business not set up', 403)
+  if (table === 'StockMovement' && req.method !== 'GET') return err('حركات المخزون للقراءة فقط؛ استخدم التسوية أو العملية الأصلية', 405)
   const sel = TABLE_SELECTS[table] ?? '*'
 
   if (req.method === 'GET') {
@@ -1025,7 +1064,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     }
     const range = monthRange(url?.searchParams.get('month') ?? null)
     const { from, to } = pageOf(url)
-    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).range(from, to)
+    let q = supabase.from(table).select(sel).eq('businessId', bizId).order('createdAt', { ascending: false }).order('id', { ascending: false }).range(from, to)
+    if (table === 'Invoice' || table === 'Purchase') q = q.is('voidedAt', null)
     if (range) {
       // Expenses and purchases are filtered by their business date, matching the dashboard.
       if (table === 'Expense' || table === 'Purchase') {
@@ -1082,6 +1122,24 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     const body = await req.json()
     if (!body || typeof body !== 'object' || Array.isArray(body) || hasImmutableFields(body)) return err('Invalid record update', 400)
     if (hasOversizedText(body)) return err('Text is too long', 400)
+    if (table === 'Material') {
+      const allowed = ['name', 'purchasePrice', 'vatRate', 'reorderLevel']
+      if (Object.keys(body).some(key => !allowed.includes(key)) ||
+          ('name' in body && (typeof body.name !== 'string' || !body.name.trim())) ||
+          ('purchasePrice' in body && !validAmount(body.purchasePrice, true)) ||
+          ('vatRate' in body && (!validAmount(body.vatRate, true) || Number(body.vatRate) > 100)) ||
+          (body.reorderLevel != null && !validAmount(body.reorderLevel, true))) return err('Invalid material update', 400)
+      const { data, error } = await supabase.rpc('update_material_details', { p_business_id: bizId, p_material_id: id, p_body: body })
+      if (error) return err('تعذر تحديث الصنف', 400)
+      return json(data)
+    }
+    const allowedUpdates: Record<string, string[]> = {
+      Customer: ['name', 'phone'], Supplier: ['name', 'phone'],
+      Expense: ['amount', 'category', 'date', 'note'],
+      Invoice: ['status', 'paidAmount', 'expectedPaidAmount', 'dueDate', 'notes', 'customerId'],
+      Purchase: ['notes'],
+    }
+    if (!allowedUpdates[table] || Object.keys(body).some(key => !allowedUpdates[table].includes(key))) return err('Field cannot be changed', 400)
     if (table === 'Expense') {
       const invalid = validateExpense(body, false)
       if (invalid) return err(invalid, 400)
@@ -1089,6 +1147,15 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
     if (table === 'Invoice') {
       const invalid = await normalizeInvoiceUpdate(supabase, id, bizId, body)
       if (invalid) return invalid
+    }
+    if (table === 'Invoice' && ('status' in body || 'paidAmount' in body)) {
+      if (Object.keys(body).some(key => !['status', 'paidAmount', 'expectedPaidAmount'].includes(key))) return err('Save payment separately', 400)
+      const { data, error } = await supabase.rpc('set_invoice_payment', {
+        p_business_id: bizId, p_invoice_id: id, p_status: body.status,
+        p_paid_amount: body.paidAmount, p_expected_paid_amount: body.expectedPaidAmount ?? null,
+      })
+      if (error) return err('تغيرت الفاتورة أو تعذر حفظ السداد؛ حدّث الصفحة قبل المحاولة', 409)
+      return json(data)
     }
     // Purchase totals and numbers come from create_purchase_with_inventory and
     // already moved stock; editing them alone would desync the books.
@@ -1201,13 +1268,16 @@ async function handleRequest(req: Request) {
     if (req.method === 'POST' && path === '/auth/otp/request') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      const limited = await rateLimit(req, 'otp-request', body.phone, 3)
+      // Keyed by the normalized number so 05… and +9665… share one budget.
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      const limited = await rateLimit(req, 'otp-request', phoneKey, 3)
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
-      return await rateLimit(req, 'otp-verify', body.phone, 10) ?? authOtpVerify(body.phone, body.code)
+      const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
+      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()
@@ -1254,6 +1324,20 @@ async function handleRequest(req: Request) {
     if (path === '/auth/me' && req.method === 'GET') return authMe(user)
     if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
     if (path === '/auth/logout' && req.method === 'POST') return authLogout(req.headers.get('Authorization')!.slice(7))
+    // Coordinate database/API upgrades without accepting financial writes from
+    // web or native clients. Keep sign-out available during maintenance.
+    if (Deno.env.get('MAINTENANCE_MODE') === 'true') return disabled('دفتر قيد التحديث، حاول مجددًا بعد قليل')
+    if (path === '/business/export' && req.method === 'GET') {
+      if (!user.businessId) return err('Business not set up', 403)
+      const limited = await rateLimit(req, 'business-export', user.sub, 3, { includeIp: false })
+      if (limited) return limited
+      const { data, error } = await db().rpc('export_business_data', { p_business_id: user.businessId })
+      if (error) return err('تعذر تصدير البيانات، حاول مجددًا', 503)
+      const response = json(data)
+      response.headers.set('Content-Disposition', 'attachment; filename="daftar-business-export.json"')
+      response.headers.set('Cache-Control', 'no-store')
+      return response
+    }
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)

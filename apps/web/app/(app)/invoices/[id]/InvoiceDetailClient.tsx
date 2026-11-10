@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, CheckCircle2, Trash2, ArrowRight, ArrowLeft, Printer } from "lucide-react";
+import { CheckCircle2, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { apiGet, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { fieldClass } from "@/components/ui/form-field";
@@ -11,6 +11,7 @@ import { Invoice } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import StatusBadge from "@/components/StatusBadge";
 import ZatcaQr from "@/components/invoices/ZatcaQr";
+import InvoiceFileActions from "@/components/invoices/InvoiceFileActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
@@ -52,7 +53,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     try {
       const updated = await apiPatch<Invoice>(
         `/invoices/${invoice.id}/status`,
-        { status: "PARTIAL", paidAmount: amount },
+        { status: "PARTIAL", paidAmount: amount, expectedPaidAmount: invoice.paidAmount ?? 0 },
       );
       setInvoice(updated);
       setShowPartialForm(false);
@@ -83,7 +84,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     try {
       const updated = await apiPatch<Invoice>(
         `/invoices/${invoice.id}/status`,
-        { status: "PAID" },
+        { status: "PAID", expectedPaidAmount: invoice.paidAmount ?? 0 },
       );
       setInvoice(updated);
     } catch (err) {
@@ -103,7 +104,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     return <Skeleton className="h-64 rounded-2xl" />;
   }
 
-  const statusLabel = en
+  const statusLabel = invoice.voidedAt ? (en ? "Cancelled" : "ملغاة") : en
     ? invoice.status === "PAID" ? "Paid" : invoice.status === "PARTIAL" ? "Partially paid" : "Unpaid"
     : invoice.status === "PAID" ? "مدفوعة" : invoice.status === "PARTIAL" ? "مدفوعة جزئيًا" : "غير مدفوعة";
 
@@ -127,6 +128,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
   return (
     <div className="flex flex-col gap-4">
+      {invoice.voidedAt && <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">{en ? "This invoice is cancelled. Its original details are kept for reference." : "هذه الفاتورة ملغاة، وتفاصيلها الأصلية محفوظة للمراجعة."}</p>}
       <div className="flex items-center justify-between print:hidden">
         <Link
           href="/invoices/list"
@@ -137,8 +139,8 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </Link>
         <button
           type="button"
-          onClick={handleDelete}
-          aria-label={deletingId ? (en ? "Tap again to delete" : "اضغط مرة ثانية للحذف") : (en ? "Delete invoice" : "حذف الفاتورة")}
+          disabled={!!invoice.voidedAt} onClick={handleDelete}
+          aria-label={deletingId ? (en ? "Tap again to cancel" : "اضغط مرة ثانية للإلغاء") : (en ? "Cancel invoice" : "إلغاء الفاتورة")}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
             deletingId
               ? "bg-red-500 text-white"
@@ -174,7 +176,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
               </p>
             )}
           </div>
-          <StatusBadge status={invoice.status} />
+          {invoice.voidedAt ? <span className="rounded-full bg-amber-100 px-3 py-1 text-sm text-amber-900">{en ? "Cancelled" : "ملغاة"}</span> : <StatusBadge status={invoice.status} />}
         </div>
 
         {invoice.customer && (
@@ -188,8 +190,8 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
         <div className="flex flex-col divide-y divide-gray-100">
           {invoice.items.map((item, i) => (
-            <div key={i} className="flex items-center justify-between py-2.5">
-              <div>
+            <div key={i} className="flex items-center justify-between gap-4 py-2.5 print:break-inside-avoid">
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-800">
                   {item.name}
                 </p>
@@ -197,7 +199,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                   {item.quantity} × {formatSAR(item.unitPrice, language)}
                 </p>
               </div>
-              <p className="text-sm font-bold text-gray-900">
+              <p className="shrink-0 text-sm font-bold text-gray-900">
                 {formatSAR(item.unitPrice * item.quantity, language)}
               </p>
             </div>
@@ -259,7 +261,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         )}
       </div>
 
-      {invoice.status !== "PAID" && (
+      {!invoice.voidedAt && invoice.status !== "PAID" && (
         <div className="flex flex-col gap-2 print:hidden">
           <button
             type="button"
@@ -314,25 +316,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         </div>
       )}
 
-      <div className="flex gap-3 print:hidden">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50"
-        >
-          <Printer className="h-4 w-4" />
-          {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
-        </button>
-        <a
-          href={waHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-green-500 py-3 text-sm font-semibold text-white active:bg-green-600"
-        >
-          <MessageCircle className="h-4 w-4" />
-          {en ? "Share on WhatsApp" : "مشاركة عبر واتساب"}
-        </a>
-      </div>
+      {business && <InvoiceFileActions invoice={invoice} business={business} language={language} text={waText} textLink={waHref} />}
 
       {error && (
         <ErrorAlert>{error}</ErrorAlert>

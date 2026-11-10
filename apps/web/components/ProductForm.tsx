@@ -53,8 +53,11 @@ export default function ProductForm({ product }: ProductFormProps) {
   }, [en]);
 
   const allItems = useMemo(
-    () => [...rawItems, ...packagingItems],
-    [rawItems, packagingItems],
+    () => [...rawItems, ...packagingItems].map(item => {
+      const material = materials.find(row => row.id === item.materialId);
+      return material ? { ...item, unitPrice: material.unitPrice, unit: material.unit } : item;
+    }),
+    [rawItems, packagingItems, materials],
   );
 
   const result = useMemo(
@@ -150,7 +153,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       <RecipeItemTable
         title={en ? "Ingredients" : "المواد الخام"}
         type="RAW"
-        items={rawItems}
+        items={allItems.filter(item => item.type === "RAW")}
         onChange={setRawItems}
         materials={materials}
       />
@@ -158,7 +161,7 @@ export default function ProductForm({ product }: ProductFormProps) {
       <RecipeItemTable
         title={en ? "Packaging" : "التغليف"}
         type="PACKAGING"
-        items={packagingItems}
+        items={allItems.filter(item => item.type === "PACKAGING")}
         onChange={setPackagingItems}
         materials={materials}
       />

@@ -281,7 +281,7 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       );
     });
 
-    it("يحفظ التوكن ويوجّه للوحة التحكم بعد النجاح", async () => {
+    it("يحفظ التوكن ويعرض أول مصروف قبل الانتقال للرئيسية", async () => {
       const user = userEvent.setup();
       vi.mocked(apiPost).mockResolvedValue({
         accessToken: "fresh-token",
@@ -296,7 +296,8 @@ describe("صفحة الإعداد الأولي (Onboarding)", () => {
       await user.click(screen.getByRole("button", { name: "حفظ والمتابعة" }));
       await waitFor(() => {
         expect(mockSetToken).toHaveBeenCalledWith("fresh-token");
-        expect(mockReplace).toHaveBeenCalledWith("/dashboard");
+        expect(screen.getByRole("button", { name: "سجّل أول مصروف" })).toBeInTheDocument();
+        expect(mockReplace).not.toHaveBeenCalled();
       });
     });
 

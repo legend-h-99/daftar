@@ -9,6 +9,62 @@ permissions:
   contents: read
 
 jobs:
+  mobile-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - run: pnpm install --frozen-lockfile
+      - name: Audit workspace dependencies for high and critical advisories
+        run: pnpm audit --prod --audit-level high
+      - name: Verify parser and Metro compatibility
+        run: node --test apps/mobile/test/dependency-security.test.cjs
+      - name: Type-check mobile
+        run: pnpm --filter @daftar/mobile type-check
+      - name: Build Android and iOS Hermes bundles
+        run: pnpm --filter @daftar/mobile exec expo export --platform ios --platform android --output-dir dist-security --max-workers 2
+        env:
+          CI: "true"
+
+  scale-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: daftar_scale
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daftar_scale
+      JWT_SECRET: isolated-scale-ci-secret-not-for-production
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api exec prisma generate
+      - run: pnpm --filter api exec prisma migrate deploy
+      - run: pnpm --filter api db:seed:scale
+      - run: pnpm --filter api test:scale
+
   test-and-build:
     runs-on: ubuntu-latest
     steps:
@@ -49,6 +105,12 @@ jobs:
       - name: Test API
         run: pnpm --filter api test --runInBand
 
+      - name: Type-check API including test tooling
+        run: pnpm --filter api exec tsc --noEmit
+
+      - name: Test Supabase material and activation contracts
+        run: node --test supabase/functions/api/material-create.test.cjs supabase/functions/api/activation-analytics.test.cjs
+
       - name: Build API
         run: pnpm --filter api build
 
@@ -62,7 +124,7 @@ jobs:
           NEXT_PUBLIC_DEMO_MODE: "false"
           NEXT_PUBLIC_DEMO_LOGIN: "false"
           NEXT_PUBLIC_EMAIL_LOGIN_ENABLED: "false"
-          NEXT_PUBLIC_PHONE_LOGIN_ENABLED: "false"
+          NEXT_PUBLIC_PHONE_LOGIN_ENABLED: "true"
           NEXT_PUBLIC_SESSION_PROXY_ENABLED: "true"
           NEXT_OUTPUT_EXPORT: "1"
           NEXT_DIST_DIR: ".next-cloudflare-check"
@@ -70,9 +132,16 @@ jobs:
 
       - name: Test static release UX (synthetic API only)
         run: pnpm --filter web test:ux:release
+        env:
+          UX_PHONE_LOGIN_ENABLED: "true"
 
       - name: Test anonymous customer behavior
         run: pnpm --filter web test:behavior
+        env:
+          QA_STATIC_DIR: ".next-cloudflare-check"
+
+      - name: Test first expense activation
+        run: pnpm --filter web exec node test/ux/first-expense-browser.mjs
         env:
           QA_STATIC_DIR: ".next-cloudflare-check"
 
@@ -85,3 +154,29 @@ jobs:
             test-results/ux-release/
             test-results/session-browser/
             test-results/behavior-browser/
+
+  financial-integrity:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        existing-ledger: ["false", "true"]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: daftar_audit_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AUDIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/daftar_audit_ci
+      AUDIT_BASELINE_LEDGER: ${{ matrix.existing-ledger }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap the production schema fixture and apply remediation migrations
+        run: python3 tests/red-team/bootstrap-audit.py
+      - name: Exercise financial rollback, concurrency and tenant boundaries
+        run: python3 tests/red-team/audit-remediation.py

@@ -10,6 +10,7 @@ import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import AuthBrand from "@/components/AuthBrand";
+import EmailAuthGate from "@/components/EmailAuthGate";
 import { Business, User } from "@/lib/types";
 
 function ResetPasswordContent() {
@@ -166,9 +167,9 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <SuspenseBoundary>
+    <EmailAuthGate><SuspenseBoundary>
       <ResetPasswordContent />
-    </SuspenseBoundary>
+    </SuspenseBoundary></EmailAuthGate>
   );
 }
 

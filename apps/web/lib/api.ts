@@ -91,6 +91,7 @@ function localizedApiError(data: { code?: unknown; material?: unknown }): string
   if (data.code === "INVALID_BUSINESS_NAME") {
     return ar ? "أدخل اسم المحل (100 حرف كحد أقصى)" : "Enter your business name (up to 100 characters).";
   }
+  if (data.code === "PURCHASE_IDEMPOTENCY_KEY_REUSED") return ar ? "تغيرت بيانات الشراء بعد محاولة حفظ سابقة؛ راجع المشتريات قبل بدء طلب جديد" : "The purchase changed after an earlier save attempt. Review purchases before starting a new request.";
   if (data.code === "IDEMPOTENCY_KEY_REUSED") {
     return ar
       ? "تغيّرت بيانات الفاتورة بعد محاولة حفظ سابقة. أعد فتح صفحة الفاتورة وتحقق من قائمة الفواتير قبل الحفظ."
@@ -188,8 +189,22 @@ export async function apiFetch<T = unknown>(
   return JSON.parse(text) as T;
 }
 
-export function apiGet<T = unknown>(path: string) {
-  return apiFetch<T>(path, { method: "GET" });
+export async function apiGet<T = unknown>(path: string): Promise<T> {
+  const url = new URL(path, "https://local.invalid");
+  const paged = /^\/(invoices|purchases|expenses|products|customers|suppliers|materials|stock-movements)$/.test(url.pathname);
+  if (!paged || url.searchParams.has("page") || url.searchParams.has("limit") || DEMO_MODE) {
+    return apiFetch<T>(path, { method: "GET" });
+  }
+  const rows: unknown[] = [];
+  const limit = 200;
+  for (let page = 1; page <= 500; page++) {
+    url.searchParams.set("page", String(page)); url.searchParams.set("limit", String(limit));
+    const batch = await apiFetch<unknown[]>(url.pathname + url.search, { method: "GET" });
+    if (!Array.isArray(batch)) throw new ApiError("تعذر تحميل القائمة كاملة", 502);
+    rows.push(...batch);
+    if (batch.length < limit) return rows as T;
+  }
+  throw new ApiError("القائمة كبيرة؛ حدد فترة أقصر لتحميلها كاملة", 413);
 }
 
 export function apiPost<T = unknown>(path: string, body?: unknown, options: Pick<ApiFetchOptions, "auth" | "headers"> = {}) {

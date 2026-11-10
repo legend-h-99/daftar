@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
@@ -49,7 +49,10 @@ export default function PurchaseForm({
       : [emptyRow()],
   );
   const [saving, setSaving] = useState(false);
+  const pendingKey = useRef<string | null>(null);
+  const submitting = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsReview, setNeedsReview] = useState(false);
 
   useEffect(() => {
     apiGet<Material[]>("/materials").then(setMaterials).catch((err) => {
@@ -94,6 +97,7 @@ export default function PurchaseForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
     track("workflow_started", { workflow: "purchase" });
     const items = rows
       .filter((r) => r.name.trim() && Number(r.quantity) > 0)
@@ -109,6 +113,12 @@ export default function PurchaseForm({
       setError(en ? "Add at least one item with a valid quantity" : "أضف صنف واحد على الأقل بكمية صحيحة");
       return;
     }
+    submitting.current = true;
+    if (!pendingKey.current) {
+      try { pendingKey.current = sessionStorage.getItem("daftar_pending_purchase"); } catch { /* In-memory retries remain protected. */ }
+      pendingKey.current ??= crypto.randomUUID();
+      try { sessionStorage.setItem("daftar_pending_purchase", pendingKey.current); } catch { /* Storage is optional. */ }
+    }
     setSaving(true);
     setError(null);
     try {
@@ -117,17 +127,32 @@ export default function PurchaseForm({
         date,
         source,
         items,
-      });
+      }, { headers: { "Idempotency-Key": pendingKey.current } });
       track("purchase_recorded", { items_count: items.length, source });
+      try { sessionStorage.removeItem("daftar_pending_purchase"); } catch { /* Storage is optional. */ }
       router.push("/inventory?purchaseUpdated=1");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : en ? "Could not save purchase" : "تعذر حفظ فاتورة الشراء");
+      if (err instanceof ApiError && err.status === 422) setNeedsReview(true);
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 422) {
+        pendingKey.current = null;
+        try { sessionStorage.removeItem("daftar_pending_purchase"); } catch { /* Storage is optional. */ }
+      }
+      submitting.current = false;
       setSaving(false);
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {needsReview && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-amber-900">
+        <p>{en ? "Check the purchases list for the earlier save before starting a new purchase." : "تحقق من قائمة المشتريات من الحفظ السابق قبل بدء طلب جديد."}</p>
+        <a href="/purchases" className="inline-flex min-h-11 items-center underline">{en ? "Review purchases" : "راجع قائمة المشتريات"}</a>
+        <button type="button" className="mt-2 min-h-11 underline" onClick={() => {
+          pendingKey.current = null; setNeedsReview(false); setError(null);
+          try { sessionStorage.removeItem("daftar_pending_purchase"); } catch { /* Storage is optional. */ }
+        }}>{en ? "I checked the list; start a new request" : "تحققت من القائمة؛ ابدأ طلبًا جديدًا"}</button>
+      </div>}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">

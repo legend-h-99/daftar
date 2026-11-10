@@ -103,15 +103,15 @@ describe("صفحة الـ Landing", () => {
     it("يعرض '0' و '10×' و '<10 ث'", () => {
       render(<LandingPage />);
       expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("10×")).toBeInTheDocument();
-      expect(screen.getByText("<10 ث")).toBeInTheDocument();
+      expect(screen.getByText("بخطوات بسيطة")).toBeInTheDocument();
+      expect(screen.getByText("بوضوح")).toBeInTheDocument();
     });
 
     it("يعرض تسميات الإحصاءات الثلاثة", () => {
       render(<LandingPage />);
       expect(screen.getByText("ريال رسوم اشتراك")).toBeInTheDocument();
-      expect(screen.getByText("أسرع من الورقة والقلم")).toBeInTheDocument();
-      expect(screen.getByText("لمعرفة ربحك الشهري")).toBeInTheDocument();
+      expect(screen.getByText("لتسجيل البيع والمصروف")).toBeInTheDocument();
+      expect(screen.getByText("لمراجعة نتيجتك الشهرية")).toBeInTheDocument();
     });
   });
 

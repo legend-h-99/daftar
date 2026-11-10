@@ -6,12 +6,13 @@ const LINKS = [
   { href: "/invoices/list", label: "الفواتير", icon: FileText, color: "text-primary bg-accent" },
   { href: "/purchases", label: "المشتريات", icon: ShoppingCart, color: "text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950" },
   { href: "/expenses", label: "المصاريف", icon: Wallet, color: "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950" },
+  { href: "/privacy", label: "تنزيل بيانات نشاطي والخصوصية", icon: FileText, color: "text-primary bg-accent" },
 ];
 
 /** روابط سريعة أسفل التقرير لأقسام الفواتير والمشتريات والمصاريف. */
 export default function ReportQuickLinks() {
   const { language } = useLanguage();
-  const labels = language === "en" ? ["Invoices", "Purchases", "Expenses"] : LINKS.map((link) => link.label);
+  const labels = language === "en" ? ["Invoices", "Purchases", "Expenses", "Download business data and privacy"] : LINKS.map((link) => link.label);
   return (
     <section aria-labelledby="report-records-heading" className="rounded-xl border border-border bg-card p-4">
       <h2 id="report-records-heading" className="text-sm font-bold text-foreground">{language === "en" ? "Report details" : "تفاصيل التقرير"}</h2>

@@ -172,6 +172,7 @@ export interface InvoiceItem {
 }
 
 export interface Invoice {
+  voidedAt?: string | null;
   id: string;
   number: string;
   customerId?: string | null;
