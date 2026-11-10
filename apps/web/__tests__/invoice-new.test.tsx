@@ -57,3 +57,30 @@ describe("فاتورة جديدة: إعادة المحاولة", () => {
     expect(invoiceBodies.map((b) => b.customerId)).toEqual(["c-new", "c-new"]);
   });
 });
+
+describe("فاتورة جديدة: السطر الفارغ الأول", () => {
+  beforeEach(() => {
+    vi.mocked(apiGet).mockResolvedValue([]);
+    vi.mocked(apiPost).mockReset();
+  });
+
+  it("يطلب اسم الصنف وسعره إذا حُفظت الفاتورة والسطر الأول فارغ، ولا يرسل شيئاً", async () => {
+    render(<NewInvoicePage />);
+    fireEvent.click(screen.getByText("حفظ الفاتورة"));
+    await screen.findByText("اكتب اسم الصنف وسعره");
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+  });
+
+  it("المنتج المختار يحل محل السطر الفارغ بدل أن يُضاف بجانبه", async () => {
+    vi.mocked(apiPost).mockResolvedValue({ id: "inv-1" });
+    render(<NewInvoicePage />);
+    fireEvent.click(screen.getByText("أضف كيك"));
+    fireEvent.click(screen.getByText("حفظ الفاتورة"));
+    await waitFor(() => expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1));
+    const [path, body] = vi.mocked(apiPost).mock.calls[0];
+    expect(path).toBe("/invoices");
+    expect((body as { items: unknown[] }).items).toEqual([
+      { productId: "p-1", name: "كيك", unitPrice: 10, quantity: 1 },
+    ]);
+  });
+});

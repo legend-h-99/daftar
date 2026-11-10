@@ -6,17 +6,19 @@ import { InvoiceItem, Product } from "@/lib/types";
 import { formatSAR } from "@/lib/format";
 import { useLanguage } from "@/lib/language";
 
-/** محرّر أصناف الفاتورة: منتقي منتج + صفوف قابلة للتعديل (سعر/كمية/حذف). */
+/** محرّر أصناف الفاتورة: صفوف تُكتب يدوياً أو تُختار من المنتجات (سعر/كمية/حذف). */
 export default function InvoiceItemsEditor({
   items,
   products,
   onAdd,
+  onAddBlank,
   onUpdate,
   onRemove,
 }: {
   items: InvoiceItem[];
   products: Product[];
   onAdd: (product: Product) => void;
+  onAddBlank: () => void;
   onUpdate: (index: number, patch: Partial<InvoiceItem>) => void;
   onRemove: (index: number) => void;
 }) {
@@ -42,7 +44,9 @@ export default function InvoiceItemsEditor({
         <ul className="mb-3 flex max-h-48 flex-col divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-100">
           {products.length === 0 && (
             <li className="px-3 py-2.5 text-sm text-gray-500">
-              {en ? "No products have been added yet" : "لا يوجد منتجات مضافة بعد"}
+              {en
+                ? "No products yet — just type the item and its price below"
+                : "ما فيه منتجات بعد — اكتب الصنف وسعره مباشرة تحت"}
             </li>
           )}
           {products.map((p) => (
@@ -76,6 +80,8 @@ export default function InvoiceItemsEditor({
                 <input
                   value={item.name}
                   onChange={(e) => onUpdate(index, { name: e.target.value })}
+                  aria-label={en ? "Item name" : "اسم الصنف"}
+                  placeholder={en ? "Item name, e.g. chocolate cake" : "اسم الصنف، مثلاً: كيكة شوكولاتة"}
                   className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-brand-500"
                 />
                 <button
@@ -90,10 +96,11 @@ export default function InvoiceItemsEditor({
 
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1">
-                  <label className="text-[11px] font-medium text-gray-500">
+                  <label htmlFor={`invoice-item-price-${index}`} className="text-[11px] font-medium text-gray-500">
                     {en ? "Unit price" : "سعر الوحدة"}
                   </label>
                   <input
+                    id={`invoice-item-price-${index}`}
                     type="number"
                     inputMode="decimal"
                     min={0}
@@ -116,6 +123,7 @@ export default function InvoiceItemsEditor({
                         quantity: Math.max(1, item.quantity - 1),
                       })
                     }
+                    aria-label={en ? "Decrease quantity" : "إنقاص الكمية"}
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
                   >
                     <Minus className="h-4 w-4" />
@@ -126,6 +134,7 @@ export default function InvoiceItemsEditor({
                   <button
                     type="button"
                     onClick={() => onUpdate(index, { quantity: item.quantity + 1 })}
+                    aria-label={en ? "Increase quantity" : "زيادة الكمية"}
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
                   >
                     <Plus className="h-4 w-4" />
@@ -140,6 +149,15 @@ export default function InvoiceItemsEditor({
           ))}
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={onAddBlank}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-brand-300 py-2.5 text-sm font-semibold text-brand-700 active:bg-brand-50"
+      >
+        <Plus className="h-4 w-4" />
+        {en ? "Add item" : "إضافة صنف"}
+      </button>
     </div>
   );
 }

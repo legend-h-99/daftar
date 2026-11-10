@@ -16,6 +16,11 @@ import InvoiceItemsEditor from "@/components/invoices/InvoiceItemsEditor";
 import InvoiceSummary from "@/components/invoices/InvoiceSummary";
 import { useLanguage } from "@/lib/language";
 
+// The form opens with one empty line so an invoice can be written straight
+// away, without first creating a product to pick from.
+const blankLine = (): InvoiceItem => ({ name: "", unitPrice: 0, quantity: 1 });
+const isBlank = (item: InvoiceItem) => !item.productId && !item.name.trim() && !item.unitPrice;
+
 export default function NewInvoicePage() {
   const router = useRouter();
   const { business } = useBusiness();
@@ -28,7 +33,7 @@ export default function NewInvoicePage() {
   const [customerQuery, setCustomerQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const [items, setItems] = useState<InvoiceItem[]>([]);
+  const [items, setItems] = useState<InvoiceItem[]>(() => [blankLine()]);
 
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -62,8 +67,9 @@ export default function NewInvoicePage() {
 
   function addProductLine(product: Product) {
     setError(null);
+    // A picked product takes the place of any untouched empty line.
     setItems((prev) => [
-      ...prev,
+      ...prev.filter((item) => !isBlank(item)),
       {
         productId: product.id,
         name: product.name,
@@ -71,6 +77,11 @@ export default function NewInvoicePage() {
         quantity: 1,
       },
     ]);
+  }
+
+  function addBlankLine() {
+    setError(null);
+    setItems((prev) => [...prev, blankLine()]);
   }
 
   function updateItem(index: number, patch: Partial<InvoiceItem>) {
@@ -94,9 +105,14 @@ export default function NewInvoicePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     track("workflow_started", { workflow: "invoice" });
-    if (items.length === 0) {
+    const lines = items.filter((item) => !isBlank(item));
+    if (lines.length === 0 || lines.some((item) => !item.name.trim())) {
       track("workflow_failed", { workflow: "invoice", status: 400 });
-      setError(en ? "Add at least one item" : "أضف صنف واحد على الأقل");
+      setError(
+        lines.length === 0
+          ? en ? "Write the item name and its price" : "اكتب اسم الصنف وسعره"
+          : en ? "Write a name for every item" : "اكتب اسم كل صنف",
+      );
       return;
     }
     setError(null);
@@ -115,9 +131,9 @@ export default function NewInvoicePage() {
 
       const invoice = await apiPost<Invoice>("/invoices", {
         customerId,
-        items: items.map((item) => ({
+        items: lines.map((item) => ({
           productId: item.productId || undefined,
-          name: item.name,
+          name: item.name.trim(),
           unitPrice: item.unitPrice,
           quantity: item.quantity,
         })),
@@ -125,7 +141,7 @@ export default function NewInvoicePage() {
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
       }, { headers: { "Idempotency-Key": idempotencyKey.current } });
-      track("invoice_created", { items_count: items.length });
+      track("invoice_created", { items_count: lines.length });
       router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
       track("workflow_failed", { workflow: "invoice", status: err instanceof ApiError ? err.status : 0 });
@@ -168,6 +184,7 @@ export default function NewInvoicePage() {
           items={items}
           products={products}
           onAdd={addProductLine}
+          onAddBlank={addBlankLine}
           onUpdate={updateItem}
           onRemove={removeItem}
         />
