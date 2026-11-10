@@ -27,6 +27,7 @@ export default function ExpensesPage() {
     nextMonth,
     reload,
   } = useMonthResource<{ expenses: Expense[]; summary: DashboardSummary | null }>({
+    key: "expenses",
     load: async (targetMonth) => {
       const [expenses, summary] = await Promise.all([
         apiGet<Expense[]>(`/expenses?month=${targetMonth}`),
