@@ -111,7 +111,7 @@ describe("صفحة المصاريف (Expenses)", () => {
     it("يعرض العنوان وزر الإضافة", () => {
       vi.mocked(apiGet).mockReturnValue(new Promise(() => {}));
       render(<ExpensesPage />);
-      expect(screen.getByText("المصاريف")).toBeInTheDocument();
+      expect(screen.getByText("مصاريف التشغيل")).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "إضافة مصروف" }),
       ).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("صفحة المصاريف (Expenses)", () => {
       ]);
       render(<ExpensesPage />);
       await waitFor(() =>
-        expect(screen.getByText(/إجمالي مصاريف/)).toBeInTheDocument(),
+        expect(screen.getByText(/إجمالي التكاليف/)).toBeInTheDocument(),
       );
       expect(screen.getByText("1,500.00 ر.س")).toBeInTheDocument();
     });
@@ -249,7 +249,7 @@ describe("صفحة المصاريف (Expenses)", () => {
       );
       render(<ExpensesPage />);
       await waitFor(() =>
-        expect(screen.getByText(/إجمالي مصاريف/)).toBeInTheDocument(),
+        expect(screen.getByText(/إجمالي التكاليف/)).toBeInTheDocument(),
       );
       // إجمالي = 1000 + 500 = 1500
       expect(screen.getByText("1,500.00 ر.س")).toBeInTheDocument();
@@ -326,7 +326,7 @@ describe("صفحة المصاريف (Expenses)", () => {
         screen.getByRole("button", { name: "تأكيد الحذف" }),
       ).toBeInTheDocument();
       // النقر على الـ container الخارجي
-      await user.click(screen.getByText("المصاريف"));
+      await user.click(screen.getByText("مصاريف التشغيل"));
       expect(
         screen.queryByRole("button", { name: "تأكيد الحذف" }),
       ).not.toBeInTheDocument();

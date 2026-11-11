@@ -34,6 +34,9 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
+// Budget for numbers that have no account yet. Kept apart so a flood of unknown numbers cannot stop
+// existing users from signing in by phone.
+const SMS_NEW_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_NEW_DAILY_SEND_CAP') ?? '50', 10)
 // Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
 // secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
 const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
@@ -177,16 +180,24 @@ function err(msg: string, status = 400, code?: string, extra: Record<string, unk
   return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
 }
 
+// Only the Worker holds EDGE_SHARED_SECRET and may vouch for the client address it saw. This function
+// URL is public, so a direct caller can set any header. Without the secret the request gets no
+// IP-keyed bucket (per-account buckets still apply) instead of a bucket the caller chose.
+function clientIp(req: Request): string | null {
+  const secret = Deno.env.get('EDGE_SHARED_SECRET') ?? ''
+  // Transition: until the secret is provisioned on both the function and the Pages Worker, keep the
+  // header the Worker already forwards today, so IP-keyed limits do not change before the Worker ships.
+  if (!secret) return req.headers.get('cf-connecting-ip')
+  if (secret.length < 32 || req.headers.get('x-daftar-edge-secret') !== secret) return null
+  return req.headers.get('cf-connecting-ip')
+}
+
 async function rateLimit(
   req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
 ): Promise<Response | null> {
-  // The function always sits behind Cloudflare, which sets cf-connecting-ip to the
-  // real client IP and strips any client-supplied value (verified: present on 100%
-  // of edge requests, distinct per client). x-real-ip / x-forwarded-for are client-
-  // spoofable and only reachable off-Cloudflare, so they are deliberately not trusted.
-  const ip = req.headers.get('cf-connecting-ip') ?? 'unknown'
+  const ip = clientIp(req)
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
-  const keys = includeIp ? [`${action}:ip:${ip}`] : []
+  const keys = includeIp && ip ? [`${action}:ip:${ip}`] : []
   if (identity) keys.push(`${action}:account:${identity}`)
   const outcomes = await Promise.all(keys.map(async key => {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
@@ -217,10 +228,11 @@ async function reserveDailyEmailSend(): Promise<boolean> {
   return !error && data === true
 }
 
-async function reserveDailySmsSend(): Promise<boolean> {
-  if (!Number.isInteger(SMS_DAILY_SEND_CAP) || SMS_DAILY_SEND_CAP < 1) return false
+async function reserveDailySmsSend(segment: 'returning' | 'new'): Promise<boolean> {
+  const cap = segment === 'returning' ? SMS_DAILY_SEND_CAP : SMS_NEW_DAILY_SEND_CAP
+  if (!Number.isInteger(cap) || cap < 1) return false
   const { data, error } = await db().rpc('consume_external_usage_budget', {
-    p_key: 'sms', p_daily_limit: SMS_DAILY_SEND_CAP,
+    p_key: `sms:${segment}`, p_daily_limit: cap,
   })
   return !error && data === true
 }
@@ -259,7 +271,7 @@ function currentRiyadhMonth(): string {
 }
 
 const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "login_method_selected", "otp_stage_reached", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "exit_survey_shown", "exit_survey_answered", "exit_survey_dismissed", "workflow_started", "workflow_failed"]);
-const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
+const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/funding", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function handleAnalytics(req: Request): Promise<Response> {
@@ -400,13 +412,35 @@ async function authentica(path: 'send-otp' | 'verify-otp', body: Record<string, 
   }
 }
 
+// Minimum time for an OTP request after the account lookup. Set above the usual provider latency, so a
+// denied budget (no provider call) and an allowed send take about the same time. Residual: provider
+// answers slower than the floor still take longer.
+const OTP_RESPONSE_FLOOR_MS = Number.parseInt(Deno.env.get('OTP_RESPONSE_FLOOR_MS') ?? '1000', 10)
+
+async function settleOtpResponse(started: number): Promise<void> {
+  const remaining = OTP_RESPONSE_FLOOR_MS - (Date.now() - started)
+  if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining))
+}
+
 async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
-  if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
+  const started = Date.now()
+  // A number that already has an account draws on the returning-user budget, so unknown-number
+  // floods cannot stop existing users from signing in (see SMS_NEW_DAILY_SEND_CAP).
+  const { data: known } = await db().from('User').select('id').eq('phone', phone).maybeSingle()
+  // Every outcome after this point looks the same to the caller: the same status and body, and at
+  // least the same minimum delay. A denied budget therefore does not reveal whether the number has an
+  // account. The owner is told about denials in the logs instead.
+  if (!await reserveDailySmsSend(known ? 'returning' : 'new')) {
+    console.warn(`SMS budget denied for the ${known ? 'returning' : 'new'} segment`)
+    await settleOtpResponse(started)
+    return json({ sent: true, codeLength: AUTHENTICA_OTP_LENGTH })
+  }
 
   const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
+  await settleOtpResponse(started)
   if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
   if (sent.status !== 200 || sent.data?.success !== true) {
     // Keep provider details and phone numbers out of the public response/logs.
@@ -457,9 +491,13 @@ async function authMe(user: Record<string, unknown>) {
   return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, name: data.name, businessId: data.businessId, isAdmin: isAdmin(user) } })
 }
 
-function validEmailInput(email: unknown, password: unknown): email is string {
-  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    typeof password === 'string' && password.length >= 8 && new TextEncoder().encode(password).byteLength <= 72
+function validEmailAddress(email: unknown): email is string {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+// Chosen by the mailbox owner when verifying (authEmailVerify), never at registration.
+function validNewPassword(password: unknown): password is string {
+  return typeof password === 'string' && password.length >= 8 && new TextEncoder().encode(password).byteLength <= 72
 }
 
 async function sendVerificationEmail(email: string, token: string): Promise<boolean> {
@@ -498,23 +536,26 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
   return response.ok
 }
 
+// A new random session version for each verified password (see getUser, claim sv).
+function newSessionVersion(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff
+}
+
 async function authEmailRegister(body: Record<string, unknown>) {
   if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
-  if (!validEmailInput(body.email, body.password)) return err('Invalid email or password', 400)
+  if (!validEmailAddress(body.email)) return err('Invalid email address', 400)
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
-  const { data: existing, error: lookupError } = await supabase.from('User').select('id').eq('email', email).maybeSingle()
+  const { data: existing, error: lookupError } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
   if (lookupError) return err('Could not register', 500)
-  // Never replace credentials from registration. The response is deliberately
-  // indistinguishable so the endpoint cannot be used to enumerate accounts.
-  if (existing) {
-    await bcrypt.hash(body.password as string, 12)
-    return json({ sent: true })
-  }
-  const passwordHash = await bcrypt.hash(body.password as string, 12)
+  // The same answer for every address, so the endpoint cannot be used to enumerate accounts. No
+  // password is stored here: the mailbox owner sets it when verifying (authEmailVerify).
+  // An existing account, verified or not, changes nothing and gets no mail: no one can use this
+  // endpoint to overwrite an account or to fill a stranger's inbox.
+  if (existing) return json({ sent: true })
   const userId = newId('user')
-  const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
+  const { error } = await supabase.from('User').insert({ id: userId, email, name, emailVerified: false })
   if (error) return err('Could not register', 500)
   const issued = await issueVerificationLink(userId, email)
   if (issued === 'FAILED') return err('Could not register', 500)
@@ -618,6 +659,9 @@ async function authPasswordReset(body: Record<string, unknown>) {
 
 async function authEmailVerify(body: Record<string, unknown>) {
   if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) return err('Invalid verification link', 400)
+  // Checked before the link is consumed, so a request without a password does not burn it.
+  if (!validNewPassword(body.password)) return err('Choose a password of 8 to 128 characters', 400, 'PASSWORD_REQUIRED')
+  const password: string = body.password
   const supabase = db()
   const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', await hashToken(body.token))
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
@@ -625,10 +669,15 @@ async function authEmailVerify(body: Record<string, unknown>) {
   const { data: consumed } = await supabase.from('EmailVerification').update({ consumed: true })
     .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
   if (!consumed) return err('Invalid or expired verification link', 400)
-  const { data: user, error } = await supabase.from('User').update({ emailVerified: true })
-    .eq('id', record.userId).select('id,email,phone,name,businessId,sessionVersion').single()
-  if (error || !user) return err('Could not verify email', 500)
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, sv: user.sessionVersion ?? 0 })
+  // The mailbox owner sets the password here. Only an unverified account is changed, and a new
+  // session version ends any session that existed before.
+  const passwordHash = await bcrypt.hash(password, 12)
+  const sessionVersion = newSessionVersion()
+  const { data: user, error } = await supabase.from('User').update({ emailVerified: true, passwordHash, sessionVersion })
+    .eq('id', record.userId).eq('emailVerified', false).select('id,email,phone,name,businessId').maybeSingle()
+  if (error) return err('Could not verify email', 500)
+  if (!user) return err('Invalid or expired verification link', 400)
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, sv: sessionVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
@@ -859,7 +908,58 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
   return json(data ?? { bySupplier: [], byMonth: [] })
 }
 
+// Financing is deliberately separate from sales, COGS and profit.
+const FUNDING_KINDS = ['OWNER_CONTRIBUTION', 'LOAN', 'OWNER_WITHDRAWAL', 'LOAN_REPAYMENT']
+async function handleFunding(req: Request, user: Record<string, unknown>, url: URL) {
+  const bizId = user.businessId as string
+  if (!bizId) return err('Business not set up', 403)
+  const supabase = db()
+  if (req.method === 'GET') {
+    const month = url.searchParams.get('month')
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return err('Invalid month', 400)
+    let query = supabase.from('FundingEntry').select('*').eq('businessId', bizId)
+    const range = monthRange(month)
+    if (range) query = query.gte('date', range.startDate).lt('date', range.endDate)
+    const result = await readReportRows(query)
+    if (result.error) return err('تعذر تحميل تمويل المشروع', 503)
+    const entries = result.data
+    let cashIn = 0, cashOut = 0
+    for (const row of entries) {
+      if (['OWNER_CONTRIBUTION', 'LOAN'].includes(String(row.kind))) cashIn += Number(row.amount)
+      else cashOut += Number(row.amount)
+    }
+    return json({ entries: entries.sort((a,b) => String(b.date).localeCompare(String(a.date))).slice(0,200), count: entries.length, cashIn: Math.round(cashIn*100)/100, cashOut: Math.round(cashOut*100)/100 })
+  }
+  if (req.method !== 'POST') return err('Method not allowed', 405)
+  const body = await req.json()
+  const keys = ['requestId', 'kind', 'amount', 'date', 'note']
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k=>!keys.includes(k)) ||
+      !FUNDING_KINDS.includes(body.kind) || !validAmount(body.amount) || Math.abs(body.amount*100 - Math.round(body.amount*100)) > 0.00001 ||
+      typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId) ||
+      typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !validDate(body.date) || new Date(body.date).toISOString().slice(0,10) !== body.date || body.date > new Date(Date.now()+3*3600000).toISOString().slice(0,10) ||
+      (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_TEXT_LENGTH))) return err('أدخل نوع الحركة ومبلغًا موجبًا وتاريخًا صحيحًا غير مستقبلي', 400)
+  const payload = { ...body, businessId: bizId, note: body.note?.trim() || null }
+  const { data, error } = await supabase.from('FundingEntry').insert(payload).select().single()
+  if (error?.code === '23505') {
+    const existing = await supabase.from('FundingEntry').select('*').eq('businessId',bizId).eq('requestId',body.requestId).single()
+    const row = existing.data
+    if (!row || row.kind !== body.kind || Number(row.amount) !== body.amount || row.date !== body.date || row.note !== payload.note) return err('طلب مكرر ببيانات مختلفة',409)
+    return json(row)
+  }
+  if (error) return err('تعذر حفظ حركة التمويل',503)
+  return json(data,201)
+}
+
 // ── GENERIC CRUD ──────────────────────────────────────────────────────────────
+
+// Fields a client may set when creating a row. Anything else is refused, so a request cannot write
+// columns the app never sends (for example a stored status or totals).
+const CREATE_FIELDS: Record<string, string[]> = {
+  Customer: ['name', 'phone'],
+  Supplier: ['name', 'phone'],
+  // The mobile app also sends description.
+  Expense: ['amount', 'category', 'date', 'note', 'description'],
+}
 
 const TABLE_SELECTS: Record<string, string> = {
   Invoice: '*, items:InvoiceItem(*), customer:Customer(name,phone)',
@@ -1168,6 +1268,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
     }
+    const createFields = CREATE_FIELDS[table]
+    if (createFields && Object.keys(body).some(key => !createFields.includes(key))) return err('Field cannot be set', 400)
     const items = body.items
     if (items != null && (!Array.isArray(items) || !['Invoice', 'Purchase'].includes(table) || items.length > 100)) return err('Invalid items', 400)
     delete body.items
@@ -1389,6 +1491,7 @@ async function handleRequest(req: Request) {
     if (path === '/auth/me' && req.method === 'GET') return await authMe(user)
     if (seg[0] === 'admin') return await handleAdmin(req, user, seg, url)
     if (path === '/auth/logout' && req.method === 'POST') return await authLogout(req.headers.get('Authorization')!.slice(7))
+    if (path === '/funding') return await handleFunding(req, user, url)
     if (seg[0] === 'business') return await handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return await handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return await handleDashboard(user)

@@ -1,5 +1,7 @@
 "use client";
 
+import ScreenHeader from "@/components/ScreenHeader";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Package, Plus } from "lucide-react";
@@ -22,7 +24,9 @@ export default function ProductsPage() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : "تعذر تحميل المنتجات");
+          setError(
+            err instanceof ApiError ? err.message : "تعذر تحميل المنتجات",
+          );
         }
       });
     return () => {
@@ -32,20 +36,27 @@ export default function ProductsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">المنتجات</h1>
+      <ScreenHeader title="المنتجات">
         <Link
           href="/products/new"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-700 text-white shadow-sm active:bg-brand-800"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-brand-800"
           aria-label="إضافة منتج"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-5 w-5" aria-hidden="true" />
+          إضافة منتج
         </Link>
-      </div>
+      </ScreenHeader>
 
-      {error && (
-        <ErrorAlert>{error}</ErrorAlert>
+      {products && (
+        <section
+          aria-label="ملخص المنتجات"
+          className="rounded-xl border border-gray-100 bg-white p-4 text-sm font-semibold text-gray-700"
+        >
+          {products.length} منتج
+        </section>
       )}
+
+      {error && <ErrorAlert>{error}</ErrorAlert>}
 
       {!products && !error && (
         <div className="flex flex-col gap-3">
@@ -69,7 +80,9 @@ export default function ProductsPage() {
         <ul className="flex flex-col gap-2">
           {products.map((p) => {
             const margin = p.sellingPrice
-              ? Math.round(((p.sellingPrice - p.totalCost) / p.sellingPrice) * 100)
+              ? Math.round(
+                  ((p.sellingPrice - p.totalCost) / p.sellingPrice) * 100,
+                )
               : 0;
             return (
               <li key={p.id}>
@@ -78,7 +91,9 @@ export default function ProductsPage() {
                   className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3.5 shadow-sm active:bg-gray-50"
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="font-semibold text-gray-900">{p.name}</span>
+                    <span className="font-semibold text-gray-900">
+                      {p.name}
+                    </span>
                     <span className="text-xs text-gray-500">
                       سعر التكلفة {formatSAR(p.totalCost)}
                     </span>

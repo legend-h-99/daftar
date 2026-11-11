@@ -1,5 +1,7 @@
 "use client";
 
+import ScreenHeader from "@/components/ScreenHeader";
+
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2, Truck } from "lucide-react";
 import { apiDelete, apiGet, ApiError } from "@/lib/api";
@@ -17,7 +19,9 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [sheetSupplier, setSheetSupplier] = useState<Supplier | null | undefined>(undefined);
+  const [sheetSupplier, setSheetSupplier] = useState<
+    Supplier | null | undefined
+  >(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
@@ -26,11 +30,19 @@ export default function SuppliersPage() {
       setSuppliers(data);
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : en ? "Could not load suppliers" : "تعذر تحميل الموردين");
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : en
+            ? "Could not load suppliers"
+            : "تعذر تحميل الموردين",
+      );
     }
   }
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDelete(id: string) {
     if (deletingId === id) {
@@ -40,7 +52,13 @@ export default function SuppliersPage() {
         setActionError(null);
         load();
       } catch (err) {
-        setActionError(err instanceof ApiError ? err.message : en ? "Could not delete supplier" : "تعذر حذف المورد");
+        setActionError(
+          err instanceof ApiError
+            ? err.message
+            : en
+              ? "Could not delete supplier"
+              : "تعذر حذف المورد",
+        );
         setDeletingId(null);
       }
     } else {
@@ -50,22 +68,35 @@ export default function SuppliersPage() {
 
   return (
     <div className="flex flex-col gap-4" onClick={() => setDeletingId(null)}>
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">
-          {en ? "Suppliers" : "الموردون"}
-        </h1>
+      <ScreenHeader title={en ? "Suppliers" : "الموردون"}>
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setSheetSupplier(null); }}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-700 text-white shadow-sm active:bg-brand-800"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSheetSupplier(null);
+          }}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-brand-800"
           aria-label={en ? "Add supplier" : "إضافة مورد"}
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-5 w-5" aria-hidden="true" />
+          {en ? "Add supplier" : "إضافة مورد"}
         </button>
-      </div>
+      </ScreenHeader>
+
+      {suppliers && (
+        <section
+          aria-label={en ? "Supplier summary" : "ملخص الموردين"}
+          className="rounded-xl border border-gray-100 bg-white p-4 text-sm font-semibold text-gray-700"
+        >
+          {en ? `${suppliers.length} suppliers` : `${suppliers.length} مورد`}
+        </section>
+      )}
 
       {(loadError || actionError) && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200 rounded-2xl">
+        <Alert
+          variant="destructive"
+          className="bg-red-50 border-red-200 rounded-2xl"
+        >
           <AlertDescription className="text-red-600 font-medium">
             {loadError || actionError}
           </AlertDescription>
@@ -84,7 +115,11 @@ export default function SuppliersPage() {
         <EmptyState
           icon={Truck}
           title={en ? "No suppliers added yet" : "لا يوجد موردون مضافون"}
-          description={en ? "Add your suppliers to track purchases by vendor." : "أضف مورديك لمتابعة مشترياتك من كل مورد."}
+          description={
+            en
+              ? "Add your suppliers to track purchases by vendor."
+              : "أضف مورديك لمتابعة مشترياتك من كل مورد."
+          }
           actionLabel={en ? "Add supplier" : "إضافة مورد"}
           onAction={() => setSheetSupplier(null)}
         />
@@ -116,14 +151,30 @@ export default function SuppliersPage() {
                 <button
                   type="button"
                   onClick={() => handleDelete(s.id)}
-                  aria-label={deletingId === s.id ? (en ? "Confirm delete" : "تأكيد الحذف") : (en ? "Delete" : "حذف")}
+                  aria-label={
+                    deletingId === s.id
+                      ? en
+                        ? "Confirm delete"
+                        : "تأكيد الحذف"
+                      : en
+                        ? "Delete"
+                        : "حذف"
+                  }
                   className={`flex h-8 items-center justify-center rounded-lg px-2 text-sm font-semibold transition-all active:scale-95 ${
                     deletingId === s.id
                       ? "bg-red-600 text-white"
                       : "bg-red-50 text-red-500 active:bg-red-100"
                   }`}
                 >
-                  {deletingId === s.id ? (en ? "Confirm" : "تأكيد") : <Trash2 className="h-4 w-4" />}
+                  {deletingId === s.id ? (
+                    en ? (
+                      "Confirm"
+                    ) : (
+                      "تأكيد"
+                    )
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
                 </button>
               </div>
             </li>

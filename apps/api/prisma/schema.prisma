@@ -40,8 +40,7 @@ enum ExpenseCategory {
 model Business {
   id         String   @id @default(uuid())
   name       String
-  // Nullable: Google/email owners have no phone. Postgres allows many NULLs.
-  ownerPhone String?  @unique
+  ownerPhone String   @unique
   vatEnabled Boolean  @default(false)
   vatNumber  String?
   city       String?
@@ -53,6 +52,7 @@ model Business {
   products       Product[]
   customers      Customer[]
   invoices       Invoice[]
+  fundingEntries FundingEntry[]
   expenses       Expense[]
   suppliers      Supplier[]
   purchases      Purchase[]
@@ -65,12 +65,13 @@ model User {
   email          String?   @unique
   emailVerified  Boolean   @default(false)
   passwordHash   String?
-  googleId       String?   @unique
+  googleSub      String?   @unique
+  avatarUrl      String?
   name           String?
   businessId     String?
   business       Business? @relation(fields: [businessId], references: [id])
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime? @updatedAt
+  updatedAt      DateTime  @updatedAt
 
   emailVerifications EmailVerification[]
   passwordResets     PasswordReset[]
@@ -306,15 +307,11 @@ model Invoice {
   total      Float
   paidAmount Float         @default(0)
   notes      String?
-  // Client-supplied retry key; the hash rejects reuse with a different body.
-  idempotencyKey  String?
-  idempotencyHash String?
   createdAt  DateTime      @default(now())
 
   items InvoiceItem[]
 
   @@unique([businessId, number])
-  @@unique([businessId, idempotencyKey])
   @@index([businessId])
   @@index([businessId, issueDate])
   @@index([businessId, status, issueDate])
@@ -332,10 +329,8 @@ model InvoiceItem {
   unitPrice Float
   quantity  Float
   lineTotal Float
-  position  Int      @default(0)
 
   @@index([invoiceId])
-  @@index([invoiceId, position])
   @@index([productId])
 }
 
@@ -360,4 +355,18 @@ model TokenBlacklist {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+model FundingEntry {
+  id String @id @default(dbgenerated("gen_random_uuid()::text"))
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  requestId String @db.Uuid
+  kind String
+  amount Decimal @db.Decimal(14, 2)
+  date DateTime @db.Date
+  note String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  @@unique([businessId, requestId])
+  @@index([businessId, date])
 }

@@ -4,11 +4,9 @@ import ReportDataQuality from "@/components/reports/ReportDataQuality";
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank, Printer } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, PiggyBank } from "lucide-react";
 import { apiGet, ApiError } from "@/lib/api";
-import { useBusiness } from "@/lib/business-context";
 import {
-  formatDate,
   formatSAR,
   formatMonthLabel,
   percentOf,
@@ -29,7 +27,6 @@ interface ReportsPageData {
 
 export default function ReportsPage() {
   const { language } = useLanguage();
-  const { business } = useBusiness();
   const en = language === "en";
   const {
     month,
@@ -70,26 +67,10 @@ export default function ReportsPage() {
       }));
   }, [expenses]);
 
-  function printReport() {
-    // Browsers name the saved PDF after the page title, so give each month its own name.
-    const previousTitle = document.title;
-    document.title = en ? `Daftar report ${month}` : `تقرير دفتر ${month}`;
-    window.addEventListener("afterprint", () => { document.title = previousTitle; }, { once: true });
-    window.print();
-  }
-
   return (
-    <div className="flex flex-col gap-4 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
-      {/* Print-only heading: the page chrome and month stepper are hidden on paper */}
-      <div className="hidden print:block">
-        {business?.name && <p className="text-lg font-extrabold text-gray-900">{business.name}</p>}
-        <p className="text-sm font-semibold text-gray-600">
-          {en ? "Monthly report" : "التقرير الشهري"} · {formatMonthLabel(month, language)}
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center gap-3 print:hidden">
+      <div className="flex items-center gap-3">
         <Link
           href="/dashboard"
           aria-label={en ? "Back" : "رجوع"}
@@ -148,7 +129,7 @@ export default function ReportsPage() {
           const marginPct = percentOf(summary.netProfit, summary.totalSales);
 
           return (
-            <div className="flex flex-col gap-3 print:[&>*]:break-inside-avoid">
+            <div className="flex flex-col gap-3">
               {/* Net profit hero — same language as the dashboard hero (white/wash, never solid brand) */}
               <div
                 className={`flex flex-col gap-1 rounded-lg border p-5 shadow-sm ${
@@ -194,6 +175,7 @@ export default function ReportsPage() {
               </div>
 
               <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{en ? "Sales include unpaid invoices by creation date. Results depend on recorded expenses and inventory-linked costs; missing costs are excluded." : "المبيعات تشمل الفواتير غير المحصلة حسب تاريخ إنشائها. النتيجة تعتمد على المصاريف المسجلة والتكاليف المرتبطة بالمخزون؛ التكاليف الناقصة لا تدخل في الحساب."}</p>
+              {summary.totalSales === 0 && summary.totalPurchases === 0 && summary.totalExpenses === 0 && <div className="rounded-xl border bg-white p-5"><p className="font-bold">{en ? "No recorded operations this month" : "لا توجد عمليات مسجلة هذا الشهر"}</p><Link href="/invoices/new" className="mt-3 inline-flex min-h-11 items-center text-brand-700 underline">{en ? "Record your first sale" : "سجّل أول بيعة"}</Link></div>}
               <ReportDataQuality summary={summary} en={en} />
               <ProfitLossStatement summary={summary} />
 
@@ -229,24 +211,7 @@ export default function ReportsPage() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={printReport}
-                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 active:bg-gray-50 print:hidden"
-              >
-                <Printer className="h-4 w-4" aria-hidden="true" />
-                {en ? "Print / Save PDF" : "طباعة / حفظ PDF"}
-              </button>
-
-              <p className="hidden text-center text-xs text-gray-500 print:block">
-                {en
-                  ? `Issued ${formatDate(new Date())} · Prepared with Daftar · daftar1.com`
-                  : `صدر في ${formatDate(new Date())} · أُعد عبر دفتر · daftar1.com`}
-              </p>
-
-              <div className="print:hidden">
-                <ReportQuickLinks />
-              </div>
+              <ReportQuickLinks />
             </div>
           );
         })()}

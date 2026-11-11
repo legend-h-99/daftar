@@ -279,7 +279,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             <CheckCircle2 className="h-5 w-5" />
             {updating
               ? (en ? "Updating..." : "جاري التحديث...")
-              : (en ? "Mark as fully paid" : 'تحديد كـ"مدفوعة" كاملاً')}
+              : (en ? "Record full collection" : 'تسجيل تحصيل كامل')}
           </button>
 
           <button
@@ -304,7 +304,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
           {showPartialForm && (
             <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
-              <label className="text-sm font-semibold text-gray-700">
+              <label htmlFor="partial-payment" className="text-sm font-semibold text-gray-700">
                 {invoice.status === "PARTIAL"
                   ? (en ? "Total paid so far" : "إجمالي المدفوع حتى الآن")
                   : (en ? "Amount paid" : "المبلغ المدفوع")}{" "}
@@ -315,15 +315,19 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                 inputMode="decimal"
                 min="0.01"
                 step="0.01"
+                id="partial-payment"
+                max={invoice.total}
+                aria-describedby="partial-payment-help"
                 value={partialAmount}
                 onChange={(e) => setPartialAmount(e.target.value)}
                 placeholder="0.00"
                 className={fieldClass}
               />
+              <p id="partial-payment-help" className="text-sm text-gray-600">{en ? "Enter the cumulative collected amount, below the total and no less than previously collected." : "أدخل إجمالي ما حصّلته حتى الآن، أقل من قيمة الفاتورة ولا يقل عن المدفوع سابقًا."}</p>
               <button
                 type="button"
                 onClick={markAsPartial}
-                disabled={savingPartial || !partialAmount}
+                disabled={savingPartial || !Number.isFinite(Number(partialAmount)) || Number(partialAmount) <= 0 || Number(partialAmount) >= invoice.total || Number(partialAmount) < (invoice.paidAmount ?? 0)}
                 className="w-full rounded-2xl bg-brand-700 py-3 text-sm font-bold text-white active:bg-brand-800 disabled:opacity-60"
               >
                 {savingPartial

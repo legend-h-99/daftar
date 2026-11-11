@@ -74,6 +74,7 @@ export default function InvoiceItemsEditor({
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <input
+                  aria-label={en ? "Item name" : "اسم الصنف"}
                   value={item.name}
                   onChange={(e) => onUpdate(index, { name: e.target.value })}
                   className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-brand-500"
@@ -82,7 +83,7 @@ export default function InvoiceItemsEditor({
                   type="button"
                   onClick={() => onRemove(index)}
                   aria-label={en ? "Remove" : "حذف"}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 active:bg-red-100"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -95,6 +96,7 @@ export default function InvoiceItemsEditor({
                   </label>
                   <input
                     type="number"
+                    aria-label={en ? "Unit price" : "سعر الوحدة"}
                     inputMode="decimal"
                     min={0}
                     step="0.01"
@@ -110,25 +112,27 @@ export default function InvoiceItemsEditor({
 
                 <div className="flex items-center gap-2">
                   <button
+                    aria-label={en ? "Decrease quantity" : "تقليل الكمية"}
                     type="button"
                     onClick={() =>
                       onUpdate(index, {
                         quantity: Math.max(1, item.quantity - 1),
                       })
                     }
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
                   >
-                    <Minus className="h-4 w-4" />
+                    <Minus aria-hidden="true" className="h-4 w-4" />
                   </button>
                   <span className="w-6 text-center text-sm font-bold text-gray-900">
                     {item.quantity}
                   </span>
                   <button
                     type="button"
+                    aria-label={en ? "Increase quantity" : "زيادة الكمية"}
                     onClick={() => onUpdate(index, { quantity: item.quantity + 1 })}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-200 text-gray-700 active:bg-gray-300"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus aria-hidden="true" className="h-4 w-4" />
                   </button>
                 </div>
               </div>

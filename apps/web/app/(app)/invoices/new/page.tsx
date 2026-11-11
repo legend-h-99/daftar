@@ -151,6 +151,14 @@ export default function NewInvoicePage() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <InvoiceItemsEditor
+          items={items}
+          products={products}
+          onAdd={addProductLine}
+          onUpdate={updateItem}
+          onRemove={removeItem}
+        />
+
         <InvoiceCustomerField
           customers={customers}
           query={customerQuery}
@@ -164,14 +172,8 @@ export default function NewInvoicePage() {
           onClear={clearCustomer}
         />
 
-        <InvoiceItemsEditor
-          items={items}
-          products={products}
-          onAdd={addProductLine}
-          onUpdate={updateItem}
-          onRemove={removeItem}
-        />
-
+        <details className="rounded-xl border border-gray-200 bg-white p-4">
+          <summary className="min-h-11 cursor-pointer font-semibold">{en ? "Additional details (optional)" : "تفاصيل إضافية (اختيارية)"}</summary>
         {/* Due date */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
           <label htmlFor="invoice-due-date" className="mb-1.5 block text-sm font-semibold text-gray-700">
@@ -200,6 +202,8 @@ export default function NewInvoicePage() {
             className={cn(fieldClass, "resize-none")}
           />
         </div>
+
+        </details>
 
         <InvoiceSummary
           subtotal={subtotal}

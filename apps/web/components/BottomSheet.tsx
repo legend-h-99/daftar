@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface BottomSheetProps {
@@ -17,7 +18,11 @@ interface BottomSheetProps {
  *  - traps Tab focus within the sheet
  *  - closes on Escape and on overlay click
  */
-export default function BottomSheet({ title, onClose, children }: BottomSheetProps) {
+export default function BottomSheet({
+  title,
+  onClose,
+  children,
+}: BottomSheetProps) {
   const sheetRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
 
@@ -64,34 +69,41 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <div
-        ref={sheetRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-3xl bg-card p-5 pb-8 outline-none border border-b-0 border-border"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 id={titleId} className="text-lg font-bold text-foreground">
-            {title}
-          </h2>
-          <button
-            type="button"
+    <>
+      {
+        createPortal(
+          <div
+            className="fixed inset-0 z-40 flex items-end justify-center bg-black/50"
             onClick={onClose}
-            aria-label="إغلاق"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+            <div
+              ref={sheetRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-[90dvh] overflow-y-auto w-full max-w-md rounded-t-3xl bg-card p-5 pb-8 outline-none border border-b-0 border-border"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h2 id={titleId} className="text-lg font-bold text-foreground">
+                  {title}
+                </h2>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="إغلاق"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {children}
+            </div>
+          </div>,
+          document.body,
+        ) as unknown as React.ReactNode
+      }
+    </>
   );
 }
