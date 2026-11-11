@@ -339,7 +339,9 @@ export async function processJob(
             !context.files?.length
           )
             throw new Fault("حدد مسارات ملفات المصدر المطلوبة في سياق المهمة");
-          if (output.files.some((f) => !task.context.includes(f.path)))
+          // Exact path tokens from the task context, not substrings: "lib/a.ts" must not match "apps/web/lib/a.ts".
+          const mentioned = new Set(task.context.split(/[\s,;()"'`]+/));
+          if (output.files.some((f) => !mentioned.has(f.path)))
             throw new Fault("التغيير يشمل ملفًا خارج المسارات المحددة للمهمة");
           engineering = await sandbox(
             `${task.id}-${job.lease_token}`,

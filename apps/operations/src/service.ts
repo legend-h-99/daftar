@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { codeContext } from "./engineering";
 import type { DB, Store } from "./db";
@@ -103,11 +104,11 @@ export async function submitTicket(
     .parse(input);
   if (data.website) throw new Fault("تعذر إرسال الطلب");
   return store.transaction(async (db) => {
-    // Global flood cap always applies. The tighter per-client cap only applies
-    // when a trusted IP header gives a real per-client identity; without one we
-    // must not key on a shared bucket, or five anonymous posts would lock the
-    // public form for every real customer for an hour.
-    await limit(db, "support:global", 100, 3600);
+    // A sender is limited by the address they give, and by their client address when the trusted IP
+    // header is configured. The shared ceiling is only a safety net against floods: one anonymous
+    // sender must not be able to use up the whole intake for every real customer.
+    await limit(db, "support:global", 300, 3600);
+    await limit(db, `support:email:${createHash("sha256").update(data.email.toLowerCase()).digest("hex")}`, 5, 3600);
     if (key) await limit(db, `support:${key}`, 5, 3600);
     const ticketId = id();
     await db.query(

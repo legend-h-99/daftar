@@ -175,7 +175,7 @@ describe('authentication security boundaries', () => {
     const { service, prisma, email } = setup();
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1', emailVerified: true });
 
-    await expect(service.registerEmail('audit@example.invalid', 'new-password')).rejects.toThrow(
+    await expect(service.registerEmail('audit@example.invalid')).rejects.toThrow(
       BadRequestException,
     );
 
@@ -187,7 +187,7 @@ describe('authentication security boundaries', () => {
     const { service, prisma, jwt } = setup();
     prisma.emailVerification.findFirst.mockResolvedValue(null);
 
-    await expect(service.verifyEmailToken('invalid-token')).rejects.toThrow(BadRequestException);
+    await expect(service.verifyEmailToken('invalid-token', 'owner-chosen-password')).rejects.toThrow(BadRequestException);
 
     expect(prisma.emailVerification.findFirst).toHaveBeenCalledWith({
       where: { token: 'invalid-token', consumed: false, expiresAt: { gt: expect.any(Date) } },
@@ -199,24 +199,51 @@ describe('authentication security boundaries', () => {
 
   it('consumes a valid email verification link before enabling the account', async () => {
     const { service, prisma } = setup();
-    prisma.emailVerification.findFirst.mockResolvedValue({ id: 'verification-1', userId: 'user-1' });
+    prisma.emailVerification.findFirst.mockResolvedValue({ id: 'verification-1', userId: 'user-1', user: { emailVerified: false } });
     prisma.emailVerification.update.mockResolvedValue({ consumed: true });
     prisma.user.update.mockResolvedValue({
       id: 'user-1', email: 'audit@example.invalid', phone: null, name: null, businessId: null,
     });
 
-    const result = await service.verifyEmailToken('valid-token');
+    const result = await service.verifyEmailToken('valid-token', 'owner-chosen-password');
 
     expect(result.accessToken).toBe('signed-token');
     expect(prisma.emailVerification.update).toHaveBeenCalledWith({
       where: { id: 'verification-1' }, data: { consumed: true },
     });
     expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' }, data: { emailVerified: true },
+      where: { id: 'user-1' }, data: { emailVerified: true, passwordHash: expect.any(String) },
     });
+    const { passwordHash } = prisma.user.update.mock.calls[0][0].data;
+    expect(await bcrypt.compare('owner-chosen-password', passwordHash)).toBe(true);
     expect(prisma.emailVerification.update.mock.invocationCallOrder[0]).toBeLessThan(
       prisma.user.update.mock.invocationCallOrder[0],
     );
+  });
+
+  it('does not change the stored credential when an unverified address registers again', async () => {
+    const { service, prisma, email } = setup();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1', email: 'audit@example.invalid', name: null, emailVerified: false, passwordHash: 'stored-by-someone-else',
+    });
+
+    await service.registerEmail('audit@example.invalid', 'Auditor');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.emailVerification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: 'user-1' }) });
+    expect(email.sendVerificationEmail).toHaveBeenCalled();
+  });
+
+  it('refuses a verification link for an account that is already verified', async () => {
+    const { service, prisma, jwt } = setup();
+    prisma.emailVerification.findFirst.mockResolvedValue({ id: 'verification-1', userId: 'user-1', user: { emailVerified: true } });
+
+    await expect(service.verifyEmailToken('valid-token', 'owner-chosen-password')).rejects.toThrow(BadRequestException);
+
+    expect(prisma.emailVerification.update).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(jwt.sign).not.toHaveBeenCalled();
   });
 
   it('writes a token revocation record using the JWT identifier and expiry', async () => {

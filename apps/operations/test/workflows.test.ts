@@ -465,6 +465,20 @@ test("support rate limiting and honeypot reject abuse", async () => {
     ),
   );
 });
+test("one anonymous sender does not block other customers' support tickets", async () => {
+  for (let i = 0; i < 6; i++)
+    await submitTicket(
+      store,
+      { email: "flood@example.com", description: "رسالة متكررة من مرسل واحد" },
+      null,
+    ).catch(() => undefined);
+  const customer = await submitTicket(
+    store,
+    { email: "customer@example.com", description: "مشكلة دعم تحتاج متابعة" },
+    null,
+  );
+  assert.ok(customer.reference);
+});
 test("engineering cannot write env, traversal, workflows or arbitrary files", () => {
   assert.equal(safeCodePath("apps/web/app/support/page.tsx"), true);
   for (const p of [
