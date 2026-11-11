@@ -7,14 +7,28 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { DEMO_MODE } from "@/lib/demo-api";
-import { Customer, Invoice, InvoiceItem, Product } from "@/lib/types";
+import { Customer, Invoice, Product } from "@/lib/types";
 import { useBusiness } from "@/lib/business-context";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import InvoiceCustomerField from "@/components/invoices/InvoiceCustomerField";
-import InvoiceItemsEditor from "@/components/invoices/InvoiceItemsEditor";
+import InvoiceItemsEditor, { InvoiceDraftItem } from "@/components/invoices/InvoiceItemsEditor";
 import InvoiceSummary from "@/components/invoices/InvoiceSummary";
 import { useLanguage } from "@/lib/language";
+
+// The form opens with one empty line so an invoice can be written straight
+// away, without first creating a product to pick from.
+const blankLine = (): InvoiceDraftItem => ({ name: "", unitPrice: 0, priceInput: "", quantity: 1 });
+// A line counts as untouched only while nothing on it was changed, quantity included.
+const isBlank = (item: InvoiceDraftItem) =>
+  !item.productId && !item.name.trim() && !item.priceInput.trim() && item.quantity === 1;
+// An empty price is missing, not zero; an explicitly typed 0 is allowed.
+const parsePrice = (text: string): number | null => {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+};
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -28,7 +42,7 @@ export default function NewInvoicePage() {
   const [customerQuery, setCustomerQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const [items, setItems] = useState<InvoiceItem[]>([]);
+  const [items, setItems] = useState<InvoiceDraftItem[]>(() => [blankLine()]);
 
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -62,21 +76,32 @@ export default function NewInvoicePage() {
 
   function addProductLine(product: Product) {
     setError(null);
+    // A picked product takes the place of any untouched empty line.
     setItems((prev) => [
-      ...prev,
+      ...prev.filter((item) => !isBlank(item)),
       {
         productId: product.id,
         name: product.name,
         unitPrice: product.sellingPrice,
+        priceInput: String(product.sellingPrice),
         quantity: 1,
       },
     ]);
   }
 
-  function updateItem(index: number, patch: Partial<InvoiceItem>) {
+  function addBlankLine() {
     setError(null);
+    setItems((prev) => [...prev, blankLine()]);
+  }
+
+  function updateItem(index: number, patch: Partial<InvoiceDraftItem>) {
+    setError(null);
+    // Keep the numeric price in step with the typed text so totals stay live.
+    const next = patch.priceInput === undefined
+      ? patch
+      : { ...patch, unitPrice: parsePrice(patch.priceInput) ?? 0 };
     setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      prev.map((item, i) => (i === index ? { ...item, ...next } : item)),
     );
   }
 
@@ -94,9 +119,18 @@ export default function NewInvoicePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     track("workflow_started", { workflow: "invoice" });
-    if (items.length === 0) {
+    const lines = items.filter((item) => !isBlank(item));
+    const invalid =
+      lines.length === 0
+        ? en ? "Write the item name and its price" : "اكتب اسم الصنف وسعره"
+        : lines.some((item) => !item.name.trim())
+          ? en ? "Write a name for every item" : "اكتب اسم كل صنف"
+          : lines.some((item) => parsePrice(item.priceInput) === null)
+            ? en ? "Write a price for every item" : "اكتب سعر كل صنف"
+            : null;
+    if (invalid) {
       track("workflow_failed", { workflow: "invoice", status: 400 });
-      setError(en ? "Add at least one item" : "أضف صنف واحد على الأقل");
+      setError(invalid);
       return;
     }
     setError(null);
@@ -115,17 +149,17 @@ export default function NewInvoicePage() {
 
       const invoice = await apiPost<Invoice>("/invoices", {
         customerId,
-        items: items.map((item) => ({
+        items: lines.map((item) => ({
           productId: item.productId || undefined,
-          name: item.name,
-          unitPrice: item.unitPrice,
+          name: item.name.trim(),
+          unitPrice: parsePrice(item.priceInput) as number,
           quantity: item.quantity,
         })),
         status: "UNPAID",
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
       }, { headers: { "Idempotency-Key": idempotencyKey.current } });
-      track("invoice_created", { items_count: items.length });
+      track("invoice_created", { items_count: lines.length });
       router.push(DEMO_MODE ? "/invoices/list?created=1" : `/invoices/detail/view?id=${encodeURIComponent(invoice.id)}`);
     } catch (err) {
       track("workflow_failed", { workflow: "invoice", status: err instanceof ApiError ? err.status : 0 });
@@ -168,6 +202,7 @@ export default function NewInvoicePage() {
           items={items}
           products={products}
           onAdd={addProductLine}
+          onAddBlank={addBlankLine}
           onUpdate={updateItem}
           onRemove={removeItem}
         />
