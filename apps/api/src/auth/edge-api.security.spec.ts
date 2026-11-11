@@ -1,4 +1,4 @@
-import { createHmac, webcrypto } from 'crypto';
+import { createHash, createHmac, webcrypto } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -341,6 +341,26 @@ describe('deployed Supabase API security', () => {
       const { handler, database } = edgeApi(); database.rpc.mockResolvedValue({ data: false, error: null });
       expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
       expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
+    });
+    it('applies one global cap to collection that arrives without a trusted client IP', async () => {
+      const globalKey = createHash('sha256').update('analytics-untrusted:account:all').digest('hex');
+      const { handler, database } = edgeApi();
+      database.rpc.mockImplementation(async (_name: string, args: { p_key?: string }) => ({ data: args?.p_key !== globalKey, error: null }));
+      expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
+      expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
+    });
+    it('keys collection by client IP when the Worker vouches for it', async () => {
+      const secret = 'e'.repeat(40);
+      const ipKey = createHash('sha256').update('analytics:ip:203.0.113.9').digest('hex');
+      const { handler, database } = edgeApi({ EDGE_SHARED_SECRET: secret });
+      const vouched = new Request('https://project.supabase.co/functions/v1/api/analytics/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '203.0.113.9', 'x-daftar-edge-secret': secret },
+        body: JSON.stringify(event),
+      });
+      expect((await handler(vouched)).status).toBe(204);
+      const keys = database.rpc.mock.calls.filter(call => call[0] === 'consume_auth_rate_limit').map(call => call[1].p_key);
+      expect(keys).toContain(ipKey);
     });
   });
 

@@ -272,7 +272,11 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const origin = req.headers.get('Origin');
   if (origin && !ALLOWED_ORIGINS.has(origin)) return err('Origin not allowed', 403);
   if (Number(req.headers.get('Content-Length') || 0) > 2048) return err('Event too large', 413);
-  const limited = await rateLimit(req, 'analytics', null, 60);
+  // Without the Worker's edge secret there is no client IP, so the per-IP cap cannot apply. Then one
+  // global counter bounds writes: the per-device cap alone is bypassed by sending fresh device IDs.
+  const limited = clientIp(req)
+    ? await rateLimit(req, 'analytics', null, 60)
+    : await rateLimit(req, 'analytics-untrusted', 'all', 600, { includeIp: false });
   if (limited) return limited;
   const text = await req.text();
   if (text.length > 2048) return err('Event too large', 413);
