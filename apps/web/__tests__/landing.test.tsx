@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import React from "react";
+import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect } from "vitest";
 
 // ── Static mocks ─────────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ describe("صفحة الـ Landing", () => {
 
     it("زر 'ابدأ مجانًا' يوجّه إلى /login", () => {
       render(<LandingPage />);
-      const link = screen.getByRole("link", { name: "ابدأ مجانًا" });
+      const link = screen.getAllByRole("link", { name: "ابدأ مجانًا" })[0];
       expect(link).toHaveAttribute("href", "/login");
     });
   });
@@ -60,20 +61,9 @@ describe("صفحة الـ Landing", () => {
       expect(h1).toHaveTextContent("من جوالك");
     });
 
-    it("يعرض جملة AEO في blockquote", () => {
+    it("يشرح الفائدة بلغة المستخدم", () => {
       render(<LandingPage />);
-      const bq = document.querySelector("blockquote");
-      expect(bq).not.toBeNull();
-      expect(bq!.textContent).toContain("تطبيق محاسبة عربي مبسّط");
-      expect(bq!.textContent).toContain("بدون خبرة محاسبية");
-    });
-
-    it("الـ blockquote يحتوي بين 25 و 50 كلمة", () => {
-      render(<LandingPage />);
-      const bq = document.querySelector("blockquote");
-      const wordCount = bq!.textContent!.trim().split(/\s+/).length;
-      expect(wordCount).toBeGreaterThanOrEqual(20);
-      expect(wordCount).toBeLessThanOrEqual(50);
+      expect(screen.getByText(/سجّل مبيعاتك ومصاريفك وتكلفة منتجاتك/)).toHaveTextContent("بدون خبرة محاسبية");
     });
 
     it("زر 'جرّب مجانًا' يوجّه إلى /login", () => {
@@ -92,43 +82,8 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       // "متاح مجانًا حاليًا" يظهر أيضًا في جدول المقارنة
       expect(screen.getAllByText("متاح مجانًا حاليًا").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("عربي RTL أصيل")).toBeInTheDocument();
-      expect(screen.getByText("مصمم للاستخدام من الجوال")).toBeInTheDocument();
-    });
-  });
-
-  // ── Stats ─────────────────────────────────────────────────────────────────
-
-  describe("قسم الإحصاءات", () => {
-    it("يعرض '0' و '10×' و '<10 ث'", () => {
-      render(<LandingPage />);
-      expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("10×")).toBeInTheDocument();
-      expect(screen.getByText("<10 ث")).toBeInTheDocument();
-    });
-
-    it("يعرض تسميات الإحصاءات الثلاثة", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("ريال رسوم اشتراك")).toBeInTheDocument();
-      expect(screen.getByText("أسرع من الورقة والقلم")).toBeInTheDocument();
-      expect(screen.getByText("لمعرفة ربحك الشهري")).toBeInTheDocument();
-    });
-  });
-
-  // ── Problem ──────────────────────────────────────────────────────────────
-
-  describe("قسم المشكلة والحل", () => {
-    it("يعرض عنوان المشكلة والحل", () => {
-      render(<LandingPage />);
-      expect(
-        screen.getByText(/الأدوات الموجودة صُمِّمت لمحاسبين في شركات/),
-      ).toBeInTheDocument();
-    });
-
-    it("يعرض مقارنة قبل وبعد دفتر", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("قبل دفتر")).toBeInTheDocument();
-      expect(screen.getByText("بعد دفتر")).toBeInTheDocument();
+      expect(screen.getByText("مصمم بالعربي")).toBeInTheDocument();
+      expect(screen.getByText("من جوالك")).toBeInTheDocument();
     });
   });
 
@@ -157,95 +112,23 @@ describe("صفحة الـ Landing", () => {
     });
   });
 
-  // ── Social Proof ──────────────────────────────────────────────────────────
-
-  describe("قسم أمثلة الاستخدام", () => {
-    it("يعرض عنوان أمثلة الاستخدام", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("سيناريوهات توضيحية للاستخدام")).toBeInTheDocument();
-    });
-
-    it("يعرض أسماء أصحاب الشهادات الثلاثة", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("أم فيصل")).toBeInTheDocument();
-      expect(screen.getByText("نورة العتيبي")).toBeInTheDocument();
-      expect(screen.getByText("أبو خالد")).toBeInTheDocument();
-    });
-
-    it("يعرض نص كل شهادة", () => {
-      render(<LandingPage />);
-      expect(screen.getByText(/سيناريو محل معمول/)).toBeInTheDocument();
-      expect(screen.getByText(/سيناريو كيك منزلي/)).toBeInTheDocument();
-      expect(screen.getByText(/سيناريو تموينات/)).toBeInTheDocument();
-    });
-
-    it("يعرض أدوار ومدن أصحاب الشهادات", () => {
-      render(<LandingPage />);
-      expect(screen.getByText(/صاحبة محل معمول ومقبلات — الرياض/)).toBeInTheDocument();
-      expect(screen.getByText(/بائعة كيك منزلي — جدة/)).toBeInTheDocument();
-      expect(screen.getByText(/تموينات صغيرة — الدمام/)).toBeInTheDocument();
-    });
+  it("يسمح بتجربة البيعة وإعادتها دون حساب", async () => {
+    const user = userEvent.setup();
+    render(<LandingPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("0 ريال");
+    await user.click(screen.getByRole("button", { name: "سجّل البيعة التجريبية" }));
+    expect(screen.getByRole("status")).toHaveTextContent("60 ريالًا");
+    await user.click(screen.getByRole("button", { name: "إعادة المثال" }));
+    expect(screen.getByRole("status")).toHaveTextContent("0 ريال");
   });
 
-  // ── How It Works ──────────────────────────────────────────────────────────
-
-  describe("قسم 'كيف يشتغل'", () => {
-    it("يعرض عنوان 'ثلاث خطوات، وخلاص'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("ثلاث خطوات، وخلاص")).toBeInTheDocument();
-    });
-
-    it("يعرض الخطوات الثلاث", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("سجّل محلك")).toBeInTheDocument();
-      expect(screen.getByText("ابدأ التسجيل")).toBeInTheDocument();
-      expect(screen.getByText("شوف ربحك")).toBeInTheDocument();
-    });
-
-    it("يعرض أرقام الخطوات 1، 2، 3", () => {
-      render(<LandingPage />);
-      const ol = document.querySelector("ol");
-      expect(ol).not.toBeNull();
-      expect(within(ol!).getByText("1")).toBeInTheDocument();
-      expect(within(ol!).getByText("2")).toBeInTheDocument();
-      expect(within(ol!).getByText("3")).toBeInTheDocument();
-    });
-  });
-
-  // ── Comparison Table ──────────────────────────────────────────────────────
-
-  describe("جدول المقارنة", () => {
-    it("يعرض عنوان 'دفتر مقارنةً بالبدائل'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("دفتر مقارنةً بالبدائل")).toBeInTheDocument();
-    });
-
-    it("يعرض أعمدة: دفتر، ورقة وقلم، QuickBooks", () => {
-      render(<LandingPage />);
-      const table = document.querySelector("table");
-      expect(table).not.toBeNull();
-      expect(within(table!).getByText("ورقة وقلم")).toBeInTheDocument();
-      expect(within(table!).getByText("QuickBooks")).toBeInTheDocument();
-    });
-
-    it("يعرض جميع صفوف الميزات السبعة", () => {
-      render(<LandingPage />);
-      const table = document.querySelector("table")!;
-      expect(within(table).getByText("عربي بالكامل (RTL)")).toBeInTheDocument();
-      expect(within(table).getByText("يعمل على الجوال فورًا")).toBeInTheDocument();
-      expect(within(table).getByText("تقرير الربح الشهري")).toBeInTheDocument();
-      expect(within(table).getByText("متابعة المخزون والوصفات")).toBeInTheDocument();
-      expect(within(table).getByText("بدون مصطلحات محاسبية")).toBeInTheDocument();
-      expect(within(table).getByText("متاح مجانًا حاليًا")).toBeInTheDocument();
-      expect(within(table).getByText("محاسبة متقدمة للشركات الكبيرة")).toBeInTheDocument();
-    });
-
-    it("يعرض تنبيه صادق عن تفوق QuickBooks للشركات الكبيرة", () => {
-      render(<LandingPage />);
-      expect(
-        screen.getByText(/QuickBooks يتفوق في المحاسبة المتقدمة/),
-      ).toBeInTheDocument();
-    });
+  it("يفصل الأسعار المقترحة عن العرض المجاني الحالي", () => {
+    render(<LandingPage />);
+    const details = document.querySelector("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(within(details).getByText("29")).toBeInTheDocument();
+    expect(screen.getByText(/لا يتم تحصيل أي مبلغ الآن/)).toBeVisible();
+    expect(screen.getByText(/أمثلة توضيحية للاستخدام، وليست شهادات عملاء/)).toBeInTheDocument();
   });
 
   // ── FAQ ───────────────────────────────────────────────────────────────────
@@ -259,7 +142,7 @@ describe("صفحة الـ Landing", () => {
 
     it("يعرض 7 أسئلة على الأقل", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
+      const dl = document.querySelector("#faq dl");
       expect(dl).not.toBeNull();
       const questions = within(dl!).getAllByRole("term");
       expect(questions.length).toBeGreaterThanOrEqual(7);
@@ -269,7 +152,7 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       expect(screen.getByText("ما هو تطبيق دفتر؟")).toBeInTheDocument();
       // الإجابة مقيّدة بالـ dl لتجنّب تعارض مع الـ blockquote في Hero
-      const dl = document.querySelector("dl")!;
+      const dl = document.querySelector("#faq dl")!;
       expect(
         within(dl).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
       ).toBeInTheDocument();
@@ -292,31 +175,12 @@ describe("صفحة الـ Landing", () => {
 
     it("كل إجابة FAQ أقل من 50 كلمة", () => {
       render(<LandingPage />);
-      const dl = document.querySelector("dl");
+      const dl = document.querySelector("#faq dl");
       const answers = within(dl!).getAllByRole("definition");
       for (const ans of answers) {
         const wordCount = ans.textContent!.trim().split(/\s+/).length;
         expect(wordCount).toBeLessThanOrEqual(50);
       }
-    });
-  });
-
-  // ── Trust Signals ─────────────────────────────────────────────────────────
-
-  describe("إشارات الثقة", () => {
-    it("يعرض 'صنع في السعودية، للسعودية'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("صنع في السعودية، للسعودية")).toBeInTheDocument();
-    });
-
-    it("يعرض 'جوال أولًا بلا تنازل'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("جوال أولًا بلا تنازل")).toBeInTheDocument();
-    });
-
-    it("يعرض 'بياناتك لك وحدك'", () => {
-      render(<LandingPage />);
-      expect(screen.getByText("بياناتك لك وحدك")).toBeInTheDocument();
     });
   });
 

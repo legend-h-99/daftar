@@ -5,15 +5,22 @@ export default function PricingSection() {
   return (
     <section id="pricing" aria-labelledby="pricing-title" dir="rtl" className="border-t border-gray-100 bg-white text-gray-900">
       <div className="mx-auto max-w-5xl px-5 py-16 sm:py-20">
-        <h2 id="pricing-title" className="text-center text-2xl font-extrabold sm:text-3xl">باقات تناسب حجم مشروعك</h2>
-        <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-7 text-gray-600">ابدأ مجانًا، واختر السعة المناسبة عندما يكبر استخدامك.</p>
-        <p role="note" className="mx-auto mt-5 max-w-2xl rounded-xl bg-amber-50 p-4 text-center text-sm leading-7 text-amber-900">الباقات المدفوعة وقراءة الفواتير الآلية قريبًا. الوظائف الحالية متاحة مجانًا، وحدود الباقات المعروضة لم تُطبّق بعد. لا يتم تحصيل أي مبلغ الآن.</p>
+        <h2 id="pricing-title" className="text-center text-2xl font-extrabold sm:text-3xl">ابدأ مجانًا اليوم</h2>
+        <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-7 text-gray-600">الفواتير والمصاريف والوصفات والمخزون وتقارير الربح متاحة مجانًا حاليًا، بدون بطاقة ائتمانية.</p>
+        <div className="mx-auto mt-6 max-w-2xl text-center">
+          <Link href="/login" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-700 px-6 py-3 font-bold text-white hover:bg-brand-800">ابدأ مجانًا</Link>
+          <p className="mt-3 text-sm leading-7 text-gray-700">لا يتم تحصيل أي مبلغ الآن. سنعلن موعد الاشتراكات وحدودها وسياسة الانتقال قبل تطبيقها.</p>
+        </div>
+        <details className="mt-8 rounded-2xl border border-gray-200 p-5">
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-brand-700">اطّلع على الباقات المستقبلية المقترحة</summary>
+          <p role="note" className="mt-3 text-sm leading-7 text-gray-700">هذه أسعار وحدود مقترحة لم تُفعّل بعد. قراءة الفواتير الآلية غير متاحة حاليًا.</p>
         <div className="mt-8 grid gap-5 md:grid-cols-3">
           {PRICING_PLANS.map(plan => (
             <article key={plan.id} aria-label={`باقة ${plan.name}`} className={`flex flex-col rounded-2xl border p-6 ${plan.id === "basic" ? "border-brand-600 bg-brand-50/40" : "border-gray-200"}`}>
               <h3 className="text-xl font-bold">{plan.name}</h3>
               <p className="mt-4"><span className="text-4xl font-extrabold">{plan.monthly}</span><span className="mr-2 text-sm text-gray-600">ريال / شهر</span></p>
               <p className="mt-2 min-h-7 text-sm text-gray-600">{plan.annual ? `${plan.annual} ريال سنويًا، تُدفع مقدمًا عند تفعيل الاشتراكات` : "بدون بطاقة ائتمانية"}</p>
+              <p className="mt-3 text-xs text-amber-800">حدود مقترحة — غير مطبقة حاليًا</p>
               <ul className="mt-6 space-y-3 text-sm leading-6">
                 <li>{plan.invoices} فواتير شهريًا</li>
                 <li>{plan.products} منتجات ووصفات نشطة</li>
@@ -40,6 +47,7 @@ export default function PricingSection() {
           <li>عند تفعيل الحدود، انتهاء رصيد القراءة يبقي الإدخال اليدوي متاحًا. بلوغ حد الفواتير لا يمنع قراءة السجلات أو تحصيل الفواتير القائمة.</li>
           <li>سنعلن موعد تفعيل الاشتراكات وسياسة الانتقال للمستخدمين الحاليين قبل تطبيق الحدود.</li>
         </ul>
+        </details>
       </div>
     </section>
   );

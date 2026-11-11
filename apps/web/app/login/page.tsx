@@ -211,8 +211,8 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {language === "ar"
-              ? "سجّل دخولك وتابع حسابات محلك بكل سهولة"
-              : "Sign in and keep your business accounts in one place."}
+              ? "ابدأ مجانًا أو سجّل دخولك"
+              : "Start for free or sign in."}
           </p>
         </div>
 
@@ -226,10 +226,13 @@ export default function LoginPage() {
             <GoogleSignInButton />
           </div>
 
+          <p className="px-6 pb-5 text-center text-sm leading-7 text-muted-foreground">
+            {language === "ar" ? (PHONE_LOGIN_ENABLED ? "أول زيارة؟ ينشأ حسابك عند المتابعة باستخدام Google أو التحقق من رقم جوالك، ثم تضيف بيانات مشروعك." : "أول زيارة؟ ينشأ حسابك عند المتابعة باستخدام Google، ثم تضيف بيانات مشروعك.") : "New here? Your first sign-in creates your account. Then add your business details."}
+          </p>
           {PHONE_LOGIN_ENABLED && <form onSubmit={handlePhoneSubmit} className="px-6 pb-5">
             <label htmlFor="phone" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Smartphone className="h-3.5 w-3.5 text-primary" />
-              {language === "ar" ? "الدخول برقم الجوال" : "Sign in with mobile"}
+              {language === "ar" ? "الدخول أو التسجيل برقم الجوال" : "Sign in with mobile"}
             </label>
             <div className="flex gap-2" dir="ltr">
               <input
