@@ -62,6 +62,43 @@ describe("فاتورة جديدة بصنف مكتوب يدوياً", () => {
     expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
   });
 
+  it("يرفض صنفاً له اسم بدون سعر بدل حفظه بسعر صفر", async () => {
+    render(<NewInvoicePage />);
+    fireEvent.change(screen.getByLabelText("اسم الصنف"), { target: { value: "كيكة" } });
+    fireEvent.click(screen.getByText("حفظ الفاتورة"));
+    await screen.findByText("اكتب سعر كل صنف");
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+  });
+
+  it("يبقي الصفر المكتوب ظاهراً ويقبل سعر صفر مقصود", async () => {
+    vi.mocked(apiPost).mockResolvedValue({ id: "inv-1" });
+    render(<NewInvoicePage />);
+    fireEvent.change(screen.getByLabelText("اسم الصنف"), { target: { value: "هدية" } });
+    fireEvent.change(screen.getByLabelText("سعر الوحدة"), { target: { value: "0" } });
+    expect((screen.getByLabelText("سعر الوحدة") as HTMLInputElement).value).toBe("0");
+    fireEvent.click(screen.getByText("حفظ الفاتورة"));
+
+    await waitFor(() => expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(apiPost).mock.calls[0][1] as { items: unknown[] }).items).toEqual([
+      { productId: undefined, name: "هدية", unitPrice: 0, quantity: 1 },
+    ]);
+  });
+
+  it("لا يحذف سطراً غُيّرت كميته عند اختيار منتج", async () => {
+    vi.mocked(apiGet).mockImplementation(async (path: string) =>
+      path === "/products" ? [{ id: "p-1", name: "كيك", sellingPrice: 10 }] : [],
+    );
+    render(<NewInvoicePage />);
+    fireEvent.click(screen.getByLabelText("زيادة الكمية"));
+    fireEvent.click(screen.getByText("اختر منتج"));
+    fireEvent.click(await screen.findByText("كيك"));
+
+    expect(screen.getAllByLabelText("اسم الصنف")).toHaveLength(2);
+    fireEvent.click(screen.getByText("حفظ الفاتورة"));
+    await screen.findByText("اكتب اسم كل صنف");
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+  });
+
   it("زر «إضافة صنف» يضيف سطراً جديداً، والأسطر الفارغة لا تُرسل", async () => {
     vi.mocked(apiPost).mockResolvedValue({ id: "inv-1" });
     render(<NewInvoicePage />);
