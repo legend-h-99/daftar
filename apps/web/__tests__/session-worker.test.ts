@@ -47,6 +47,15 @@ describe("Cloudflare session boundary", () => {
     expect(result.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
+  it("vouches for the client address to the Edge function only with the edge secret", async () => {
+    fetchMock.mockResolvedValue(response({ items: [] }));
+    const secret = "e".repeat(40);
+    await worker.fetch(request("/api-proxy/dashboard", "GET", { "CF-Connecting-IP": "203.0.113.9", "x-daftar-edge-secret": "spoofed" }), { ...env, EDGE_SHARED_SECRET: secret });
+    const forwarded = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(forwarded.get("CF-Connecting-IP")).toBe("203.0.113.9");
+    expect(forwarded.get("x-daftar-edge-secret")).toBe(secret);
+  });
+
   it("forwards only the cookie credential and preserves query parameters", async () => {
     const credential = token();
     fetchMock.mockResolvedValue(response({ total: 10 }));

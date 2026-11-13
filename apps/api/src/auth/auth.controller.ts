@@ -77,7 +77,7 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('email/register')
   registerEmail(@Body() dto: RegisterEmailDto) {
-    return this.authService.registerEmail(dto.email, dto.password, dto.name);
+    return this.authService.registerEmail(dto.email, dto.name);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
@@ -91,7 +91,7 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('email/verify')
   verifyEmail(@Body() dto: VerifyEmailTokenDto) {
-    return this.authService.verifyEmailToken(dto.token);
+    return this.authService.verifyEmailToken(dto.token, dto.password);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 3 } })

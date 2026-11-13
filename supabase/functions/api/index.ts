@@ -25,13 +25,16 @@ function corsFor(req: Request): Record<string, string> {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-// Prefer a separate signing secret. The service key is a private, deployment-stable
-// fallback until JWT_SECRET is provisioned; never use a source-code literal.
-const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? SERVICE_KEY
+// Required. Sessions are signed only with this secret, never with the service-role key, so a leak of
+// one does not expose the other. Without it signing and verification fail closed.
+const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? ''
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
+// Budget for numbers that have no account yet. Kept apart from SMS_DAILY_SEND_CAP so that a flood
+// of requests for unknown numbers cannot stop existing users from signing in.
+const SMS_NEW_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_NEW_DAILY_SEND_CAP') ?? '50', 10)
 // Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
 // secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
 const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
@@ -90,6 +93,12 @@ function db() {
   return dbClient
 }
 
+// A new random version for each password change. Each token carries the version it was issued
+// with (claim `pv`), and getUser rejects tokens whose version no longer matches the account.
+function newTokenVersion(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff
+}
+
 async function signJwt(payload: Record<string, unknown>): Promise<string> {
   const enc = (s: string) => btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
   const header = enc(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -130,14 +139,16 @@ async function getUser(req: Request): Promise<Record<string, unknown> | Response
   // One parallel round trip: revocation, account and the per-account rate limit.
   const [blacklist, account, limited] = await Promise.all([
     supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
-    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified').eq('id', claims.sub).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified,tokenVersion').eq('id', claims.sub).maybeSingle(),
     rateLimit(req, 'api-account', claims.sub, 100, { includeIp: false }),
   ])
   if (blacklist.error || account.error) return err('Service temporarily unavailable', 503)
   if (blacklist.data || !account.data) return err('Unauthorized', 401)
+  // A password change bumps the account's token version, which ends every earlier session.
+  if (Number(claims.pv ?? 0) !== Number(account.data.tokenVersion ?? 0)) return err('Unauthorized', 401)
   if (limited) return limited
   const row = account.data
-  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified }
+  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified, tokenVersion: row.tokenVersion }
 }
 
 // An admin's email must be on the list and proven: through Google or the
@@ -164,13 +175,21 @@ function err(msg: string, status = 400, code?: string, extra: Record<string, unk
   return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
 }
 
+// Only the Worker holds EDGE_SHARED_SECRET and may vouch for the client address it saw. This function
+// URL is public, so a direct caller can set any header. Without the secret the request gets no
+// IP-keyed bucket (per-account buckets still apply) instead of a bucket the caller chose.
+function clientIp(req: Request): string | null {
+  const secret = Deno.env.get('EDGE_SHARED_SECRET') ?? ''
+  if (secret.length < 32 || req.headers.get('x-daftar-edge-secret') !== secret) return null
+  return req.headers.get('cf-connecting-ip')
+}
+
 async function rateLimit(
   req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
 ): Promise<Response | null> {
-  const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const ip = clientIp(req)
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
-  const keys = includeIp ? [`${action}:ip:${ip}`] : []
+  const keys = includeIp && ip ? [`${action}:ip:${ip}`] : []
   if (identity) keys.push(`${action}:account:${identity}`)
   const outcomes = await Promise.all(keys.map(async key => {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
@@ -201,10 +220,11 @@ async function reserveDailyEmailSend(): Promise<boolean> {
   return !error && data === true
 }
 
-async function reserveDailySmsSend(): Promise<boolean> {
-  if (!Number.isInteger(SMS_DAILY_SEND_CAP) || SMS_DAILY_SEND_CAP < 1) return false
+async function reserveDailySmsSend(segment: 'returning' | 'new'): Promise<boolean> {
+  const cap = segment === 'returning' ? SMS_DAILY_SEND_CAP : SMS_NEW_DAILY_SEND_CAP
+  if (!Number.isInteger(cap) || cap < 1) return false
   const { data, error } = await db().rpc('consume_external_usage_budget', {
-    p_key: 'sms', p_daily_limit: SMS_DAILY_SEND_CAP,
+    p_key: `sms:${segment}`, p_daily_limit: cap,
   })
   return !error && data === true
 }
@@ -252,7 +272,11 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const origin = req.headers.get('Origin');
   if (origin && !ALLOWED_ORIGINS.has(origin)) return err('Origin not allowed', 403);
   if (Number(req.headers.get('Content-Length') || 0) > 2048) return err('Event too large', 413);
-  const limited = await rateLimit(req, 'analytics', null, 60);
+  // Without the Worker's edge secret there is no client IP, so the per-IP cap cannot apply. Then one
+  // global counter bounds writes: the per-device cap alone is bypassed by sending fresh device IDs.
+  const limited = clientIp(req)
+    ? await rateLimit(req, 'analytics', null, 60)
+    : await rateLimit(req, 'analytics-untrusted', 'all', 600, { includeIp: false });
   if (limited) return limited;
   const text = await req.text();
   if (text.length > 2048) return err('Event too large', 413);
@@ -300,7 +324,12 @@ async function authGoogle(credential: string) {
   if (!user) {
     const { data: byEmail } = await supabase.from('User').select('*').eq('email', email).maybeSingle()
     if (byEmail) {
-      await supabase.from('User').update({ googleId, name: byEmail.name ?? name }).eq('id', byEmail.id)
+      // Google has verified this address. An unverified row may hold a password someone else set
+      // at registration, so linking it also clears that password (see authEmailVerify).
+      await supabase.from('User').update({
+        googleId, name: byEmail.name ?? name,
+        ...(byEmail.emailVerified ? {} : { emailVerified: true, passwordHash: null }),
+      }).eq('id', byEmail.id)
       user = { ...byEmail, googleId }
     } else {
       const userId = newId('user')
@@ -312,7 +341,7 @@ async function authGoogle(credential: string) {
   }
   if (!user) return err('Could not create user', 500)
 
-  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, email, name: user.name ?? name, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -351,7 +380,10 @@ async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
-  if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
+  // A number that already has an account draws on the returning-user budget, so a flood of requests
+  // for unknown numbers cannot stop existing users from signing in.
+  const { data: known } = await db().from('User').select('id').eq('phone', phone).maybeSingle()
+  if (!await reserveDailySmsSend(known ? 'returning' : 'new')) return disabled('Phone verification is temporarily unavailable')
 
   const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
   if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
@@ -393,7 +425,7 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       isNewUser = true
     }
   }
-  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -404,9 +436,13 @@ async function authMe(user: Record<string, unknown>) {
   return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, name: data.name, businessId: data.businessId, isAdmin: isAdmin(user) } })
 }
 
-function validEmailInput(email: unknown, password: unknown): email is string {
-  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    typeof password === 'string' && password.length >= 8 && password.length <= 128
+function validEmailAddress(email: unknown): email is string {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+// Chosen by the mailbox owner when verifying (authEmailVerify), never at registration.
+function validNewPassword(password: unknown): password is string {
+  return typeof password === 'string' && password.length >= 8 && password.length <= 128
 }
 
 async function sendVerificationEmail(email: string, token: string): Promise<boolean> {
@@ -445,21 +481,22 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
 
 async function authEmailRegister(body: Record<string, unknown>) {
   if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
-  if (!validEmailInput(body.email, body.password)) return err('Invalid email or password', 400)
+  if (!validEmailAddress(body.email)) return err('Invalid email address', 400)
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
   const { data: existing } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
-  if (existing?.emailVerified) return err('Email already registered', 400)
-  const passwordHash = await bcrypt.hash(body.password as string, 12)
+  // Same answer as a new sign-up, so the response does not reveal which addresses have accounts.
+  if (existing?.emailVerified) return json({ sent: true })
+  // No password is stored at registration, and an existing unverified account keeps whatever
+  // it has. The mailbox owner sets the password when verifying (authEmailVerify), so a stranger
+  // cannot pre-set the credential that the owner later activates.
   let userId: string
   if (existing) {
     userId = existing.id
-    const { error } = await supabase.from('User').update({ passwordHash, name }).eq('id', userId)
-    if (error) return err('Could not register', 500)
   } else {
     userId = newId('user')
-    const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
+    const { error } = await supabase.from('User').insert({ id: userId, email, name, emailVerified: false })
     if (error) return err('Could not register', 500)
   }
   const issued = await issueVerificationLink(userId, email)
@@ -510,12 +547,12 @@ async function authEmailLogin(body: Record<string, unknown>) {
   if (typeof body.email !== 'string' || typeof body.password !== 'string') return invalid()
   const supabase = db()
   const email = body.email.trim().toLowerCase()
-  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
+  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified,tokenVersion').eq('email', email).maybeSingle()
   if (error) return err('Service temporarily unavailable', 503)
   const passwordMatches = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH) && Boolean(user?.passwordHash)
   if (!passwordMatches) return invalid()
   if (!user.emailVerified) return err('Please verify your email address first', 403, 'EMAIL_NOT_VERIFIED')
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({
     accessToken,
     user: { id: user.id, email: user.email, name: user.name, businessId: user.businessId },
@@ -551,18 +588,22 @@ async function authPasswordReset(body: Record<string, unknown>) {
   if (!record) return err('Invalid or expired password reset link', 400)
 
   const passwordHash = await bcrypt.hash(body.password, 12)
-  const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true })
+  const tokenVersion = newTokenVersion()
+  const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true, tokenVersion })
     .eq('id', record.userId).select('id,email,phone,name,businessId').single()
   const { error: resetError } = await supabase.from('PasswordReset').update({ consumed: true })
     .eq('id', record.id).eq('consumed', false)
   if (userError || resetError || !user) return err('Could not reset password', 500)
 
-  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId, pv: tokenVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
 async function authEmailVerify(body: Record<string, unknown>) {
   if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) return err('Invalid verification link', 400)
+  // Checked before the link is consumed, so a request without a password does not burn it.
+  if (!validNewPassword(body.password)) return err('Choose a password of 8 to 128 characters', 400, 'PASSWORD_REQUIRED')
+  const password: string = body.password
   const supabase = db()
   const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', body.token)
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
@@ -570,10 +611,14 @@ async function authEmailVerify(body: Record<string, unknown>) {
   const { data: consumed } = await supabase.from('EmailVerification').update({ consumed: true })
     .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
   if (!consumed) return err('Invalid or expired verification link', 400)
-  const { data: user, error } = await supabase.from('User').update({ emailVerified: true })
-    .eq('id', record.userId).select('id,email,phone,name,businessId').single()
-  if (error || !user) return err('Could not verify email', 500)
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  // Only an unverified account is changed, so an old link cannot reset a verified account's password.
+  const passwordHash = await bcrypt.hash(password, 12)
+  const tokenVersion = newTokenVersion()
+  const { data: user, error } = await supabase.from('User').update({ emailVerified: true, passwordHash, tokenVersion })
+    .eq('id', record.userId).eq('emailVerified', false).select('id,email,phone,name,businessId').maybeSingle()
+  if (error) return err('Could not verify email', 500)
+  if (!user) return err('Invalid or expired verification link', 400)
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, pv: tokenVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
@@ -630,7 +675,7 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
     p_vat_enabled: body.vatEnabled ?? false, p_vat_number: body.vatNumber ?? null,
   })
   if (error || !business) return err('تعذر إعداد النشاط؛ حدّث الصفحة وحاول مجددًا', 409)
-  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id })
+  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, business }, 201)
 }
 
@@ -802,6 +847,14 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
 }
 
 // ── GENERIC CRUD ──────────────────────────────────────────────────────────────
+
+// Fields a client may set when creating a row. Anything else is refused, so a request cannot
+// write columns the app never sends (for example a stored status or totals).
+const CREATE_FIELDS: Record<string, string[]> = {
+  Customer: ['name', 'phone'],
+  Supplier: ['name', 'phone'],
+  Expense: ['amount', 'category', 'date', 'note'],
+}
 
 const TABLE_SELECTS: Record<string, string> = {
   Invoice: '*, items:InvoiceItem(*), customer:Customer(name,phone)',
@@ -1090,6 +1143,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
     }
+    const createFields = CREATE_FIELDS[table]
+    if (createFields && Object.keys(body).some(key => !createFields.includes(key))) return err('Field cannot be set', 400)
     const items = body.items
     if (items != null && (!Array.isArray(items) || !['Invoice', 'Purchase'].includes(table) || items.length > 100)) return err('Invalid items', 400)
     delete body.items
