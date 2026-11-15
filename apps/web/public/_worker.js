@@ -117,6 +117,60 @@ async function proxy(request, env, url) {
   }
 }
 
+// Every HTML document gets its own nonce. Next's static export inlines an RSC payload into each
+// page, so a fixed hash cannot cover those scripts; a nonce generated per response can.
+function createNonce() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  // base64url keeps the value free of characters that need escaping in a header or an attribute.
+  return btoa(String.fromCharCode(...bytes)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function contentSecurityPolicy(nonce) {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://www.gstatic.com https://static.cloudflareinsights.com`,
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com",
+    "img-src 'self' data: blob: https://accounts.google.com https://www.gstatic.com",
+    "font-src 'self'",
+    "connect-src 'self' https://nklcbcpkycrhuumpbksb.supabase.co https://accounts.google.com https://*.ingest.sentry.io https://cloudflareinsights.com",
+    "frame-src https://accounts.google.com",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
+// The nonce is chosen by response type, not by request headers, so an HTML page cannot escape
+// the policy by asking without an Accept header.
+async function withNonce(response) {
+  // A 304 has no body and no CSP of its own. The browser keeps the CSP it stored with the cached
+  // copy, and that copy carries the matching nonce, so the 304 is passed through unchanged.
+  if (response.status === 304) return response;
+  if (!(response.headers.get("Content-Type") || "").includes("text/html")) return response;
+  const nonce = createNonce();
+  const rewritten = new HTMLRewriter()
+    .on("script", {
+      element(element) {
+        // External scripts are allowed by their host; only inline scripts need the nonce.
+        if (!element.hasAttribute("src")) element.setAttribute("nonce", nonce);
+      },
+    })
+    .transform(response);
+  const headers = new Headers(rewritten.headers);
+  // The body changed and carries a per-response nonce, so no validator or length may survive.
+  headers.delete("Content-Length");
+  headers.delete("ETag");
+  headers.delete("Last-Modified");
+  headers.set("Cache-Control", "no-cache");
+  headers.set("Content-Security-Policy", contentSecurityPolicy(nonce));
+  return new Response(rewritten.body, {
+    status: rewritten.status, statusText: rewritten.statusText, headers,
+  });
+}
+
 // Next's static-export client can fall back to a document navigation to
 // index.txt when an already-open tab sees a new deployment's build ID.
 // Recover that navigation without redirecting the router's RSC fetches.
@@ -139,7 +193,8 @@ const worker = {
         },
       });
     }
-    return env.ASSETS.fetch(request);
+    // Only build output under /_next/static bypasses the Worker (_routes.json); everything else lands here.
+    return withNonce(await env.ASSETS.fetch(request));
   },
 };
 
