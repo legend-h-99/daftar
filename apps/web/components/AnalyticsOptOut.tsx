@@ -17,7 +17,7 @@ export default function AnalyticsOptOut({ ar }: { ar: boolean }) {
           setAnalyticsOptOut(e.target.checked);
         }}
       />
-      {ar ? "إيقاف تتبع الاستخدام المجهول على هذا الجهاز" : "Turn off anonymous usage analytics on this device"}
+      {ar ? "إيقاف تتبع الاستخدام على هذا الجهاز" : "Turn off usage analytics on this device"}
     </label>
   );
 }

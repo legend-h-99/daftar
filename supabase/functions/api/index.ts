@@ -151,11 +151,15 @@ async function getUser(req: Request): Promise<Record<string, unknown> | Response
   return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified, tokenVersion: row.tokenVersion }
 }
 
-// An admin's email must be on the list and proven: through Google or the
-// verification link. An unverified sign-up with the same address is not enough.
+// Admin access needs an allowlisted email, a Google account, and a Google sign-in made in the last
+// 15 minutes (`iat` is set at sign-in). Google's own second factor then guards every admin session,
+// and a stolen token stops working for admin use once it ages out.
+const ADMIN_REAUTH_SECONDS = 15 * 60
 function isAdmin(user: Record<string, unknown>): boolean {
+  const signedInAt = Number(user.iat ?? 0)
+  const recent = signedInAt > 0 && Math.floor(Date.now() / 1000) - signedInAt <= ADMIN_REAUTH_SECONDS
   return typeof user.email === 'string' && ADMIN_EMAILS.has(user.email.trim().toLowerCase()) &&
-    (Boolean(user.googleId) || user.emailVerified === true)
+    Boolean(user.googleId) && recent
 }
 
 function json(data: unknown, status = 200) {
@@ -510,6 +514,24 @@ function randomToken(): string {
   return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// One-time links store only a SHA-256 digest of the token. A leaked table cannot be replayed,
+// because the emailed value exists only in the email and in the request that uses it.
+async function tokenDigest(token: string): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+  return [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// A deletion request is recorded for manual review. Nothing is deleted here, because business
+// records may have to be kept under tax rules, and that decision belongs to the owner.
+async function requestAccountDeletion(req: Request, user: Record<string, unknown>) {
+  const limited = await rateLimit(req, 'account-deletion', user.sub, 3, { includeIp: false })
+  if (limited) return limited
+  const { error } = await db().from('AccountDeletionRequest').insert({ id: newId('deletion'), userId: user.sub })
+  if (error?.code === '23505') return json({ status: 'PENDING' }, 200) // one open request per account
+  if (error) return err('Could not record the request', 503)
+  return json({ status: 'PENDING' }, 202)
+}
+
 type LinkOutcome = 'SENT' | 'FAILED' | 'UNDELIVERED'
 
 // Replaces any pending verification link with a new one and emails it.
@@ -518,7 +540,7 @@ async function issueVerificationLink(userId: string, email: string): Promise<Lin
   await supabase.from('EmailVerification').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
   const token = randomToken()
   const { error } = await supabase.from('EmailVerification').insert({
-    id: newId('verification'), userId, token,
+    id: newId('verification'), userId, token: await tokenDigest(token),
     expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
   })
   if (error) return 'FAILED'
@@ -531,7 +553,7 @@ async function issuePasswordResetLink(userId: string, email: string): Promise<Li
   await supabase.from('PasswordReset').update({ consumed: true }).eq('userId', userId).eq('consumed', false)
   const token = randomToken()
   const { error } = await supabase.from('PasswordReset').insert({
-    id: newId('reset'), userId, token,
+    id: newId('reset'), userId, token: await tokenDigest(token),
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   })
   if (error) return 'FAILED'
@@ -583,7 +605,7 @@ async function authPasswordReset(body: Record<string, unknown>) {
     return err('Invalid or expired password reset link', 400)
   }
   const supabase = db()
-  const { data: record } = await supabase.from('PasswordReset').select('id,userId').eq('token', body.token)
+  const { data: record } = await supabase.from('PasswordReset').select('id,userId').eq('token', await tokenDigest(body.token))
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
   if (!record) return err('Invalid or expired password reset link', 400)
 
@@ -605,7 +627,7 @@ async function authEmailVerify(body: Record<string, unknown>) {
   if (!validNewPassword(body.password)) return err('Choose a password of 8 to 128 characters', 400, 'PASSWORD_REQUIRED')
   const password: string = body.password
   const supabase = db()
-  const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', body.token)
+  const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', await tokenDigest(body.token))
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
   if (!record) return err('Invalid or expired verification link', 400)
   const { data: consumed } = await supabase.from('EmailVerification').update({ consumed: true })
@@ -1424,13 +1446,20 @@ async function handleRequest(req: Request) {
     // Coordinate database/API upgrades without accepting financial writes from
     // web or native clients. Keep sign-out available during maintenance.
     if (Deno.env.get('MAINTENANCE_MODE') === 'true') return disabled('دفتر قيد التحديث، حاول مجددًا بعد قليل')
+    if (path === '/account/deletion-request' && req.method === 'POST') return await requestAccountDeletion(req, user)
     if (path === '/business/export' && req.method === 'GET') {
-      if (!user.businessId) return err('Business not set up', 403)
       const limited = await rateLimit(req, 'business-export', user.sub, 3, { includeIp: false })
       if (limited) return limited
-      const { data, error } = await db().rpc('export_business_data', { p_business_id: user.businessId })
-      if (error) return err('تعذر تصدير البيانات، حاول مجددًا', 503)
-      const response = json(data)
+      // The account holder's own profile is always included. Business records follow when the account has one.
+      const { data: account, error: accountError } = await db().rpc('export_user_profile', { p_user_id: user.sub })
+      if (accountError) return err('تعذر تصدير البيانات، حاول مجددًا', 503)
+      let business: unknown = null
+      if (user.businessId) {
+        const { data, error } = await db().rpc('export_business_data', { p_business_id: user.businessId })
+        if (error) return err('تعذر تصدير البيانات، حاول مجددًا', 503)
+        business = data
+      }
+      const response = json({ account, business })
       response.headers.set('Content-Disposition', 'attachment; filename="daftar-business-export.json"')
       response.headers.set('Cache-Control', 'no-store')
       return response
