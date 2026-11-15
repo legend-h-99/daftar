@@ -9,3 +9,8 @@ dist/
 *.log
 .DS_Store
 .gstack/
+
+# Private operations state and marketing/analytics drafts (personal data, not for the public repo)
+ops/state/
+ops/runs/
+outputs/

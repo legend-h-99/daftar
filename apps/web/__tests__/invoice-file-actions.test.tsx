@@ -5,7 +5,7 @@ import type { Invoice, Business } from '@/lib/types';
 const mocks = vi.hoisted(() => ({create:vi.fn(),download:vi.fn()}));
 vi.mock('@/lib/invoice-pdf', () => ({createInvoicePdf:mocks.create,downloadInvoicePdf:mocks.download}));
 import InvoiceFileActions from '@/components/invoices/InvoiceFileActions';
-const invoice: Invoice = {id:'test',number:1,status:'UNPAID',items:[],subtotal:100,vatAmount:0,total:100};
+const invoice: Invoice = {id:'test',number:'1',status:'UNPAID',items:[],subtotal:100,vatAmount:0,total:100};
 const business: Business = {id:'biz',name:'اختبار',vatEnabled:false};
 const file = new File(['%PDF-1.7 test'], 'Daftar-Invoice-1.pdf', {type:'application/pdf'});
 const props = {invoice,business,language:'ar' as const,text:'فاتورة رقم 1\nالإجمالي: 100 ريال',textLink:'https://wa.me/?text=test'};

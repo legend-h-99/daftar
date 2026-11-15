@@ -58,7 +58,7 @@ export default function DashboardPage() {
           <div className="mt-1 flex items-center gap-1">
             <button
               onClick={previousMonth}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition active:bg-gray-100"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition active:bg-gray-100"
               aria-label={language === "ar" ? "الشهر السابق" : "Previous month"}
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -69,7 +69,7 @@ export default function DashboardPage() {
             <button
               onClick={nextMonth}
               disabled={isCurrentMonth}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition active:bg-gray-100 disabled:opacity-30"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition active:bg-gray-100 disabled:opacity-30"
               aria-label={language === "ar" ? "الشهر التالي" : "Next month"}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -120,7 +120,7 @@ export default function DashboardPage() {
 
         {/* Data */}
         {summary && !loading && (
-          <div className="flex flex-col gap-4">
+          <div className="grid gap-4 lg:grid-cols-2 [&>p]:lg:col-span-2">
 
             {/* Hero: صافي الربح — the one number that answers "how am I doing?" */}
             {(() => {
@@ -128,7 +128,7 @@ export default function DashboardPage() {
               const ledger = [
                 { label: language === "ar" ? "المبيعات" : "Sales", value: summary.totalSales, dot: "bg-brand-500", text: "text-brand-700" },
                 { label: language === "ar" ? "تكلفة البيع" : "Cost of sales", value: summary.costOfGoodsSold, dot: "bg-amber-500", text: "text-amber-700" },
-                { label: language === "ar" ? "مصاريف" : "Expenses", value: summary.operatingExpenses, dot: "bg-red-500", text: "text-red-600" },
+                { label: language === "ar" ? "مصاريف التشغيل" : "Expenses", value: summary.operatingExpenses, dot: "bg-red-500", text: "text-red-600" },
               ];
               return (
                 <section
@@ -176,10 +176,10 @@ export default function DashboardPage() {
               );
             })()}
 
-            <section aria-label={language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"} className="rounded-lg border bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-gray-500">{language === "ar" ? "النقد الداخل والخارج" : "Cash in and out"}</h2>
+            <section aria-label={language === "ar" ? "حركة النقد من العمليات" : "Cash movement from operations"} className="rounded-lg border bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-gray-500">{language === "ar" ? "حركة النقد من العمليات" : "Cash movement from operations"}</h2>
               <p className="mt-2 text-3xl font-bold">{(summary.cashFlow == null ? (language === "ar" ? "غير متاح" : "Unavailable") : formatSAR(summary.cashFlow, language))}</p>
-              <p className="mt-3 text-xs text-gray-500">{language === "ar" ? "الدفعات حسب وقت تسجيلها − المشتريات − المصاريف" : "Collections by recording time − purchases − expenses"}</p>
+              <p className="mt-3 text-xs text-gray-500">{language === "ar" ? "المبالغ المحصّلة − المشتريات − مصاريف التشغيل. قد يتحقق ربح قبل تحصيل المبيعات." : "Collections by recording time − purchases − expenses"}</p>
             </section>
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="note">
               {language === "ar" ? "المبيعات حسب تاريخ إنشاء الفاتورة، وتشمل غير المحصل. الربح يعتمد على السجلات المدخلة وتكلفة المخزون المباع؛ التكاليف غير المسجلة أو غير المرتبطة بالمخزون لا تدخل في الحساب." : "Sales follow invoice creation dates, including unpaid sales. Profit uses recorded expenses and inventory sale costs; unrecorded costs and costs not linked to inventory are excluded."}
