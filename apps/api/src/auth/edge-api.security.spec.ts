@@ -1099,7 +1099,9 @@ describe('platform admin and support', () => {
       q.then = (resolve: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve);
       return q;
     });
-    const token = signedJwt(api.secret, { sub: caller.id, exp: Math.floor(Date.now() / 1000) + 3600 });
+    // `iat` is the sign-in time: admin access needs a Google sign-in within the last 15 minutes.
+    const now = Math.floor(Date.now() / 1000);
+    const token = signedJwt(api.secret, { sub: caller.id, iat: now, exp: now + 3600 });
     return { ...api, token, inserts };
   }
 
@@ -1226,5 +1228,125 @@ describe('project funding is tenant-scoped and separate from revenue', () => {
     a.database.from.mockImplementation((table:string): any =>table==='FundingEntry'?{insert:()=>chainable({data:null,error:{code:'23505'}}),select:()=>chainable({data:row,error:null})}:original(table));
     expect((await a.handler(request('/funding','POST',movement,a.token))).status).toBe(200);
     expect((await a.handler(request('/funding','POST',{...movement,amount:200},a.token))).status).toBe(409);
+  });
+});
+
+describe('compliance gaps 2026-11-15', () => {
+  const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
+  const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+  // The fixture user is both the caller and the target, with a Google sign-in and a password.
+  function complianceApi(settings: Record<string, string> = {}) {
+    const api = edgeApi({ ADMIN_EMAILS: 'audit@example.invalid', RESEND_API_KEY: 'test-delivery-key', ...settings });
+    api.user.googleId = 'g-1';
+    api.user.passwordHash = 'hash';
+    api.user.emailVerified = true;
+    const inserts: Record<string, Record<string, unknown>[]> = {};
+    const base = api.database.from.getMockImplementation()!;
+    api.database.from.mockImplementation((table: string): any => {
+      if (table === 'PasswordReset') return {
+        update: () => chainable({ error: null }),
+        insert: async (row: Record<string, unknown>) => { (inserts.PasswordReset ??= []).push(row); return { error: null }; },
+      };
+      if (table === 'AdminAuditLog') return { insert: async () => ({ error: null }) };
+      return base(table);
+    });
+    return { ...api, inserts };
+  }
+
+  it('stores only a digest of the password reset link that is emailed', async () => {
+    const api = complianceApi();
+    const token = signedJwt(api.secret, { sub: 'user-1', iat: nowSeconds(), exp: nowSeconds() + 3600 });
+    const response = await api.handler(request('/admin/users/user-1/password-reset', 'POST', {}, token));
+    expect(response.status).toBe(200);
+    const email = api.fetchMock.mock.calls.find(([url]) => String(url).includes('api.resend.com'));
+    const emailed = /token=([a-f0-9]{64})/.exec(String(email?.[1]?.body ?? ''))?.[1];
+    expect(emailed).toBeDefined();
+    const stored = api.inserts.PasswordReset?.[0]?.token;
+    expect(stored).toBe(sha256Hex(emailed!));
+    expect(stored).not.toBe(emailed);
+  });
+
+  it('accepts the emailed reset link only through its digest', async () => {
+    const api = complianceApi({ EMAIL_LOGIN_ENABLED: 'true' });
+    const token = signedJwt(api.secret, { sub: 'user-1', iat: nowSeconds(), exp: nowSeconds() + 3600 });
+    await api.handler(request('/admin/users/user-1/password-reset', 'POST', {}, token));
+    const emailed = /token=([a-f0-9]{64})/.exec(String(api.fetchMock.mock.calls.find(([url]) => String(url).includes('api.resend.com'))?.[1]?.body ?? ''))?.[1]!;
+    const storedDigest = api.inserts.PasswordReset![0].token as string;
+    // Looking up the raw token must not match the stored digest.
+    const lookups: string[] = [];
+    const base = api.database.from.getMockImplementation()!;
+    api.database.from.mockImplementation((table: string): any => {
+      if (table === 'PasswordReset') return {
+        select: () => ({ eq: (_field: string, value: string) => { lookups.push(value); return chainable({ data: value === storedDigest ? { id: 'reset-1', userId: 'user-1' } : null, error: null }); } }),
+        update: () => chainable({ error: null }),
+      };
+      return base(table);
+    });
+    const response = await api.handler(request('/auth/password/reset', 'POST', { token: emailed, password: 'a-new-password' }));
+    expect(lookups).toEqual([sha256Hex(emailed)]);
+    expect(response.status).toBe(200);
+  });
+
+  it('refuses admin access when the Google sign-in is older than 15 minutes', async () => {
+    const api = complianceApi();
+    const stale = signedJwt(api.secret, { sub: 'user-1', iat: nowSeconds() - 16 * 60, exp: nowSeconds() + 3600 });
+    expect((await api.handler(request('/admin/overview', 'GET', undefined, stale))).status).toBe(404);
+    const fresh = signedJwt(api.secret, { sub: 'user-1', iat: nowSeconds(), exp: nowSeconds() + 3600 });
+    expect((await api.handler(request('/admin/overview', 'GET', undefined, fresh))).status).toBe(200);
+  });
+
+  it('refuses admin access to a token that has no sign-in time', async () => {
+    const api = complianceApi();
+    const token = signedJwt(api.secret, { sub: 'user-1', exp: nowSeconds() + 3600 });
+    expect((await api.handler(request('/admin/overview', 'GET', undefined, token))).status).toBe(404);
+  });
+
+  it('exports the account profile together with the business records', async () => {
+    const api = complianceApi();
+    api.user.businessId = 'business-1';
+    api.database.rpc.mockImplementation(async (name: string) => {
+      if (name.startsWith('consume_')) return { data: true, error: null };
+      if (name === 'export_user_profile') return { data: { id: 'user-1', email: 'audit@example.invalid' }, error: null };
+      if (name === 'export_business_data') return { data: { Customer: [] }, error: null };
+      return { data: null, error: null };
+    });
+    const token = signedJwt(api.secret, { sub: 'user-1', exp: nowSeconds() + 3600 });
+    const response = await api.handler(request('/business/export', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ account: { id: 'user-1', email: 'audit@example.invalid' }, business: { Customer: [] } });
+    expect(api.database.rpc).toHaveBeenCalledWith('export_user_profile', { p_user_id: 'user-1' });
+  });
+
+  it('exports the account profile to a user who has no business yet', async () => {
+    const api = complianceApi();
+    api.database.rpc.mockImplementation(async (name: string) => {
+      if (name.startsWith('consume_')) return { data: true, error: null };
+      if (name === 'export_user_profile') return { data: { id: 'user-1' }, error: null };
+      return { data: null, error: null };
+    });
+    const token = signedJwt(api.secret, { sub: 'user-1', exp: nowSeconds() + 3600 });
+    const response = await api.handler(request('/business/export', 'GET', undefined, token));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ account: { id: 'user-1' }, business: null });
+    expect(api.database.rpc).not.toHaveBeenCalledWith('export_business_data', expect.anything());
+  });
+
+  it('records one open deletion request per account and deletes nothing', async () => {
+    const api = complianceApi();
+    let inserted = 0;
+    const base = api.database.from.getMockImplementation()!;
+    api.database.from.mockImplementation((table: string): any => table === 'AccountDeletionRequest'
+      ? { insert: async () => (++inserted === 1 ? { error: null } : { error: { code: '23505' } }) }
+      : base(table));
+    const token = signedJwt(api.secret, { sub: 'user-1', exp: nowSeconds() + 3600 });
+    const first = await api.handler(request('/account/deletion-request', 'POST', undefined, token));
+    expect(first.status).toBe(202);
+    expect(await first.json()).toEqual({ status: 'PENDING' });
+    const second = await api.handler(request('/account/deletion-request', 'POST', undefined, token));
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ status: 'PENDING' });
+    // Only the request row is written; the account and its records are left alone.
+    expect(api.writes.filter(w => w.table === 'User')).toEqual([]);
   });
 });
