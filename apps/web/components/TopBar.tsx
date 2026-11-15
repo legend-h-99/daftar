@@ -62,6 +62,16 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
             </span>
           )}
 
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            aria-label={language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
+            className="motion-press flex h-11 items-center gap-1 rounded-full px-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
+          >
+            <Languages className="h-4 w-4" />
+            {language === "ar" ? "EN" : "ع"}
+          </button>
+
           <details className="relative shrink-0">
             <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-xl px-3 text-sm font-bold text-foreground hover:bg-muted">{language === "ar" ? "المزيد" : "More"}</summary>
             <div className="absolute end-0 top-full z-30 mt-2 flex min-w-56 flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-background p-3 shadow-lg">
@@ -90,15 +100,6 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={toggleLanguage}
-            aria-label={language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
-            className="motion-press flex h-11 items-center gap-1 rounded-full px-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
-          >
-            <Languages className="h-4 w-4" />
-            {language === "ar" ? "EN" : "ع"}
-          </button>
 
           <button
             type="button"
