@@ -5,7 +5,7 @@ import { Menu, X } from "lucide-react";
 
 const LINKS = [
   { href: "#features", label: "المزايا" },
-  { href: "#pricing", label: "الباقات" },
+  { href: "#pricing", label: "المتاح مجانًا" },
   { href: "#faq", label: "الأسئلة الشائعة" },
 ];
 
