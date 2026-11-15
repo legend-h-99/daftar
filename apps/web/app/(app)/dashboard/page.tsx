@@ -1,5 +1,6 @@
 "use client";
 
+import FundingSummary from "@/components/FundingSummary";
 import ReportDataQuality from "@/components/reports/ReportDataQuality";
 
 import Link from "next/link";
@@ -186,6 +187,7 @@ export default function DashboardPage() {
             </p>
 
             {summary.cashFlow == null && <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{language === "ar" ? "لا تتوفر تواريخ تحصيل كاملة؛ لذلك لا نعرض تدفقًا نقديًا شهريًا قد يكون مضللًا." : "Complete collection dates are unavailable, so a potentially misleading monthly cash flow is not shown."}</p>}
+            <FundingSummary month={month} cashFlow={summary.cashFlow} language={language} />
             <ReportDataQuality summary={summary} en={language === "en"} />
             {/* Low stock alert */}
             {summary.lowStock && summary.lowStock.length > 0 && (

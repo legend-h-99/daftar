@@ -26,7 +26,7 @@ export default function BottomNav() {
             pathname.startsWith(`${href}/`) ||
             (href === "/inventory" && pathname.startsWith("/products")) ||
             (href === "/purchases" && pathname.startsWith("/suppliers")) ||
-            (href === "/dashboard" && (pathname.startsWith("/reports")));
+            (href === "/dashboard" && (pathname.startsWith("/reports") || pathname.startsWith("/funding")));
           return (
             <Link
               key={href}

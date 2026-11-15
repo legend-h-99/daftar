@@ -292,10 +292,22 @@ function refreshLowStock(material: InventoryMaterial) {
     material.stockQty <= material.reorderLevel;
 }
 
+const fundingEntries: {id:string;requestId:string;kind:string;amount:number;date:string;note:string|null}[]=[];
 export async function demoApiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const method = (options.method ?? "GET").toUpperCase();
   const pathname = path.split("?")[0];
 
+  if (pathname === "/funding") {
+    if(method === "POST") {
+      const body = await readJsonBody<(typeof fundingEntries)[number]>(options);
+      if(!body || !Number.isFinite(body.amount) || body.amount<=0) return new Response(JSON.stringify({message:"Invalid amount"}),{status:400,headers:{"Content-Type":"application/json"}});
+      const existing=fundingEntries.find(row=>row.requestId===body.requestId);
+      if(existing)return jsonResponse(existing);
+      const row={...body,id:crypto.randomUUID()};fundingEntries.push(row);return created(row);
+    }
+    const month=new URLSearchParams(path.split('?')[1]).get('month');const entries=fundingEntries.filter(row=>!month||row.date.startsWith(month));
+    return jsonResponse({entries,count:entries.length,cashIn:entries.filter(row=>['OWNER_CONTRIBUTION','LOAN'].includes(row.kind)).reduce((sum,row)=>sum+row.amount,0),cashOut:entries.filter(row=>['OWNER_WITHDRAWAL','LOAN_REPAYMENT'].includes(row.kind)).reduce((sum,row)=>sum+row.amount,0)});
+  }
   if (method === "POST" && pathname === "/auth/otp/request") {
     return jsonResponse({ sent: true, devCode: DEMO_OTP });
   }

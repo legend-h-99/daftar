@@ -18,10 +18,12 @@ export default function SectionNav() {
             ["/suppliers", "الموردون", "Suppliers"],
           ]
         : path.startsWith("/dashboard") ||
-            path.startsWith("/reports")
+            path.startsWith("/reports") ||
+            path.startsWith("/funding")
           ? [
               ["/dashboard", "الملخص", "Overview"],
               ["/reports", "التقارير", "Reports"],
+              ["/funding", "تمويل المشروع", "Financing"],
             ]
           : [];
   if (!links.length) return null;

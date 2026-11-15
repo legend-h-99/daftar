@@ -52,6 +52,7 @@ model Business {
   products       Product[]
   customers      Customer[]
   invoices       Invoice[]
+  fundingEntries FundingEntry[]
   expenses       Expense[]
   suppliers      Supplier[]
   purchases      Purchase[]
@@ -354,4 +355,18 @@ model TokenBlacklist {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+model FundingEntry {
+  id String @id @default(dbgenerated("gen_random_uuid()::text"))
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  requestId String @db.Uuid
+  kind String
+  amount Decimal @db.Decimal(14, 2)
+  date DateTime @db.Date
+  note String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  @@unique([businessId, requestId])
+  @@index([businessId, date])
 }

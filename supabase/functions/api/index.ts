@@ -263,7 +263,7 @@ function currentRiyadhMonth(): string {
 }
 
 const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
-const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
+const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/funding", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function handleAnalytics(req: Request): Promise<Response> {
@@ -846,6 +846,48 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
   return json(data ?? { bySupplier: [], byMonth: [] })
 }
 
+// Financing is deliberately separate from sales, COGS and profit.
+const FUNDING_KINDS = ['OWNER_CONTRIBUTION', 'LOAN', 'OWNER_WITHDRAWAL', 'LOAN_REPAYMENT']
+async function handleFunding(req: Request, user: Record<string, unknown>, url: URL) {
+  const bizId = user.businessId as string
+  if (!bizId) return err('Business not set up', 403)
+  const supabase = db()
+  if (req.method === 'GET') {
+    const month = url.searchParams.get('month')
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return err('Invalid month', 400)
+    let query = supabase.from('FundingEntry').select('*').eq('businessId', bizId)
+    const range = monthRange(month)
+    if (range) query = query.gte('date', range.startDate).lt('date', range.endDate)
+    const result = await readReportRows(query)
+    if (result.error) return err('تعذر تحميل تمويل المشروع', 503)
+    const entries = result.data
+    let cashIn = 0, cashOut = 0
+    for (const row of entries) {
+      if (['OWNER_CONTRIBUTION', 'LOAN'].includes(String(row.kind))) cashIn += Number(row.amount)
+      else cashOut += Number(row.amount)
+    }
+    return json({ entries: entries.sort((a,b) => String(b.date).localeCompare(String(a.date))).slice(0,200), count: entries.length, cashIn: Math.round(cashIn*100)/100, cashOut: Math.round(cashOut*100)/100 })
+  }
+  if (req.method !== 'POST') return err('Method not allowed', 405)
+  const body = await req.json()
+  const keys = ['requestId', 'kind', 'amount', 'date', 'note']
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k=>!keys.includes(k)) ||
+      !FUNDING_KINDS.includes(body.kind) || !validAmount(body.amount) || Math.abs(body.amount*100 - Math.round(body.amount*100)) > 0.00001 ||
+      typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId) ||
+      typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !validDate(body.date) || new Date(body.date).toISOString().slice(0,10) !== body.date || body.date > new Date(Date.now()+3*3600000).toISOString().slice(0,10) ||
+      (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_TEXT_LENGTH))) return err('أدخل نوع الحركة ومبلغًا موجبًا وتاريخًا صحيحًا غير مستقبلي', 400)
+  const payload = { ...body, businessId: bizId, note: body.note?.trim() || null }
+  const { data, error } = await supabase.from('FundingEntry').insert(payload).select().single()
+  if (error?.code === '23505') {
+    const existing = await supabase.from('FundingEntry').select('*').eq('businessId',bizId).eq('requestId',body.requestId).single()
+    const row = existing.data
+    if (!row || row.kind !== body.kind || Number(row.amount) !== body.amount || row.date !== body.date || row.note !== payload.note) return err('طلب مكرر ببيانات مختلفة',409)
+    return json(row)
+  }
+  if (error) return err('تعذر حفظ حركة التمويل',503)
+  return json(data,201)
+}
+
 // ── GENERIC CRUD ──────────────────────────────────────────────────────────────
 
 // Fields a client may set when creating a row. Anything else is refused, so a request cannot
@@ -1393,6 +1435,7 @@ async function handleRequest(req: Request) {
       response.headers.set('Cache-Control', 'no-store')
       return response
     }
+    if (path === '/funding') return await handleFunding(req, user, url)
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)
