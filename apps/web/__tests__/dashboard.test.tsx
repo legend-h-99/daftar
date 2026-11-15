@@ -159,7 +159,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
         expect(screen.getByText("المبيعات")).toBeInTheDocument(),
       );
       expect(screen.getByText("تكلفة البيع")).toBeInTheDocument();
-      expect(screen.getByText("مصاريف")).toBeInTheDocument();
+      expect(screen.getByText("مصاريف التشغيل")).toBeInTheDocument();
       expect(screen.getByRole("region", { name: /الربح من المبيعات/ })).toBeInTheDocument();
     });
 
@@ -192,7 +192,7 @@ describe("صفحة الرئيسية (Dashboard)", () => {
     render(<DashboardPage />);
     await waitFor(() => expect(screen.getByText("24.00 ر.س")).toBeInTheDocument());
     expect(screen.getByText("-72.00 ر.س")).toBeInTheDocument();
-    expect(screen.getByText("النقد الداخل والخارج")).toBeInTheDocument();
+    expect(screen.getByText("حركة النقد من العمليات")).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("التكاليف غير المسجلة");
   });
 

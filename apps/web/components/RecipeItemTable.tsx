@@ -100,7 +100,7 @@ export default function RecipeItemTable({
                   onChange={(e) => selectMaterial(index, e.target.value)}
                   className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500"
                 >
-                  <option value={FREE_ENTRY}>{en ? "✏️ Custom entry (not linked to stock)" : "✏️ إدخال حر (بدون ربط بالمخزون)"}</option>
+                  <option value={FREE_ENTRY}>{en ? "Choose stock, or use a custom entry" : "اختر من المخزون، أو استخدم إدخالًا حرًا"}</option>
                   {materials.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} — {unitLabels[m.unit]} ({formatSAR(m.unitPrice, language)})
@@ -136,6 +136,7 @@ export default function RecipeItemTable({
               />
             )}
 
+            <p className={`mb-2 text-xs leading-6 ${item.materialId ? "text-emerald-800" : "text-amber-900"}`} role="note">{item.materialId ? (en ? "Linked to stock: included in inventory sale costs." : "مرتبطة بالمخزون: تدخل ضمن تكلفة المخزون المباع.") : (en ? "Custom cost is for pricing only; it is not included in dashboard profit. Choose a stock ingredient to include it." : "التكلفة الحرة للتسعير فقط؛ لا تدخل في ربح الرئيسية. اختر مادة من المخزون لاحتسابها.")}</p>
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="mb-1 block text-[11px] font-medium text-gray-500">
