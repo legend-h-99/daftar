@@ -49,7 +49,7 @@ export default function DashboardScreen() {
       refreshControl={
         <RefreshControl
           refreshing={isRefetching}
-          onRefresh={refetch}
+          onRefresh={() => { void refetch(); }}
           tintColor="#fff"
           colors={[Colors.brandDeep]}
         />
