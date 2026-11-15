@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- Disposable database only: all events are synthetic and timestamped explicitly.
-\ir ../../supabase/migrations/20261010120000_product_behavior_analytics.sql
+\ir ../../supabase/migrations/20261010081706_product_behavior_analytics.sql
 SELECT record_product_event('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','page_viewed','/login','x','{}',now());
 SELECT record_product_event('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','page_viewed','/login','x','{}',now());
 INSERT INTO "ProductAnalyticsEvent" (id,"deviceId","sessionId",event,path,source,properties,"occurredAt","createdAt") SELECT ('10000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'20000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001',e,'/login','x','{}',now()+n*interval '1 second',now()+n*interval '1 second' FROM (VALUES (2,'login_started'),(3,'user_signed_up'),(4,'onboarding_completed'),(5,'product_created')) AS fixtures(n,e);

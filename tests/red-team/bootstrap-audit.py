@@ -35,6 +35,6 @@ sql('''INSERT INTO \"Business\"(id,name,\"updatedAt\") VALUES('legacy-audit-fixt
 INSERT INTO \"Invoice\"(id,\"businessId\",number,status,subtotal,total,\"paidAmount\") VALUES('legacy-audit-invoice','legacy-audit-fixture',1,'PAID',10,10,10);''','legacy paid balance before remediation')
 for p in sorted((r/'supabase/migrations').glob('*.sql')):
  if p.name<'20261103' and ('invoice_payment_ledger' not in p.name or os.environ.get('AUDIT_BASELINE_LEDGER')=='true'):sql(p.read_text(),p.name)
-sql((r/'supabase/migrations/20261103010000_audit_financial_integrity.sql').read_text(),'new remediation migration (production baseline without payment ledger)')
+sql((r/'supabase/migrations/20261103010523_audit_financial_integrity.sql').read_text(),'new remediation migration (production baseline without payment ledger)')
 
-sql((r/'supabase/migrations/20261103020000_business_data_export.sql').read_text(),'business export migration')
+sql((r/'supabase/migrations/20261103010524_business_data_export.sql').read_text(),'business export migration')
