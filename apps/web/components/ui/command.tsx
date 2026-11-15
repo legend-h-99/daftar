@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Command as CommandPrimitive } from "cmdk"
+import { Command as CmdkCommand } from "cmdk"
 
 import { cn } from "@/lib/utils"
 import {
@@ -16,6 +16,12 @@ import {
   InputGroupAddon,
 } from "@/components/ui/input-group"
 import { SearchIcon, CheckIcon } from "lucide-react"
+
+// cmdk resolves its own copy of @types/react, so its components reject the `key` type of this app's
+// copy in JSX (TS2322). Types only: the cast is erased at runtime, and the sub-components keep their names.
+type CommandPrimitiveType = React.ComponentType<any> &
+  Record<"Input" | "List" | "Empty" | "Group" | "Separator" | "Item", React.ComponentType<any>>
+const CommandPrimitive = CmdkCommand as unknown as CommandPrimitiveType
 
 function Command({
   className,
