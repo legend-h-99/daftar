@@ -1197,3 +1197,34 @@ describe('platform admin and support', () => {
     expect(inserts.ApiErrorEvent?.[0]).toEqual({ method: 'DELETE', path: '/invoices/:id', status: 500 });
   });
 });
+
+describe('project funding is tenant-scoped and separate from revenue', () => {
+  function setup() {
+    const api = edgeApi(); api.user.businessId = 'business-1';
+    const token = signedJwt(api.secret, { sub: api.user.id, exp: Math.floor(Date.now()/1000)+3600 });
+    return {...api,token};
+  }
+  const movement = {requestId:'12345678-1234-4234-8234-123456789abc',kind:'OWNER_CONTRIBUTION',amount:100,date:'2026-01-01'};
+  it('rejects cross-tenant overrides, impossible dates, negative and sub-cent amounts', async()=>{
+    for(const patch of [{businessId:'other'}, {date:'2026-02-30'}, {amount:-1}, {amount:0.001}, {kind:'SALE'}]) {
+      const a=setup(); const r=await a.handler(request('/funding','POST',{...movement,...patch},a.token)); expect(r.status).toBe(400);
+    }
+  });
+  it('assigns the business from the authenticated account and stores no sale',async()=>{
+    const a=setup(); const original=a.database.from.getMockImplementation()!; const insert=jest.fn().mockReturnValue(chainable({data:{id:'fund-1',...movement,businessId:'business-1'},error:null}));
+    a.database.from.mockImplementation((table:string): any =>table==='FundingEntry'?{insert}:original(table));
+    const r=await a.handler(request('/funding','POST',movement,a.token));expect(r.status).toBe(201);expect(insert).toHaveBeenCalledWith({...movement,businessId:'business-1',note:null});expect(a.database.from).not.toHaveBeenCalledWith('Invoice');
+  });
+  it('sums financing separately and scopes every read by business',async()=>{
+    const a=setup(); const original=a.database.from.getMockImplementation()!; const eq=jest.fn();
+    const rows=[{id:'1',kind:'OWNER_CONTRIBUTION',amount:100,date:'2026-01-01'},{id:'2',kind:'LOAN',amount:50,date:'2026-01-02'},{id:'3',kind:'OWNER_WITHDRAWAL',amount:20,date:'2026-01-03'},{id:'4',kind:'LOAN_REPAYMENT',amount:10,date:'2026-01-04'}];
+    a.database.from.mockImplementation((table:string): any =>table==='FundingEntry'?{select:()=>({eq:(...args:unknown[])=>{eq(...args);return chainable({data:rows,error:null});}})}:original(table));
+    const r=await a.handler(request('/funding?month=2026-01','GET',undefined,a.token));expect(r.status).toBe(200);expect(await r.json()).toMatchObject({cashIn:150,cashOut:30,count:4});expect(eq).toHaveBeenCalledWith('businessId','business-1');
+  });
+  it('returns an identical retry without inserting twice',async()=>{
+    const a=setup(); const original=a.database.from.getMockImplementation()!; const row={...movement,note:null,businessId:'business-1'};
+    a.database.from.mockImplementation((table:string): any =>table==='FundingEntry'?{insert:()=>chainable({data:null,error:{code:'23505'}}),select:()=>chainable({data:row,error:null})}:original(table));
+    expect((await a.handler(request('/funding','POST',movement,a.token))).status).toBe(200);
+    expect((await a.handler(request('/funding','POST',{...movement,amount:200},a.token))).status).toBe(409);
+  });
+});
