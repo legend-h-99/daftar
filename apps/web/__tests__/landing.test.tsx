@@ -106,7 +106,7 @@ describe("صفحة الـ Landing", () => {
       render(<LandingPage />);
       expect(screen.getByText("لا تضيع وقتك في الورقة")).toBeInTheDocument();
       expect(screen.getByText("اعرف أين يذهب كل ريال")).toBeInTheDocument();
-      expect(screen.getByText("لا بضاعة تخلص بدون تحذير")).toBeInTheDocument();
+      expect(screen.getByText("تعرف متى تعيد الطلب")).toBeInTheDocument();
       expect(screen.getByText("قرّر بثقة في نهاية الشهر")).toBeInTheDocument();
     });
   });
