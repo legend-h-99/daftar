@@ -172,7 +172,7 @@ export default function NewInvoicePage() {
           onClear={clearCustomer}
         />
 
-        <details className="rounded-xl border border-gray-200 bg-white p-4">
+        <details open className="rounded-xl border border-gray-200 bg-white p-4">
           <summary className="min-h-11 cursor-pointer font-semibold">{en ? "Additional details (optional)" : "تفاصيل إضافية (اختيارية)"}</summary>
         {/* Due date */}
         <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
