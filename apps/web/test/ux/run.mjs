@@ -145,7 +145,7 @@ await scenario('reports error recovery',{},async(page,context)=>{
 });
 await scenario('English translation across app forms and reports',{},async(page,context)=>{
  await fixtures(context);await page.goto(`${base}/dashboard/`,{waitUntil:'networkidle'});
- await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.documentElement.dir==='ltr');
+ await page.locator('header details > summary').click();await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.documentElement.dir==='ltr');
  await page.goto(`${base}/expenses/`,{waitUntil:'networkidle'});await page.getByRole('button',{name:'Add expense'}).first().click();
  await page.getByRole('heading',{name:'New expense'}).waitFor();assert.equal(await page.getByText('Category',{exact:true}).count(),1);
  assert((await page.locator('#expense-category option').allTextContents()).includes('Ingredients'));
