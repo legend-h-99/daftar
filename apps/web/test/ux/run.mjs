@@ -152,7 +152,7 @@ await scenario('English translation across app forms and reports',{},async(page,
  await page.goto(`${base}/reports/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Reports'}).waitFor();
  await page.getByRole('heading',{name:'Visual comparison'}).waitFor();await page.getByRole('heading',{name:'Profit and loss statement'}).waitFor();
  await page.goto(`${base}/invoices/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'New invoice'}).waitFor();
- await page.getByRole('button',{name:'Choose a product'}).waitFor();await page.getByText('Due date',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'Choose a product'}).waitFor();await page.getByText('Additional details (optional)',{exact:true}).click();await page.getByText('Due date',{exact:false}).waitFor();
  await page.goto(`${base}/purchases/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'New purchase'}).waitFor();
  await page.getByRole('button',{name:'Save and update stock'}).waitFor();
  await page.goto(`${base}/products/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Product cost calculator'}).waitFor();
