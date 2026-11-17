@@ -23,8 +23,8 @@ projects: [daftar1]
   - 3.0.2: `apps/mobile` > `expo` > `@expo/cli` > `picomatch`.
   - 2.3.2: `apps/mobile` > `react-native` > `@react-native/community-cli-plugin` > `metro` > `jest-worker` > `jest-util` > `picomatch`.
 - Reachability evidence, checked 2026-11-17:
-  - Every path is a build or CLI tool: a Rollup plugin, the Expo CLI, the Metro bundler.
-  - `apps/web` is a static export (`output: "export"`), so it has no server runtime.
+  - Every path is a build or CLI tool: a Rollup plugin used only by a Sentry webpack loader, the Expo CLI, the Metro bundler.
+  - The production web build on Cloudflare Pages is a static export (`NEXT_OUTPUT_EXPORT=1` sets `output: "export"`), so it has no server runtime. `vercel.json` builds without that flag. In that build `picomatch` is still reached only through build tooling.
   - No `picomatch` strings (`picomatch`, `isExtglob`, `POSIX_REGEX_SOURCE`) appear in the 79 web JS files built on 2026-11-17, or in the iOS and Android Hermes bundles from 2026-11-11.
   - `supabase/functions` does not use `picomatch`.
 - Limit of this evidence: a string search in bundles is an inference, not proof that no code path exists. The mobile bundles are six days old.
@@ -33,7 +33,7 @@ projects: [daftar1]
 
 | Option | Pros | Cons |
 |--------|------|------|
-| Ignore this GHSA only, until 2026-12-17, with a CI expiry check (chosen) | CI is green again. Other high advisories still fail. The exception cannot outlive its date without a new decision. | The build-time ReDoS risk stays for up to 30 days. |
+| Ignore this GHSA only, until 2026-12-17, with a CI expiry check and a named owner (chosen) | CI is green again. Other high advisories still fail. The exception cannot outlive its date without a new decision. | The build-time ReDoS risk stays for up to 30 days. |
 | Ignore with the expiry only written down | Smallest change. | Nothing forces a review. The exception can live forever. |
 | Wait for an upstream fix | No risk accepted. | CI stays red for every PR for an unknown time. |
 | Override `picomatch` to a newer version | Removes the finding. | No patched version exists, so no override fixes it. |
@@ -43,13 +43,19 @@ projects: [daftar1]
 Chosen: **ignore `GHSA-fc5q-39xc-vjpf` until 2026-12-17, enforced in CI**, because the evidence points to build-time use only and the founder accepted a 30-day risk.
 
 - `pnpm-workspace.yaml` → `auditConfig.ignoreGhsas` lists the one ID. Both `pnpm audit` and `release-audit.mjs` honour it.
-- `tests/security/audit-exceptions.json` holds the reason, the expiry, the ticket and this AgDR.
-- `tests/security/check-audit-exceptions.mjs` runs in `mobile-security` before the audit. It fails when an exception has expired, when an ignored ID has no entry, when an entry has no expiry or reason, or when an entry is stale.
+- `tests/security/audit-exceptions.json` holds the reason, the expiry, the owner (`legend-h-99`, the founder), the ticket and this AgDR.
+- `tests/security/check-audit-exceptions.mjs` fails when:
+  - an exception has expired, or expires more than 90 days ahead;
+  - an expiry is not a real calendar date;
+  - an entry has no reason or no owner;
+  - a GHSA or CVE ID appears in `pnpm-workspace.yaml` or `package.json` with no entry (IDs are matched anywhere in those files, in any case, so an unusual YAML or JSON layout cannot hide an ignore);
+  - an entry is stale.
+- The check runs in `mobile-security` before the audit, and daily at 06:00 UTC on `main` (`.github/workflows/audit-exceptions.yml`).
 
 ## Consequences
 
-- On 2026-12-18 CI fails until someone re-assesses the advisory. Remove the exception if `picomatch` ships a fix, or extend the date with a new reason.
-- A new ignore needs a matching entry in `audit-exceptions.json`, so silent ignores fail CI.
+- On 2026-12-18 CI fails until the owner re-assesses the advisory. Remove the exception if `picomatch` ships a fix, or extend the date (at most 90 days ahead) with a new reason.
+- A new ignore in `pnpm-workspace.yaml` or `package.json` needs a matching entry in `audit-exceptions.json`. Ignores set outside those two files (for example a user-level `.npmrc`) are not checked.
 - Moderate and low advisories are unchanged (12 moderate, 1 low). They did not fail CI before this change either.
 - If a future code path matches untrusted glob patterns with `picomatch` at runtime, this exception is no longer valid.
 
