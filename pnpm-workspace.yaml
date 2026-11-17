@@ -3,3 +3,9 @@ packages:
 
 overrides:
   multer: ">=2.2.0"
+
+# Time-boxed audit exceptions. Every ID here needs an unexpired entry in
+# tests/security/audit-exceptions.json; CI enforces this (#79, AgDR-0003).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
