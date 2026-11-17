@@ -109,7 +109,7 @@ jobs:
         run: pnpm --filter api exec tsc --noEmit
 
       - name: Test Supabase material and activation contracts
-        run: node --test supabase/functions/api/material-create.test.cjs supabase/functions/api/activation-analytics.test.cjs
+        run: node --test supabase/functions/api/material-create.test.cjs supabase/functions/api/activation-analytics.test.cjs supabase/functions/api/invoice-scan.test.cjs
 
       - name: Build API
         run: pnpm --filter api build
