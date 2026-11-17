@@ -184,8 +184,17 @@ function clientIp(req: Request): string | null {
   return req.headers.get('cf-connecting-ip')
 }
 
+// Hourly caps on phone sign-in, on top of the per-minute ones. The daily SMS budget is shared by
+// every user, so without a per-number cap a single number (an attacker's own account is enough)
+// could spend the whole day's budget in about half an hour and stop phone sign-in for everyone.
+// The verify cap also bounds how many codes can be guessed for one number.
+const OTP_REQUESTS_PER_NUMBER_HOUR = 5
+const OTP_REQUESTS_PER_IP_HOUR = 20
+const OTP_VERIFIES_PER_NUMBER_HOUR = 15
+
 async function rateLimit(
-  req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
+  req: Request, action: string, identifier: unknown, limit: number,
+  { includeIp = true, windowSeconds = 60 } = {},
 ): Promise<Response | null> {
   const ip = clientIp(req)
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
@@ -194,7 +203,7 @@ async function rateLimit(
   const outcomes = await Promise.all(keys.map(async key => {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
     const hashed = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')
-    return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: 60 })
+    return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: windowSeconds })
   }))
   if (outcomes.some(o => o.error)) return err('Authentication temporarily unavailable', 503)
   if (outcomes.some(o => o.data !== true)) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
@@ -586,14 +595,18 @@ async function authPasswordReset(body: Record<string, unknown>) {
   const { data: record } = await supabase.from('PasswordReset').select('id,userId').eq('token', body.token)
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
   if (!record) return err('Invalid or expired password reset link', 400)
+  // Claim the link before changing the password. Two requests with the same link could both pass the
+  // lookup above; only the one whose update flips `consumed` may set a password.
+  const { data: claimed, error: claimError } = await supabase.from('PasswordReset').update({ consumed: true })
+    .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
+  if (claimError) return err('Could not reset password', 500)
+  if (!claimed) return err('Invalid or expired password reset link', 400)
 
   const passwordHash = await bcrypt.hash(body.password, 12)
   const tokenVersion = newTokenVersion()
   const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true, tokenVersion })
     .eq('id', record.userId).select('id,email,phone,name,businessId').single()
-  const { error: resetError } = await supabase.from('PasswordReset').update({ consumed: true })
-    .eq('id', record.id).eq('consumed', false)
-  if (userError || resetError || !user) return err('Could not reset password', 500)
+  if (userError || !user) return err('Could not reset password', 500)
 
   const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId, pv: tokenVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
@@ -1367,14 +1380,19 @@ async function handleRequest(req: Request) {
       const body = await req.json()
       // Keyed by the normalized number so 05… and +9665… share one budget.
       const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
-      const limited = await rateLimit(req, 'otp-request', phoneKey, 3)
+      // The hourly IP cap is looser than the per-number one: carrier NAT puts many phones behind one address.
+      const limited = await rateLimit(req, 'otp-request', phoneKey, 3) ??
+        await rateLimit(req, 'otp-request-hour', phoneKey, OTP_REQUESTS_PER_NUMBER_HOUR, { includeIp: false, windowSeconds: 3600 }) ??
+        await rateLimit(req, 'otp-request-ip-hour', null, OTP_REQUESTS_PER_IP_HOUR, { windowSeconds: 3600 })
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
-      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
+      return await rateLimit(req, 'otp-verify', phoneKey, 5) ??
+        await rateLimit(req, 'otp-verify-hour', phoneKey, OTP_VERIFIES_PER_NUMBER_HOUR, { includeIp: false, windowSeconds: 3600 }) ??
+        authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()

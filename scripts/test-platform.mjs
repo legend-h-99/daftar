@@ -7,7 +7,7 @@ const suites = [
   ['API', 'pnpm', ['--filter', 'api', 'test', '--runInBand']],
   ['Web', 'pnpm', ['--filter', 'web', 'test']],
   ['Operations', 'pnpm', ['--filter', '@daftar/operations', 'test']],
-  ['Edge and mobile regression tests', process.execPath, ['--test', 'apps/mobile/test/dependency-security.test.cjs', 'supabase/functions/api/activation-analytics.test.cjs', 'supabase/functions/api/material-create.test.cjs']],
+  ['Edge and mobile regression tests', process.execPath, ['--test', 'apps/mobile/test/dependency-security.test.cjs', 'supabase/functions/api/activation-analytics.test.cjs', 'supabase/functions/api/material-create.test.cjs', 'supabase/functions/api/otp-limits.test.cjs']],
   ['Mobile types', 'pnpm', ['--filter', '@daftar/mobile', 'type-check']],
 ];
 

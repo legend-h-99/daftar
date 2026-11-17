@@ -14,7 +14,7 @@ test('runs every platform suite from the repository root', () => {
     ['--filter', 'api', 'test', '--runInBand'],
     ['--filter', 'web', 'test'],
     ['--filter', '@daftar/operations', 'test'],
-    ['--test', 'apps/mobile/test/dependency-security.test.cjs', 'supabase/functions/api/activation-analytics.test.cjs', 'supabase/functions/api/material-create.test.cjs'],
+    ['--test', 'apps/mobile/test/dependency-security.test.cjs', 'supabase/functions/api/activation-analytics.test.cjs', 'supabase/functions/api/material-create.test.cjs', 'supabase/functions/api/otp-limits.test.cjs'],
     ['--filter', '@daftar/mobile', 'type-check'],
   ]);
   assert.ok(calls.every(call => call.options.cwd === fileURLToPath(new URL('../', import.meta.url)) && !call.options.shell));
