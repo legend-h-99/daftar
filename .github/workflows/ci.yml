@@ -90,8 +90,8 @@ jobs:
       - name: Lint web
         run: pnpm --filter web lint
 
-      - name: Test web
-        run: pnpm --filter web test -- --run
+      - name: Test web with coverage thresholds
+        run: pnpm --filter web test -- --run --coverage
 
       - name: Install test browser
         run: pnpm --filter web exec playwright install --with-deps chromium
@@ -102,8 +102,8 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter api exec prisma generate
 
-      - name: Test API
-        run: pnpm --filter api test --runInBand
+      - name: Test API with coverage thresholds
+        run: pnpm --filter api test --runInBand --coverage
 
       - name: Type-check API including test tooling
         run: pnpm --filter api exec tsc --noEmit
