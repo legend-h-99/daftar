@@ -1,5 +1,4 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { BadRequestException } from '@nestjs/common';
 import { EXPENSE_REPOSITORY, IExpenseRepository } from '../../ports/repositories/expense.repository.port';
 import { Expense, ExpenseFilter } from '../../../domain/entities/expense.entity';
 
