@@ -91,7 +91,8 @@ jobs:
         run: pnpm --filter web lint
 
       - name: Test web with coverage thresholds
-        run: pnpm --filter web test -- --run --coverage
+        # No bare "--": pnpm forwards it and vitest then drops the flags after it.
+        run: pnpm --filter web test --coverage
 
       - name: Install test browser
         run: pnpm --filter web exec playwright install --with-deps chromium
