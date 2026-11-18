@@ -185,6 +185,39 @@ describe('authentication security boundaries', () => {
     expect(email.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
+  it('rejects registration on an unverified row that a Google sign-in created (#88)', async () => {
+    const { service, prisma, email } = setup();
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'user-1',
+      googleId: 'google-victim',
+      passwordHash: null,
+      emailVerified: false,
+    });
+
+    await expect(service.registerEmail('audit@example.invalid', 'attacker-password')).rejects.toThrow(
+      new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل'),
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.emailVerification.create).not.toHaveBeenCalled();
+    expect(email.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('still lets an unverified password-only row re-register', async () => {
+    const { service, prisma, email } = setup();
+    const row = { id: 'user-1', email: 'audit@example.invalid', name: null, googleId: null, emailVerified: false };
+    prisma.user.findFirst.mockResolvedValue(row);
+    prisma.user.update.mockResolvedValue(row);
+
+    await expect(service.registerEmail('audit@example.invalid', 'new-password')).resolves.toMatchObject({ sent: true });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { passwordHash: expect.any(String), name: null },
+    });
+    expect(email.sendVerificationEmail).toHaveBeenCalled();
+  });
+
   it('rejects an expired or consumed email verification link without issuing a token', async () => {
     const { service, prisma, jwt } = setup();
     prisma.emailVerification.findFirst.mockResolvedValue(null);
@@ -381,7 +414,7 @@ describe('authentication security boundaries', () => {
       expect(jwt.sign).not.toHaveBeenCalled();
     });
 
-    it('creates a new user when neither the Google ID nor the email is known', async () => {
+    it('creates a new, email-verified user when neither the Google ID nor the email is known (#88)', async () => {
       const { service, prisma } = googleSetup();
       prisma.user.findFirst.mockResolvedValue(null);
 
@@ -392,6 +425,7 @@ describe('authentication security boundaries', () => {
           email: googleIdentity.email,
           googleId: googleIdentity.sub,
           name: googleIdentity.name,
+          emailVerified: true,
         },
       });
       expect(prisma.user.update).not.toHaveBeenCalled();

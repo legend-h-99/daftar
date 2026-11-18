@@ -286,7 +286,8 @@ export class AuthService {
     const byEmail = await this.prisma.user.findFirst({ where: { email: identity.email } });
     if (!byEmail) {
       return this.prisma.user.create({
-        data: { googleId: identity.sub, email: identity.email, name: identity.name },
+        // Google already proved the address (email_verified in googleLogin) (#88).
+        data: { googleId: identity.sub, email: identity.email, name: identity.name, emailVerified: true },
       });
     }
 
@@ -344,7 +345,9 @@ export class AuthService {
   async registerEmail(email: string, password: string, name?: string) {
     const existing = await this.prisma.user.findFirst({ where: { email } });
     if (existing) {
-      if (existing.emailVerified) {
+      // A row with a Google ID belongs to whoever proved the address through
+      // Google. Never let registration plant a password on it (#88).
+      if (existing.emailVerified || existing.googleId) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
       // Overwrite the stored hash with the *current* attempt's password so that
