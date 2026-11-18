@@ -167,8 +167,11 @@ function err(msg: string, status = 400, code?: string, extra: Record<string, unk
 async function rateLimit(
   req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
 ): Promise<Response | null> {
-  const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  // The function always sits behind Cloudflare, which sets cf-connecting-ip to the
+  // real client IP and strips any client-supplied value. x-real-ip / x-forwarded-for
+  // are client-spoofable and only reachable off-Cloudflare, so they are deliberately
+  // not trusted for rate-limit keying (spoofing them would bypass the per-IP cap).
+  const ip = req.headers.get('cf-connecting-ip') ?? 'unknown'
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
   const keys = includeIp ? [`${action}:ip:${ip}`] : []
   if (identity) keys.push(`${action}:account:${identity}`)
