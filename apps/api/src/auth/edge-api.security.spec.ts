@@ -201,6 +201,51 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ isNewUser });
   });
 
+  describe('Google linking by email (#82)', () => {
+    function googleByEmail(row: Record<string, unknown>) {
+      const api = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+      api.fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-new', email: 'owner@example.invalid', email_verified: 'true', aud: 'expected-client' }) });
+      const userUpdates: Record<string, unknown>[] = [];
+      const consumed: string[] = [];
+      const original = api.database.from.getMockImplementation()!;
+      api.database.from.mockImplementation((table: string): any => {
+        if (table === 'User') return {
+          select: () => ({ eq: (field: string) => ({ maybeSingle: async () => ({ data: field === 'email' ? row : null, error: null }) }) }),
+          update: (data: Record<string, unknown>) => ({ eq: async () => { userUpdates.push(data); return { error: null }; } }),
+        };
+        if (table === 'EmailVerification') return {
+          update: () => ({ eq: (_field: string, userId: string) => ({ eq: async () => { consumed.push(userId); return { error: null }; } }) }),
+        };
+        return original(table);
+      });
+      return { ...api, userUpdates, consumed };
+    }
+
+    it('revokes the password and pending verification links of an unverified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'unverified', email: 'owner@example.invalid', googleId: null, emailVerified: false, passwordHash: 'someone-elses-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toEqual([expect.objectContaining({ googleId: 'google-new', passwordHash: null, emailVerified: true })]);
+      expect(consumed).toEqual(['unverified']);
+    });
+
+    it('keeps the password of a verified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'verified', email: 'owner@example.invalid', googleId: null, emailVerified: true, passwordHash: 'owner-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toHaveLength(1);
+      expect(userUpdates[0]).not.toHaveProperty('passwordHash');
+      expect(consumed).toEqual([]);
+    });
+
+    it('refuses to move an email to a different Google ID', async () => {
+      const { handler, userUpdates } = googleByEmail({ id: 'other', email: 'owner@example.invalid', googleId: 'google-old', emailVerified: true, businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(409);
+      expect(userUpdates).toEqual([]);
+    });
+  });
+
   describe('anonymous behavior collection', () => {
     const event = { id: '11111111-1111-4111-8111-111111111111', deviceId: '22222222-2222-4222-8222-222222222222', sessionId: '33333333-3333-4333-8333-333333333333', event: 'page_viewed', path: '/login', source: 'x', properties: {}, occurredAt: new Date().toISOString() };
     it('stores an anonymous event without looking up the account', async () => {

@@ -1,5 +1,11 @@
 import { randomBytes, randomInt, randomUUID } from 'crypto';
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
@@ -228,26 +234,11 @@ export class AuthService {
       throw new UnauthorizedException('Google account email is not verified');
     }
 
-    const existing =
-      (await this.prisma.user.findFirst({ where: { googleId: payload.sub } })) ??
-      (await this.prisma.user.findFirst({ where: { email: payload.email } }));
-
-    const user = existing
-      ? await this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            googleId: payload.sub,
-            email: payload.email,
-            name: payload.name ?? existing.name,
-          },
-        })
-      : await this.prisma.user.create({
-          data: {
-            googleId: payload.sub,
-            email: payload.email,
-            name: payload.name,
-          },
-        });
+    const user = await this.findOrLinkGoogleUser({
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+    });
 
     const accessToken = this.signToken({
       sub: user.id,
@@ -267,6 +258,62 @@ export class AuthService {
       },
       hasBusiness: !!user.businessId,
     };
+  }
+
+  /**
+   * Resolve the user for a verified Google identity.
+   *
+   * 1. A row with this Google `sub` wins.
+   * 2. Otherwise a row with the same email is linked, but only when it has no
+   *    other Google ID. If that row's email was never verified, whoever set its
+   *    password never proved they own the address, so the password and any
+   *    pending verification links are revoked (#82).
+   * 3. Otherwise a new user is created.
+   */
+  private async findOrLinkGoogleUser(identity: {
+    sub: string;
+    email: string;
+    name?: string;
+  }) {
+    const bySub = await this.prisma.user.findFirst({ where: { googleId: identity.sub } });
+    if (bySub) {
+      return this.prisma.user.update({
+        where: { id: bySub.id },
+        data: { email: identity.email, name: identity.name ?? bySub.name },
+      });
+    }
+
+    const byEmail = await this.prisma.user.findFirst({ where: { email: identity.email } });
+    if (!byEmail) {
+      return this.prisma.user.create({
+        data: { googleId: identity.sub, email: identity.email, name: identity.name },
+      });
+    }
+
+    if (byEmail.googleId && byEmail.googleId !== identity.sub) {
+      throw new ConflictException('This email is already linked to a different Google account');
+    }
+
+    const linkData = {
+      googleId: identity.sub,
+      email: identity.email,
+      name: identity.name ?? byEmail.name,
+    };
+    if (byEmail.emailVerified) {
+      return this.prisma.user.update({ where: { id: byEmail.id }, data: linkData });
+    }
+
+    const [linked] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: { ...linkData, passwordHash: null, emailVerified: true },
+      }),
+      this.prisma.emailVerification.updateMany({
+        where: { userId: byEmail.id, consumed: false },
+        data: { consumed: true },
+      }),
+    ]);
+    return linked;
   }
 
   async me(userId: string) {

@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 
@@ -27,6 +27,7 @@ function setup(settings: Record<string, string> = {}) {
       updateMany: jest.fn(),
       create: jest.fn(),
     },
+    $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
   };
   const jwt = {
     sign: jest.fn().mockReturnValue('signed-token'),
@@ -242,5 +243,160 @@ describe('authentication security boundaries', () => {
     await service.logout('legacy-token');
 
     expect(prisma.tokenBlacklist.upsert).not.toHaveBeenCalled();
+  });
+
+  describe('Google sign-in account resolution (#82)', () => {
+    const googleIdentity = {
+      sub: 'google-sub-1',
+      email: 'owner@example.invalid',
+      email_verified: true,
+      name: 'Google Name',
+    };
+
+    function googleSetup() {
+      const ctx = setup({ GOOGLE_CLIENT_ID: 'expected-client' });
+      const verifyIdToken = jest.fn().mockResolvedValue({ getPayload: () => googleIdentity });
+      (ctx.service as any).googleClient = { verifyIdToken };
+      ctx.prisma.user.update.mockImplementation(async ({ where, data }: any) => ({
+        id: where.id,
+        phone: null,
+        businessId: null,
+        ...data,
+      }));
+      ctx.prisma.user.create.mockImplementation(async ({ data }: any) => ({
+        id: 'new-user',
+        phone: null,
+        businessId: null,
+        ...data,
+      }));
+      ctx.prisma.emailVerification.updateMany.mockResolvedValue({ count: 1 });
+      return { ...ctx, verifyIdToken };
+    }
+
+    it('signs in the user already linked to this Google ID without an email lookup', async () => {
+      const { service, prisma, verifyIdToken } = googleSetup();
+      prisma.user.findFirst.mockResolvedValueOnce({
+        id: 'linked-user',
+        googleId: googleIdentity.sub,
+        name: 'Old Name',
+        emailVerified: true,
+      });
+
+      const result = await service.googleLogin('google-id-token');
+
+      expect(verifyIdToken).toHaveBeenCalledWith({
+        idToken: 'google-id-token',
+        audience: 'expected-client',
+      });
+      expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { googleId: googleIdentity.sub },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'linked-user' },
+        data: {
+          email: googleIdentity.email,
+          name: googleIdentity.name,
+        },
+      });
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(result.user.id).toBe('linked-user');
+    });
+
+    it('links a verified email account and keeps its password', async () => {
+      const { service, prisma } = googleSetup();
+      prisma.user.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        id: 'email-user',
+        googleId: null,
+        name: null,
+        emailVerified: true,
+        passwordHash: 'owner-hash',
+      });
+
+      const result = await service.googleLogin('google-id-token');
+
+      expect(prisma.user.findFirst).toHaveBeenNthCalledWith(2, {
+        where: { email: googleIdentity.email },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'email-user' },
+        data: {
+          email: googleIdentity.email,
+          googleId: googleIdentity.sub,
+          name: googleIdentity.name,
+        },
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.emailVerification.updateMany).not.toHaveBeenCalled();
+      expect(result.user.id).toBe('email-user');
+    });
+
+    it('revokes the password and pending verification links when linking an unverified account', async () => {
+      const { service, prisma, jwt } = googleSetup();
+      prisma.user.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        id: 'unverified-user',
+        googleId: null,
+        name: 'Registered Name',
+        emailVerified: false,
+        passwordHash: 'someone-elses-hash',
+      });
+
+      const result = await service.googleLogin('google-id-token');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'unverified-user' },
+        data: {
+          email: googleIdentity.email,
+          googleId: googleIdentity.sub,
+          name: googleIdentity.name,
+          passwordHash: null,
+          emailVerified: true,
+        },
+      });
+      expect(prisma.emailVerification.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'unverified-user', consumed: false },
+        data: { consumed: true },
+      });
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'unverified-user' }),
+        expect.anything(),
+      );
+      expect(result.user.id).toBe('unverified-user');
+    });
+
+    it('refuses to link an email account that belongs to a different Google ID', async () => {
+      const { service, prisma, jwt } = googleSetup();
+      prisma.user.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        id: 'other-google-user',
+        googleId: 'google-sub-other',
+        emailVerified: true,
+      });
+
+      await expect(service.googleLogin('google-id-token')).rejects.toThrow(ConflictException);
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(jwt.sign).not.toHaveBeenCalled();
+    });
+
+    it('creates a new user when neither the Google ID nor the email is known', async () => {
+      const { service, prisma } = googleSetup();
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.googleLogin('google-id-token');
+
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: {
+          email: googleIdentity.email,
+          googleId: googleIdentity.sub,
+          name: googleIdentity.name,
+        },
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(result.user.id).toBe('new-user');
+      expect(result.hasBusiness).toBe(false);
+    });
   });
 });
