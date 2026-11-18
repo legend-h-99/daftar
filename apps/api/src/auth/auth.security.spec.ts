@@ -15,6 +15,7 @@ function setup(settings: Record<string, string> = {}) {
     user: {
       upsert: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       create: jest.fn(),
     },
@@ -102,7 +103,7 @@ describe('authentication security boundaries', () => {
 
     await expect(service.googleLogin('untrusted-id-token')).rejects.toThrow(BadRequestException);
 
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -110,7 +111,7 @@ describe('authentication security boundaries', () => {
     ['account without a password', { id: 'user-1', passwordHash: null }],
   ])('rejects %s with the same message', async (_case, user) => {
     const { service, prisma, jwt } = setup();
-    prisma.user.findUnique.mockResolvedValue(user);
+    prisma.user.findFirst.mockResolvedValue(user);
 
     await expect(service.loginEmail('audit@example.invalid', 'bad-password')).rejects.toThrow(
       new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة'),
@@ -121,7 +122,7 @@ describe('authentication security boundaries', () => {
 
   it('rejects an incorrect password without issuing a token', async () => {
     const { service, prisma, jwt } = setup();
-    prisma.user.findUnique.mockResolvedValue({
+    prisma.user.findFirst.mockResolvedValue({
       id: 'user-1',
       passwordHash: await bcrypt.hash('correct-password', 4),
       emailVerified: true,
@@ -136,7 +137,7 @@ describe('authentication security boundaries', () => {
 
   it('requires email verification even when the password is correct', async () => {
     const { service, prisma, jwt } = setup();
-    prisma.user.findUnique.mockResolvedValue({
+    prisma.user.findFirst.mockResolvedValue({
       id: 'user-1',
       passwordHash: await bcrypt.hash('correct-password', 4),
       emailVerified: false,
@@ -151,7 +152,7 @@ describe('authentication security boundaries', () => {
 
   it('issues a token for a verified account with a correct password', async () => {
     const { service, prisma, jwt } = setup();
-    prisma.user.findUnique.mockResolvedValue({
+    prisma.user.findFirst.mockResolvedValue({
       id: 'user-1',
       email: 'audit@example.invalid',
       phone: null,
@@ -173,7 +174,7 @@ describe('authentication security boundaries', () => {
 
   it('rejects registration for an already verified address without changing credentials', async () => {
     const { service, prisma, email } = setup();
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', emailVerified: true });
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1', emailVerified: true });
 
     await expect(service.registerEmail('audit@example.invalid', 'new-password')).rejects.toThrow(
       BadRequestException,

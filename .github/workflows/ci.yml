@@ -67,7 +67,10 @@ jobs:
           version: 10.33.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api exec prisma generate
-      - run: pnpm --filter api exec prisma migrate deploy
+      # Builds the database from the Supabase SQL migrations (the schema
+      # source of truth, AgDR-0004) and fails if schema.prisma differs.
+      - name: Build schema from SQL migrations and check Prisma drift
+        run: scripts/db/check-schema-drift.sh
       - run: pnpm --filter api db:seed:scale
       - run: pnpm --filter api test:scale
 

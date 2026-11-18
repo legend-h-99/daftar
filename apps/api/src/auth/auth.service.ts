@@ -229,25 +229,23 @@ export class AuthService {
     }
 
     const existing =
-      (await this.prisma.user.findUnique({ where: { googleSub: payload.sub } })) ??
-      (await this.prisma.user.findUnique({ where: { email: payload.email } }));
+      (await this.prisma.user.findFirst({ where: { googleId: payload.sub } })) ??
+      (await this.prisma.user.findFirst({ where: { email: payload.email } }));
 
     const user = existing
       ? await this.prisma.user.update({
           where: { id: existing.id },
           data: {
-            googleSub: payload.sub,
+            googleId: payload.sub,
             email: payload.email,
             name: payload.name ?? existing.name,
-            avatarUrl: payload.picture,
           },
         })
       : await this.prisma.user.create({
           data: {
-            googleSub: payload.sub,
+            googleId: payload.sub,
             email: payload.email,
             name: payload.name,
-            avatarUrl: payload.picture,
           },
         });
 
@@ -297,7 +295,7 @@ export class AuthService {
   }
 
   async registerEmail(email: string, password: string, name?: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.prisma.user.findFirst({ where: { email } });
     if (existing) {
       if (existing.emailVerified) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
@@ -324,7 +322,7 @@ export class AuthService {
   }
 
   async loginEmail(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
@@ -387,7 +385,7 @@ export class AuthService {
   }
 
   async resendVerificationEmail(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     if (!user) {
       // Don't reveal whether email exists
       return { sent: true };
@@ -419,7 +417,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     // Only password-auth accounts can reset a password this way; Google-only
     // accounts have no passwordHash. Either way, never reveal whether the
     // address is registered — always return the same response.

@@ -8,7 +8,9 @@ export class PrismaStockMovementRepository implements IStockMovementRepository {
   constructor(private readonly db: Db) {}
 
   async create(data: CreateMovementData): Promise<StockMovement> {
-    return this.db.stockMovement.create({ data });
+    // refType is a text column; CreateMovementData only allows
+    // 'PURCHASE' | 'INVOICE', so the row read back has the domain type.
+    return this.db.stockMovement.create({ data }) as Promise<StockMovement>;
   }
 
   async findByBusiness(
