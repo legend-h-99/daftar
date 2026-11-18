@@ -41,10 +41,22 @@ cd apps/api
 npx prisma generate
 ```
 
-## 4. Run migrations (requires a running PostgreSQL instance)
+## 4. Build the schema (requires a running PostgreSQL instance, `psql` and `python3`)
+
+The Supabase SQL migrations are the schema source of truth
+([AgDR-0004](../../docs/agdr/AgDR-0004-schema-source-of-truth-migration.md)).
+Build them into an empty local database:
 
 ```bash
-npx prisma migrate dev
+pnpm db:build
+```
+
+`prisma/migrations/` is frozen. Do not run `prisma migrate dev`. To change the
+schema, add a file to `supabase/migrations/`, update `prisma/schema.prisma` to
+match, and check it with a fresh empty database:
+
+```bash
+pnpm db:drift
 ```
 
 ## 5. Seed demo data

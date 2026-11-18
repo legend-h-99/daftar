@@ -25,4 +25,6 @@ ENV NODE_ENV=production
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "pnpm --filter api exec prisma migrate deploy && pnpm --filter api start:prod"]
+# Legacy demo image. prisma/migrations is frozen (AgDR-0004), so the schema
+# comes from schema.prisma. db push refuses changes that would lose data.
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --skip-generate && pnpm --filter api start:prod"]
