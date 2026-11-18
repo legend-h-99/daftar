@@ -185,6 +185,33 @@ describe('authentication security boundaries', () => {
     expect(email.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a Google account', { googleId: 'google-1' }],
+    ['a phone account', { phone: '+966500000000' }],
+    ['an account with a business', { businessId: 'business-1' }],
+  ])('does not set a password on %s whose email is unverified', async (_label, fields) => {
+    const { service, prisma, email } = setup();
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1', emailVerified: false, googleId: null, phone: null, businessId: null, ...fields });
+
+    await expect(service.registerEmail('audit@example.invalid', 'stranger-password')).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(email.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('still lets the owner retry a pending email sign-up', async () => {
+    const { service, prisma, email } = setup();
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1', emailVerified: false, googleId: null, phone: null, businessId: null });
+    prisma.user.update.mockResolvedValue({ id: 'user-1', email: 'audit@example.invalid' });
+
+    await expect(service.registerEmail('audit@example.invalid', 'new-password')).resolves.toMatchObject({ sent: true });
+
+    expect(prisma.user.update).toHaveBeenCalled();
+    expect(email.sendVerificationEmail).toHaveBeenCalled();
+  });
+
   it('rejects an expired or consumed email verification link without issuing a token', async () => {
     const { service, prisma, jwt } = setup();
     prisma.emailVerification.findFirst.mockResolvedValue(null);

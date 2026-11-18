@@ -465,8 +465,13 @@ async function authEmailRegister(body: Record<string, unknown>) {
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
-  const { data: existing } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
-  if (existing?.emailVerified) return err('Email already registered', 400)
+  const { data: existing } = await supabase.from('User').select('id,emailVerified,googleId,phone,businessId').eq('email', email).maybeSingle()
+  // Only a pending email sign-up may be overwritten. A Google, phone or business
+  // account is someone's live account: setting a password on it would let a
+  // stranger in once the owner clicks the verification link.
+  if (existing && (existing.emailVerified || existing.googleId || existing.phone || existing.businessId)) {
+    return err('Email already registered', 400)
+  }
   const passwordHash = await bcrypt.hash(body.password as string, 12)
   let userId: string
   if (existing) {

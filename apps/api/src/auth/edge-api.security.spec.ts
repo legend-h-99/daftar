@@ -469,6 +469,23 @@ describe('deployed Supabase API security', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 
+  it.each([
+    ['a Google account', { googleId: 'google-1' }],
+    ['a phone account', { phone: '+966500000000' }],
+    ['an account with a business', { businessId: 'business-1' }],
+  ])('does not set a password on %s whose email is unverified', async (_label, fields) => {
+    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
+    Object.assign(user, { emailVerified: false }, fields);
+
+    const response = await handler(request('/auth/email/register', 'POST', {
+      email: user.email, password: 'stranger-password',
+    }));
+
+    expect(response.status).toBe(400);
+    expect(user.passwordHash).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects the same JWT after logout adds its identifier to the blacklist', async () => {
     const { handler, revoked, secret } = edgeApi();
     const token = signedJwt(secret, {
