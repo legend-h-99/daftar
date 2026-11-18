@@ -40,6 +40,7 @@ export default function DashboardPage() {
     nextMonth,
     reload,
   } = useMonthResource<DashboardSummary>({
+    key: "dashboard",
     load: (targetMonth) => apiGet<DashboardSummary>(`/dashboard/summary?month=${targetMonth}`),
     errorMessage: (err) => err instanceof ApiError ? err.message : language === "ar" ? "تعذر تحميل البيانات" : "Could not load data",
     cache: summaryCache,
