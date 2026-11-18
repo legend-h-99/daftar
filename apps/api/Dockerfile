@@ -27,4 +27,6 @@ EXPOSE 3001
 
 # Legacy demo image. prisma/migrations is frozen (AgDR-0004), so the schema
 # comes from schema.prisma. db push refuses changes that would lose data.
-CMD ["sh", "-c", "pnpm --filter api exec prisma db push --skip-generate && pnpm --filter api start:prod"]
+# db push cannot create the partial unique indexes on User.email and
+# User.googleId, so legacy-unique-indexes.sql adds them before the API starts.
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --skip-generate && pnpm --filter api exec prisma db execute --schema prisma/schema.prisma --file prisma/legacy-unique-indexes.sql && pnpm --filter api start:prod"]

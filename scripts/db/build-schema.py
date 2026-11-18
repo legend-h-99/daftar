@@ -22,7 +22,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 PROD = ROOT / 'supabase' / 'migrations_from_prod'
@@ -51,33 +51,57 @@ ALTER TABLE "Material" ADD COLUMN "updatedAt" timestamp DEFAULT now();
 ALTER TABLE "RecipeItem" ADD COLUMN "updatedAt" timestamp DEFAULT now();'''
 
 
-def database_url() -> str:
+def database_env() -> dict:
+    """Return the psql environment for the local database in DATABASE_URL.
+
+    The connection goes to psql through PG* variables, not the command
+    line, so other local users cannot read the password from the process
+    list.
+    """
     url = os.environ.get('DATABASE_URL', '')
-    host = urlsplit(url).hostname
-    if host not in ('localhost', '127.0.0.1'):
-        sys.exit('build-schema: DATABASE_URL must point at a local database, got host %r' % host)
-    return url
+    if not url:
+        sys.exit('build-schema: set DATABASE_URL to an empty local database '
+                 '(it is not read from apps/api/.env)')
+    parts = urlsplit(url)
+    # libpq lets query parameters override the host named in the URL.
+    overrides = {'host', 'hostaddr', 'service'} & set(parse_qs(parts.query))
+    if overrides:
+        sys.exit('build-schema: DATABASE_URL must not set %s in its query string'
+                 % ', '.join(sorted(overrides)))
+    if parts.hostname not in ('localhost', '127.0.0.1'):
+        sys.exit('build-schema: DATABASE_URL must point at a local database, got host %r'
+                 % parts.hostname)
+    env = {k: v for k, v in os.environ.items()
+           if k not in ('DATABASE_URL', 'PGSERVICE', 'PGHOSTADDR', 'PGSERVICEFILE')}
+    env.update({
+        'PGHOST': parts.hostname,
+        'PGPORT': str(parts.port or 5432),
+        'PGDATABASE': unquote(parts.path.lstrip('/')),
+        'PGUSER': unquote(parts.username or ''),
+        'PGPASSWORD': unquote(parts.password or ''),
+    })
+    return env
 
 
-def run_sql(url: str, sql: str, label: str) -> None:
+def run_sql(env: dict, sql: str, label: str) -> None:
     pg_bin = os.environ.get('PG_BIN', '')
     psql = (pg_bin.rstrip('/') + '/psql') if pg_bin else 'psql'
     result = subprocess.run(
-        [psql, url, '-X', '-v', 'ON_ERROR_STOP=1', '-q'],
-        input=sql, text=True, capture_output=True,
+        [psql, '-X', '-v', 'ON_ERROR_STOP=1', '-q'],
+        input=sql, text=True, capture_output=True, env=env,
     )
     if result.returncode:
         sys.exit('build-schema: %s failed\n%s' % (label, result.stderr))
     print(label)
 
 
-def require_empty(url: str) -> None:
+def require_empty(env: dict) -> None:
     pg_bin = os.environ.get('PG_BIN', '')
     psql = (pg_bin.rstrip('/') + '/psql') if pg_bin else 'psql'
     result = subprocess.run(
-        [psql, url, '-X', '-At', '-c',
+        [psql, '-X', '-At', '-c',
          "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"],
-        text=True, capture_output=True,
+        text=True, capture_output=True, env=env,
     )
     if result.returncode:
         sys.exit('build-schema: cannot connect\n%s' % result.stderr)
@@ -86,27 +110,27 @@ def require_empty(url: str) -> None:
 
 
 def main() -> None:
-    url = database_url()
-    require_empty(url)
-    run_sql(url, ROLES, 'local Supabase roles')
+    env = database_env()
+    require_empty(env)
+    run_sql(env, ROLES, 'local Supabase roles')
 
     prod = sorted(PROD.glob('*.sql'))
     for path in prod:
         if path.name < '20260831':
-            run_sql(url, path.read_text(), path.name)
+            run_sql(env, path.read_text(), path.name)
 
-    run_sql(url, PRODUCTION_DRIFT, 'known production drift')
+    run_sql(env, PRODUCTION_DRIFT, 'known production drift')
     email = (PRISMA / '20260830124017_add_email_auth' / 'migration.sql').read_text()
-    run_sql(url, email[email.index('-- CreateTable'):], 'EmailVerification table')
-    run_sql(url, (PRISMA / '20260923150000_add_password_reset' / 'migration.sql').read_text(),
+    run_sql(env, email[email.index('-- CreateTable'):], 'EmailVerification table')
+    run_sql(env, (PRISMA / '20260923150000_add_password_reset' / 'migration.sql').read_text(),
             'PasswordReset table')
 
     for path in prod:
         if '20260831' <= path.name < FIRST_SUPABASE_ONLY:
-            run_sql(url, path.read_text(), path.name)
+            run_sql(env, path.read_text(), path.name)
 
     for path in sorted(SUPABASE.glob('*.sql')):
-        run_sql(url, path.read_text(), path.name)
+        run_sql(env, path.read_text(), path.name)
 
 
 if __name__ == '__main__':

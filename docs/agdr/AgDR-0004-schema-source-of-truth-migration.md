@@ -67,7 +67,7 @@ How to change the schema from now on: add a file to `supabase/migrations/`, upda
 
 - **Supabase Edge Function `api`** (production backend): unchanged. It already uses the production column names.
 - **`apps/api` (NestJS)**: dev and test backend, plus the manual legacy Koyeb image. Its Prisma client now matches production. Google sign-in writes `googleId` instead of `googleSub` and no longer stores the avatar URL.
-- **`apps/api/Dockerfile` (manual legacy Koyeb deploy)**: ran `prisma migrate deploy`, which would now build a schema the new client does not match. It now runs `prisma db push`, which applies `schema.prisma` and refuses changes that would lose data.
+- **`apps/api/Dockerfile` (manual legacy Koyeb deploy)**: ran `prisma migrate deploy`, which would now build a schema the new client does not match. It now runs `prisma db push`, which applies `schema.prisma` and refuses changes that would lose data. `db push` cannot create the partial unique indexes on `User.email` and `User.googleId`, so the image then runs `prisma/legacy-unique-indexes.sql`. Without them, concurrent sign-ups could create duplicate users that email lookups would then pick between arbitrarily.
 - **CI `financial-integrity`**: unchanged. `tests/red-team/bootstrap-audit.py` keeps its own copy of the build sequence plus legacy test rows.
 - **`apps/web` and `apps/mobile`**: none. They call the HTTP API only.
 
