@@ -3,7 +3,7 @@ import { PRICING_PLANS, OCR_TOP_UP } from "@/lib/pricing";
 
 export default function PricingSection({ inApp = false }: { inApp?: boolean }) {
   return (
-    <section id="pricing" aria-labelledby="pricing-title" dir="rtl" className="border-t border-gray-100 bg-white text-gray-900">
+    <section id="pricing" aria-labelledby="pricing-title" dir="rtl" className="scroll-mt-16 border-t border-gray-100 bg-white text-gray-900">
       <div className="mx-auto max-w-5xl px-5 py-16 sm:py-20">
         <h2 id="pricing-title" className="text-center text-2xl font-extrabold sm:text-3xl">ابدأ مجانًا اليوم</h2>
         <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-7 text-gray-600">الفواتير والمصاريف والوصفات والمخزون وتقارير الربح متاحة مجانًا حاليًا، بدون بطاقة ائتمانية.</p>
@@ -31,7 +31,7 @@ export default function PricingSection({ inApp = false }: { inApp?: boolean }) {
                 <li>نشاط واحد ومستخدم واحد</li>
               </ul>
               <div className="mt-auto pt-6">
-                {plan.id === "free" ? <Link href={inApp ? "/dashboard" : "/login"} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-brand-700 px-4 py-3 font-bold text-white">ابدأ بالبداية مجانًا</Link> : <button type="button" disabled className="min-h-11 w-full rounded-xl bg-gray-100 px-4 py-3 font-semibold text-gray-500">الاشتراك قريبًا</button>}
+                {plan.id === "free" ? <Link href={inApp ? "/dashboard" : "/login"} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-brand-700 px-4 py-3 font-bold text-white">ابدأ بالبداية مجانًا</Link> : <p className="flex min-h-11 w-full items-center justify-center rounded-xl bg-gray-100 px-4 py-3 text-center text-sm font-semibold text-gray-700">غير مفعّلة بعد — لا يتم تحصيل أي مبلغ</p>}
               </div>
             </article>
           ))}

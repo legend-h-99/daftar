@@ -72,9 +72,9 @@ await scenario('system dark/light and saved preference',{},async page=>{
 });
 await scenario('Arabic/English language and direction',{},async page=>{
  await login(page);assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
- await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='ltr');
+ await page.getByRole('button',{name:'English',exact:true}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='ltr');
  assert.equal(await page.locator('main').getAttribute('dir'),'ltr');assert.equal(await page.getByLabel('Email',{exact:true}).count(),emailEnabled ? 1 : 0);
- await page.getByRole('button',{name:'التبديل إلى العربية'}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='rtl');assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
+ await page.getByRole('button',{name:'عربي',exact:true}).click();await page.waitForFunction(()=>document.querySelector('main')?.dir==='rtl');assert.equal(await page.locator('main').getAttribute('dir'),'rtl');
 });
 if (!emailEnabled) await scenario('disabled email routes offer Google sign-in without submitting tokens',{},async(page,context)=>{
  let calls=0;

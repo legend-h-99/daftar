@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
-import React from "react";
 import userEvent from "@testing-library/user-event";
+import React from "react";
 import { vi, describe, it, expect } from "vitest";
 
 // ── Static mocks ─────────────────────────────────────────────────────────────
@@ -25,6 +25,8 @@ vi.mock("lucide-react", () => ({
   Smartphone: () => null,
   ShieldCheck: () => null,
   MapPin:     () => null,
+  Menu:       () => null,
+  X:          () => null,
 }));
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -139,21 +141,27 @@ describe("صفحة الـ Landing", () => {
       expect(screen.getAllByText("الأسئلة الشائعة").length).toBeGreaterThanOrEqual(1);
     });
 
-    it("يعرض 7 أسئلة على الأقل", () => {
+    it("يعرض 7 أسئلة على الأقل كعناوين", () => {
       render(<LandingPage />);
-      const dl = document.querySelector<HTMLElement>("#faq dl");
-      expect(dl).not.toBeNull();
-      const questions = within(dl!).getAllByRole("term");
+      const faq = document.getElementById("faq")!;
+      const questions = within(faq).getAllByRole("heading", { level: 3 });
       expect(questions.length).toBeGreaterThanOrEqual(7);
+    });
+
+    it("يوضح أنه لا يوجد ربط حاليًا مع هيئة الزكاة والضريبة والجمارك", () => {
+      render(<LandingPage />);
+      const faq = document.getElementById("faq")!;
+      expect(within(faq).getByRole("heading", { name: /هيئة الزكاة والضريبة والجمارك/ })).toBeInTheDocument();
+      expect(within(faq).getByText(/لا يوجد حاليًا ربط بين دفتر ومنصة «فاتورة»/)).toBeInTheDocument();
     });
 
     it("يعرض سؤال 'ما هو تطبيق دفتر؟' وإجابته", () => {
       render(<LandingPage />);
       expect(screen.getByText("ما هو تطبيق دفتر؟")).toBeInTheDocument();
-      // الإجابة مقيّدة بالـ dl لتجنّب تعارض مع الـ blockquote في Hero
-      const dl = document.querySelector<HTMLElement>("#faq dl")!;
+      // الإجابة مقيّدة بقسم الأسئلة لتجنّب تعارض مع الـ blockquote في Hero
+      const faq = document.getElementById("faq")!;
       expect(
-        within(dl).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
+        within(faq).getByText(/تطبيق محاسبة عربي مبسّط للمشاريع الصغيرة/),
       ).toBeInTheDocument();
     });
 
@@ -174,8 +182,9 @@ describe("صفحة الـ Landing", () => {
 
     it("كل إجابة FAQ أقل من 50 كلمة", () => {
       render(<LandingPage />);
-      const dl = document.querySelector<HTMLElement>("#faq dl");
-      const answers = within(dl!).getAllByRole("definition");
+      const faq = document.getElementById("faq")!;
+      const answers = faq.querySelectorAll("li > p");
+      expect(answers.length).toBeGreaterThanOrEqual(7);
       for (const ans of answers) {
         const wordCount = ans.textContent!.trim().split(/\s+/).length;
         expect(wordCount).toBeLessThanOrEqual(50);
@@ -252,6 +261,67 @@ describe("صفحة الـ Landing", () => {
     it("يعرض 'صافي ربح الشهر'", () => {
       render(<LandingPage />);
       expect(screen.getByText("صافي ربح الشهر")).toBeInTheDocument();
+    });
+  });
+
+  // ── Site review fixes ─────────────────────────────────────────────────────
+
+  describe("إصلاحات مراجعة الموقع", () => {
+    it("الشعار رابط للصفحة الرئيسية", () => {
+      render(<LandingPage />);
+      const logos = screen.getAllByRole("link", { name: "دفتر — الصفحة الرئيسية" });
+      expect(logos.length).toBeGreaterThanOrEqual(1);
+      for (const logo of logos) expect(logo).toHaveAttribute("href", "/");
+    });
+
+    it("أول رابط في الصفحة يتخطى إلى المحتوى", () => {
+      render(<LandingPage />);
+      const skip = screen.getAllByRole("link")[0];
+      expect(skip).toHaveTextContent("تخطَّ إلى المحتوى");
+      expect(skip).toHaveAttribute("href", "#content");
+      expect(document.getElementById("content")).not.toBeNull();
+    });
+
+    it("زر القائمة على الجوال يفتح روابط الأقسام", async () => {
+      const user = userEvent.setup();
+      render(<LandingPage />);
+      const toggle = screen.getByRole("button", { name: "فتح القائمة" });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const panel = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+      expect(panel).toBeVisible();
+      for (const name of ["المزايا", "المتاح مجانًا", "الأسئلة الشائعة"]) {
+        expect(within(panel).getByRole("link", { name })).toBeInTheDocument();
+      }
+    });
+
+    it("صورة اللوحة التوضيحية مخفية عن قارئ الشاشة ومعلّمة كمثال", () => {
+      render(<LandingPage />);
+      const preview = screen.getByText("صافي ربح الشهر").closest("[aria-hidden='true']");
+      expect(preview).not.toBeNull();
+      expect(screen.getByText(/بيانات توضيحية، لا تمثل حسابًا حقيقيًا/)).toBeInTheDocument();
+    });
+
+    it("عبارة الثقة لا تعد بعدم مشاركة أي معلومة", () => {
+      render(<LandingPage />);
+      expect(screen.queryByText(/لا نبيع بيانات ولا نشارك أي معلومة/)).not.toBeInTheDocument();
+    });
+
+    it("يضيف بيانات منظمة صالحة بدون باقات مدفوعة غير مفعّلة", () => {
+      render(<LandingPage />);
+      const script = document.querySelector('script[type="application/ld+json"]');
+      const data = JSON.parse(script!.textContent!);
+      const types = data["@graph"].map((node: { "@type": string }) => node["@type"]);
+      expect(types).toEqual(["Organization", "SoftwareApplication", "FAQPage"]);
+      const app = data["@graph"][1];
+      expect(app.offers.every((offer: { price: string }) => offer.price === "0")).toBe(true);
+    });
+
+    it("الباقات المدفوعة لا تعرض زرًا معطّلًا", () => {
+      render(<LandingPage />);
+      expect(screen.queryByRole("button", { name: "الاشتراك قريبًا" })).not.toBeInTheDocument();
+      expect(screen.getAllByText(/غير مفعّلة بعد — لا يتم تحصيل أي مبلغ/).length).toBe(2);
     });
   });
 });

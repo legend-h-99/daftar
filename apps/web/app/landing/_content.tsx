@@ -4,6 +4,8 @@ import PricingSection from "@/components/pricing/PricingSection";
 import SaleDemo from "./_sale-demo";
 import CurrentMonth from "./_current-month";
 import LandingTracker from "./_tracker";
+import MobileMenu from "./_mobile-menu";
+import { PRICING_PLANS } from "@/lib/pricing";
 import {
   FileText,
   Wallet,
@@ -70,7 +72,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "هل الفاتورة معتمدة لدى هيئة الزكاة والضريبة والجمارك؟",
-    a: "الفاتورة تحمل رمز QR بالحقول الأساسية لمتطلبات المرحلة الأولى من الفوترة الإلكترونية. هذا لا يعني اعتمادًا رسميًا لنشاطك؛ التزامك بالمتطلبات يتوقف على حالتك الضريبية، فراجعها مع مختص.",
+    a: "الفاتورة تحمل رمز QR بالحقول الأساسية لمتطلبات المرحلة الأولى من الفوترة الإلكترونية، ولا يوجد حاليًا ربط بين دفتر ومنصة «فاتورة» التابعة للهيئة. هذا لا يعني اعتمادًا رسميًا لنشاطك؛ التزامك بالمتطلبات يتوقف على حالتك الضريبية، فراجعها مع مختص.",
   },
   {
     q: "هل يدعم دفتر اللغة الإنجليزية؟",
@@ -78,16 +80,62 @@ const faqs: { q: string; a: string }[] = [
   },
 ];
 
+const SITE_URL = "https://daftar1.com";
+
+/** Digits only, e.g. 9665XXXXXXXX. The WhatsApp link renders only when this is set at build time. */
+const SUPPORT_WHATSAPP = (process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ?? "").replace(/\D/g, "");
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: "دفتر",
+      alternateName: "Daftar",
+      url: `${SITE_URL}/`,
+      logo: `${SITE_URL}/icon`,
+      email: "info@daftar1.com",
+      areaServed: "SA",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "دفتر",
+      alternateName: "Daftar",
+      url: `${SITE_URL}/`,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      inLanguage: ["ar", "en"],
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      // Only the plan that is live today; paid plans are announced but not yet billable.
+      offers: PRICING_PLANS.filter((plan) => plan.monthly === 0).map((plan) => ({
+        "@type": "Offer",
+        name: plan.name,
+        price: "0",
+        priceCurrency: "SAR",
+      })),
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map(({ q, a }) => ({
+        "@type": "Question",
+        name: q,
+        acceptedAnswer: { "@type": "Answer", text: a },
+      })),
+    },
+  ],
+};
+
 /* ─── Atoms ─────────────────────────────────────────────────────────────────── */
 
 function Logo() {
   return (
-    <span className="flex items-center gap-2">
-      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-700 text-lg font-extrabold text-white">
+    <Link href="/" aria-label="دفتر — الصفحة الرئيسية" className="flex min-h-11 items-center gap-2 rounded-xl">
+      <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-700 text-lg font-extrabold text-white">
         د
       </span>
       <span className="text-lg font-extrabold text-[#101914]">دفتر</span>
-    </span>
+    </Link>
   );
 }
 
@@ -186,31 +234,47 @@ export default function LandingContent() {
   return (
     <main className="landing-page min-h-screen bg-[#f7f8f7] text-[#101914]" dir="rtl" lang="ar">
       <LandingTracker />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+      />
+
+      <a
+        href="#content"
+        className="sr-only z-30 rounded-xl bg-brand-700 px-4 py-3 text-sm font-bold text-white focus:not-sr-only focus:fixed focus:right-4 focus:top-3"
+      >
+        تخطَّ إلى المحتوى
+      </a>
 
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5">
+        <div className="relative mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5">
           <Logo />
           <div className="flex items-center gap-1 sm:gap-3">
-            <a href="#pricing" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-gray-600 hover:text-brand-700">المتاح مجانًا</a>
-            <a href="#faq" className="hidden rounded-2xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700 sm:inline-block">
-              الأسئلة الشائعة
-            </a>
-            <a href="#features" className="hidden rounded-2xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700 sm:inline-block">
-              المزايا
-            </a>
+            <nav aria-label="أقسام الصفحة" className="hidden items-center gap-1 sm:flex">
+              <a href="#features" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                المزايا
+              </a>
+              <a href="#pricing" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                المتاح مجانًا
+              </a>
+              <a href="#faq" className="inline-flex min-h-11 items-center rounded-2xl px-4 text-sm font-semibold text-gray-600 transition-colors hover:text-brand-700">
+                الأسئلة الشائعة
+              </a>
+            </nav>
             <Link
               href="/login"
-              className="motion-press rounded-2xl bg-brand-700 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-800"
+              className="motion-press inline-flex min-h-11 items-center rounded-2xl bg-brand-700 px-5 text-sm font-bold text-white transition-colors hover:bg-brand-800"
             >
               ابدأ مجانًا
             </Link>
+            <MobileMenu />
           </div>
-        </nav>
+        </div>
       </header>
 
       {/* ── 1. Hero ── */}
-      <section className="mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-10 pt-6 sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
+      <section id="content" tabIndex={-1} className="scroll-mt-16 outline-none mx-auto grid w-full max-w-5xl items-center gap-8 px-5 pb-10 pt-6 sm:gap-12 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.9fr]">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
             للأسر المنتجة والبيع من المنزل في السعودية
@@ -232,7 +296,7 @@ export default function LandingContent() {
               className="motion-press inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-brand-800"
             >
               ابدأ مجانًا
-              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
+              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
             </Link>
             <a
               href="#how"
@@ -253,7 +317,9 @@ export default function LandingContent() {
         </div>
 
         <div className="animate-fade-up [animation-delay:120ms]">
-          <LedgerPreview />
+          <div aria-hidden="true">
+            <LedgerPreview />
+          </div>
           <p className="mt-3 text-center text-xs font-semibold text-gray-600">بيانات توضيحية، لا تمثل حسابًا حقيقيًا</p>
         </div>
       </section>
@@ -261,13 +327,13 @@ export default function LandingContent() {
       <SaleDemo />
 
       {/* ── 3. Features as Benefits ── */}
-      <section id="features" className="border-t border-gray-100 bg-white">
+      <section id="features" className="scroll-mt-16 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-5xl px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-xl text-center">
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
             كل حساباتك في دفتر واحد
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+          <p className="mt-3 text-base leading-relaxed text-gray-700">
             أربع أدوات تكفي لتدير مشروعك — بلا تعقيد ولا مصطلحات.
           </p>
         </div>
@@ -279,7 +345,7 @@ export default function LandingContent() {
               </span>
               <h3 className="mt-4 text-base font-bold">{title}</h3>
               <p className="mt-1 text-xs font-semibold text-brand-700">{benefit}</p>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">{body}</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-gray-700">{body}</p>
             </article>
           ))}
         </div>
@@ -301,19 +367,19 @@ export default function LandingContent() {
       <PricingSection />
 
       {/* ── 7. FAQ ── */}
-      <section id="faq" className="border-t border-gray-100 bg-white">
+      <section id="faq" className="scroll-mt-16 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-3xl px-5 py-20">
           <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
             الأسئلة الشائعة
           </h2>
-          <dl className="mt-10 space-y-6">
+          <ul className="mt-10 space-y-6">
             {faqs.map(({ q, a }) => (
-              <div key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
-                <dt className="text-base font-bold text-[#101914]">{q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-gray-600">{a}</dd>
-              </div>
+              <li key={q} className="motion-surface rounded-lg border border-gray-100 bg-[#f7f8f7] p-5">
+                <h3 className="text-base font-bold text-[#101914]">{q}</h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-gray-700">{a}</p>
+              </li>
             ))}
-          </dl>
+          </ul>
         </div>
       </section>
 
@@ -323,7 +389,7 @@ export default function LandingContent() {
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
             ابدأ تتابع حساباتك اليوم
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-gray-600 sm:text-base">
+          <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-gray-700">
             سجّل مبيعات مشروعك المنزلي وتكاليفه، وراجع نتيجته الشهرية بناءً على بياناتك.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -332,7 +398,7 @@ export default function LandingContent() {
               className="motion-press inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-7 py-4 text-base font-bold text-white transition-colors hover:bg-brand-800"
             >
               ابدأ مجانًا
-              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
+              <ArrowLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
             </Link>
             <a
               href="#how"
@@ -354,7 +420,17 @@ export default function LandingContent() {
           <p className="text-xs text-gray-600">
             دفتر — تطبيق محاسبة للمشاريع الصغيرة · صنع في السعودية، للسعودية.
           </p>
-          <nav aria-label="روابط الموقع" className="flex items-center gap-1 text-xs font-semibold text-gray-600">
+          <nav aria-label="روابط الموقع" className="flex flex-wrap items-center justify-center gap-1 text-xs font-semibold text-gray-600">
+            {SUPPORT_WHATSAPP && (
+              <a
+                href={`https://wa.me/${SUPPORT_WHATSAPP}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center px-3 hover:text-brand-700"
+              >
+                واتساب الدعم
+              </a>
+            )}
             <Link href="/privacy" className="inline-flex min-h-11 items-center px-3 hover:text-brand-700">
               إشعار الخصوصية
             </Link>

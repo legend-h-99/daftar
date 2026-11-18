@@ -37,13 +37,24 @@ declare global {
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com";
 
 let gsiScriptPromise: Promise<void> | null = null;
+let gsiLocale: string | null = null;
 
-function loadGsiScript(): Promise<void> {
+// GSI keeps the language it was first loaded with: later renderButton calls
+// ignore a new `locale`. Switching language therefore reloads the client with
+// the matching `hl` so the button text follows the app language.
+function loadGsiScript(locale: string): Promise<void> {
+  if (gsiLocale !== null && gsiLocale !== locale) {
+    document.querySelectorAll("script[data-gsi-client]").forEach((el) => el.remove());
+    delete window.google;
+    gsiScriptPromise = null;
+  }
+  gsiLocale = locale;
   if (window.google) return Promise.resolve();
   if (!gsiScriptPromise) {
     gsiScriptPromise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
+      script.src = `https://accounts.google.com/gsi/client?hl=${encodeURIComponent(locale)}`;
+      script.dataset.gsiClient = locale;
       script.async = true;
       script.defer = true;
       script.onload = () => resolve();
@@ -61,22 +72,23 @@ export default function GoogleSignInButton() {
   const router = useRouter();
   const { language } = useLanguage();
   const buttonRef = useRef<HTMLDivElement | null>(null);
-  const initializedRef = useRef(false);
+  // The GSI client instance initialize() was called on; a language switch loads a new one.
+  const initializedForRef = useRef<Window["google"] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the GSI script and call initialize() exactly once per page (Google
+  // Load the GSI script and call initialize() once per loaded client (Google
   // logs a warning and only honors the last call if initialize() runs more
-  // than once), then render/re-render the button whenever the container or
-  // language changes.
+  // than once), then render the button whenever the container or language
+  // changes.
   useEffect(() => {
     const clientId = GOOGLE_CLIENT_ID;
     if (!clientId) return;
     let cancelled = false;
 
-    loadGsiScript()
+    loadGsiScript(language)
       .then(() => {
         if (cancelled || !window.google) return;
-        if (!initializedRef.current) {
+        if (initializedForRef.current !== window.google) {
           window.google.accounts.id.initialize({
             client_id: clientId,
             callback: async (response) => {
@@ -108,7 +120,7 @@ export default function GoogleSignInButton() {
               }
             },
           });
-          initializedRef.current = true;
+          initializedForRef.current = window.google;
         }
 
         if (buttonRef.current) {
