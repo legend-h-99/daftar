@@ -286,7 +286,8 @@ export class AuthService {
     const byEmail = await this.prisma.user.findFirst({ where: { email: identity.email } });
     if (!byEmail) {
       return this.prisma.user.create({
-        data: { googleId: identity.sub, email: identity.email, name: identity.name },
+        // Google already proved the address (email_verified in googleLogin) (#88).
+        data: { googleId: identity.sub, email: identity.email, name: identity.name, emailVerified: true },
       });
     }
 

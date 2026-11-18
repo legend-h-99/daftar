@@ -320,7 +320,7 @@ async function authGoogle(credential: string) {
       user = { ...byEmail, ...linkData }
     } else {
       const userId = newId('user')
-      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name }).select().single()
+      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name, emailVerified: true }).select().single()
       if (insertErr) return err('Could not create account', 500)
       user = created
       isNewUser = true
