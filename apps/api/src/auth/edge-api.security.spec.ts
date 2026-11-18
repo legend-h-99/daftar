@@ -221,6 +221,33 @@ describe('deployed Supabase API security', () => {
       return { ...api, userUpdates, consumed };
     }
 
+    it('signs in the row already linked to this Google ID without an email lookup or update', async () => {
+      const api = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+      api.fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-linked', email: 'owner@example.invalid', email_verified: 'true', aud: 'expected-client' }) });
+      const lookups: string[] = [];
+      const userUpdates: unknown[] = [];
+      const original = api.database.from.getMockImplementation()!;
+      api.database.from.mockImplementation((table: string): any => {
+        if (table === 'User') return {
+          select: () => ({ eq: (field: string, value: string) => {
+            lookups.push(field);
+            const row = field === 'googleId' && value === 'google-linked'
+              ? { id: 'linked', email: 'owner@example.invalid', googleId: 'google-linked', emailVerified: false, passwordHash: 'kept-hash', businessId: null }
+              : null;
+            return { maybeSingle: async () => ({ data: row, error: null }) };
+          } }),
+          update: (data: unknown) => ({ eq: async () => { userUpdates.push(data); return { error: null }; } }),
+          insert: () => { throw new Error('insert must not run for a linked Google ID'); },
+        };
+        return original(table);
+      });
+      const response = await api.handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ user: { id: 'linked' }, isNewUser: false });
+      expect(lookups).toEqual(['googleId']);
+      expect(userUpdates).toEqual([]);
+    });
+
     it('revokes the password and pending verification links of an unverified row', async () => {
       const { handler, userUpdates, consumed } = googleByEmail({ id: 'unverified', email: 'owner@example.invalid', googleId: null, emailVerified: false, passwordHash: 'someone-elses-hash', businessId: null });
       const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
