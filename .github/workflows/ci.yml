@@ -20,6 +20,10 @@ jobs:
         with:
           version: 10.33.2
       - run: pnpm install --frozen-lockfile
+      - name: Check audit exceptions are listed and unexpired
+        run: |
+          node --test tests/security/check-audit-exceptions.test.mjs
+          node tests/security/check-audit-exceptions.mjs
       - name: Audit workspace dependencies for high and critical advisories
         run: pnpm audit --prod --audit-level high
       - name: Verify parser and Metro compatibility
