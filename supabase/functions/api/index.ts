@@ -320,7 +320,7 @@ async function authGoogle(credential: string) {
       user = { ...byEmail, ...linkData }
     } else {
       const userId = newId('user')
-      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name }).select().single()
+      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name, emailVerified: true }).select().single()
       if (insertErr) return err('Could not create account', 500)
       user = created
       isNewUser = true
@@ -465,8 +465,9 @@ async function authEmailRegister(body: Record<string, unknown>) {
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
-  const { data: existing } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
-  if (existing?.emailVerified) return err('Email already registered', 400)
+  const { data: existing } = await supabase.from('User').select('id,emailVerified,googleId').eq('email', email).maybeSingle()
+  // A Google-owned row must never receive a password from registration (#88).
+  if (existing?.emailVerified || existing?.googleId) return err('Email already registered', 400)
   const passwordHash = await bcrypt.hash(body.password as string, 12)
   let userId: string
   if (existing) {
