@@ -185,6 +185,22 @@ describe('authentication security boundaries', () => {
     expect(email.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a Google account', { googleId: 'google-1' }],
+    ['a phone account', { phone: '+966500000000' }],
+    ['an account with a business', { businessId: 'business-1' }],
+  ])('does not set a password on %s whose email is unverified', async (_label, fields) => {
+    const { service, prisma, email } = setup();
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1', emailVerified: false, googleId: null, phone: null, businessId: null, ...fields });
+
+    await expect(service.registerEmail('audit@example.invalid', 'stranger-password')).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(email.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
   it('rejects registration on an unverified row that a Google sign-in created (#88)', async () => {
     const { service, prisma, email } = setup();
     prisma.user.findFirst.mockResolvedValue({

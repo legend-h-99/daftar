@@ -345,9 +345,10 @@ export class AuthService {
   async registerEmail(email: string, password: string, name?: string) {
     const existing = await this.prisma.user.findFirst({ where: { email } });
     if (existing) {
-      // A row with a Google ID belongs to whoever proved the address through
-      // Google. Never let registration plant a password on it (#88).
-      if (existing.emailVerified || existing.googleId) {
+      // Only a pending email sign-up may be overwritten. A Google, phone or
+      // business account is someone's live account: setting a password on it
+      // would let a stranger in once the owner clicks the verification link.
+      if (existing.emailVerified || existing.googleId || existing.phone || existing.businessId) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
       // Overwrite the stored hash with the *current* attempt's password so that
