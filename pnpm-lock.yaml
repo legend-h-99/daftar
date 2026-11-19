@@ -36,6 +36,7 @@ overrides:
   follow-redirects@1: 1.16.2
   node-forge@1: 1.4.1
   qs@6: 6.16.1
+  eslint-plugin-react-hooks>zod-validation-error: ^4.0.2
 
 importers:
 
@@ -8631,6 +8632,12 @@ packages:
     peerDependencies:
       zod: ^3.24.4
 
+  zod-validation-error@4.0.2:
+    resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+
   zod@3.25.58:
     resolution: {integrity: sha512-DVLmMQzSZwNYzQoMaM3MQWnxr2eq+AtM9Hx3w1/Yl0pH8sLTSjN4jGP7w6f7uand6Hw44tsnSu1hz1AOA6qI2Q==}
 
@@ -13726,7 +13733,7 @@ snapshots:
       eslint: 9.39.5(jiti@1.21.7)
       hermes-parser: 0.25.1
       zod: 3.25.76
-      zod-validation-error: 3.5.4(zod@3.25.76)
+      zod-validation-error: 4.0.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
 
@@ -18594,7 +18601,7 @@ snapshots:
     dependencies:
       zod: 3.25.58
 
-  zod-validation-error@3.5.4(zod@3.25.76):
+  zod-validation-error@4.0.2(zod@3.25.76):
     dependencies:
       zod: 3.25.76
 
