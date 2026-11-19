@@ -175,6 +175,7 @@ export default function ReportsPage() {
               </div>
 
               <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{en ? "Sales include unpaid invoices by creation date. Results depend on recorded expenses and inventory-linked costs; missing costs are excluded." : "المبيعات تشمل الفواتير غير المحصلة حسب تاريخ إنشائها. النتيجة تعتمد على المصاريف المسجلة والتكاليف المرتبطة بالمخزون؛ التكاليف الناقصة لا تدخل في الحساب."}</p>
+              {summary.totalSales === 0 && summary.totalPurchases === 0 && summary.totalExpenses === 0 && <div className="rounded-xl border bg-white p-5"><p className="font-bold">{en ? "No recorded operations this month" : "لا توجد عمليات مسجلة هذا الشهر"}</p><Link href="/invoices/new" className="mt-3 inline-flex min-h-11 items-center text-brand-700 underline">{en ? "Record your first sale" : "سجّل أول بيعة"}</Link></div>}
               <ReportDataQuality summary={summary} en={en} />
               <ProfitLossStatement summary={summary} />
 

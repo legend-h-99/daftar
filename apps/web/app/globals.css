@@ -218,3 +218,10 @@ html.dark select:focus {
     animation: none !important;
   }
 }
+
+/* Keep public-page keyboard navigation visible above sticky navigation. */
+.landing-page :is(a, button, summary):focus-visible {
+  outline: 3px solid #6d28d9;
+  outline-offset: 4px;
+}
+.landing-page section[id] { scroll-margin-top: 5rem; }
