@@ -33,35 +33,35 @@ export default function TabsLayout() {
         name="dashboard"
         options={{
           title: 'الرئيسية',
-          tabBarIcon: ({ color }) => <Feather name="home" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="home" size={24} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="invoices"
         options={{
           title: 'الفواتير',
-          tabBarIcon: ({ color }) => <Feather name="file-text" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="file-text" size={24} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="customers"
         options={{
           title: 'الزباين',
-          tabBarIcon: ({ color }) => <Feather name="users" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="users" size={24} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="expenses"
         options={{
           title: 'المصاريف',
-          tabBarIcon: ({ color }) => <Feather name="trending-down" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="trending-down" size={24} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'المزيد',
-          tabBarIcon: ({ color }) => <Feather name="more-horizontal" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="more-horizontal" size={24} color={color as string} />,
         }}
       />
     </Tabs>

@@ -14,6 +14,6 @@ export default function PlansPage() {
       <Link href="/dashboard" className="inline-flex min-h-11 items-center">العودة للتطبيق</Link>
     </nav>
     <h1 className="px-5 pt-4 text-center text-3xl font-extrabold text-gray-900">الباقات والأسعار</h1>
-    <PricingSection />
+    <PricingSection inApp />
   </main>;
 }

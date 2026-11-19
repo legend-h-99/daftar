@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import SectionNav from "@/components/SectionNav";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
 import PageMotion from "@/components/PageMotion";
@@ -64,8 +65,8 @@ export default function AppLayout({
         <TopBar businessName={business?.name} wide={adminView} />
         <PageMotion className={`mx-auto px-4 pt-4 print:max-w-none print:p-0 ${adminView
           ? "max-w-7xl pb-10 sm:px-6 lg:px-8"
-          : "max-w-md pb-[calc(6rem+env(safe-area-inset-bottom))]"
-        }`}>{children}</PageMotion>
+          : "max-w-6xl pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8"
+        }`}>{!adminView && <SectionNav />}{children}</PageMotion>
         {!adminView && <BottomNav />}
       </div>
     </BusinessProvider>

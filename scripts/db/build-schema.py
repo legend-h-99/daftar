@@ -9,7 +9,8 @@ before that date, so this script replays the earlier history first:
    of what production recorded).
 3. The known production drift that no recorded migration holds (the
    User email/password columns and two Prisma-era tables).
-4. Every file in supabase/migrations/, in name order.
+4. Every file in supabase/migrations/, in name order, except those in
+   NEEDS_EXTENSION when this database lacks the extension they need.
 
 This is the same sequence tests/red-team/bootstrap-audit.py uses, without
 its legacy test rows and with the payment ledger always applied.
@@ -32,8 +33,15 @@ PRISMA = ROOT / 'apps' / 'api' / 'prisma' / 'migrations'
 # migrations_from_prod/. Two production entries after it have empty
 # statements and cannot be replayed (see migrations_from_prod/README.md).
 FIRST_SUPABASE_ONLY = '20261001'
+# Migrations that need a platform extension. A database without the extension
+# skips them, with a notice. These only change function bodies and schedule a
+# job, so the table and column comparison does not depend on them. Production
+# and any database with the extension replay them in full.
+NEEDS_EXTENSION = {
+    '20261111130000_move_retention_out_of_reads.sql': 'pg_cron',
+}
 
-ROLES = '''DO $$ BEGIN
+ROLES ='''DO $$ BEGIN
 IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
 IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
 IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
@@ -109,6 +117,19 @@ def require_empty(env: dict) -> None:
         sys.exit('build-schema: the public schema is not empty. Use a fresh database.')
 
 
+def extension_available(env: dict, name: str) -> bool:
+    pg_bin = os.environ.get('PG_BIN', '')
+    psql = (pg_bin.rstrip('/') + '/psql') if pg_bin else 'psql'
+    result = subprocess.run(
+        [psql, '-X', '-At', '-c',
+         "SELECT count(*) FROM pg_available_extensions WHERE name = '%s'" % name],
+        text=True, capture_output=True, env=env,
+    )
+    if result.returncode:
+        sys.exit('build-schema: cannot read pg_available_extensions\n%s' % result.stderr)
+    return result.stdout.strip() != '0'
+
+
 def main() -> None:
     env = database_env()
     require_empty(env)
@@ -130,6 +151,10 @@ def main() -> None:
             run_sql(env, path.read_text(), path.name)
 
     for path in sorted(SUPABASE.glob('*.sql')):
+        extension = NEEDS_EXTENSION.get(path.name)
+        if extension and not extension_available(env, extension):
+            print('%s skipped: %s is not available on this database' % (path.name, extension))
+            continue
         run_sql(env, path.read_text(), path.name)
 
 

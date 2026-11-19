@@ -41,7 +41,7 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
 
   return (
     <header className="print:hidden sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className={`mx-auto flex items-center justify-between px-4 py-3 ${wide ? "max-w-7xl sm:px-6 lg:px-8" : "max-w-md"}`}>
+      <div className={`mx-auto flex items-center justify-between px-4 py-3 ${wide ? "max-w-7xl sm:px-6 lg:px-8" : "max-w-6xl"}`}>
         <div className="flex shrink-0 items-center gap-2">
           <span
             className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white"
@@ -49,7 +49,7 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
           >
             {language === "ar" ? "د" : "D"}
           </span>
-          <span className="hidden text-lg font-extrabold text-foreground min-[360px]:inline">
+          <span className="hidden text-lg font-extrabold text-foreground min-[420px]:inline">
             {language === "ar" ? "دفتر" : "Daftar"}
           </span>
         </div>
@@ -62,6 +62,9 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
             </span>
           )}
 
+          <details className="relative shrink-0">
+            <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-xl px-3 text-sm font-bold text-foreground hover:bg-muted">{language === "ar" ? "المزيد" : "More"}</summary>
+            <div className="absolute end-0 top-full z-30 mt-2 flex min-w-56 flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-background p-3 shadow-lg">
           {user?.isAdmin && (
             <Link
               href="/admin"
@@ -104,7 +107,9 @@ export default function TopBar({ businessName, wide = false }: TopBarProps) {
             className="motion-press flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
           >
             <LogOut className="h-4 w-4" />
-          </button>
+          </button>            </div>
+          </details>
+
         </div>
       </div>
     </header>

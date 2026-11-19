@@ -342,7 +342,7 @@ export class AuthService {
     };
   }
 
-  async registerEmail(email: string, password: string, name?: string) {
+  async registerEmail(email: string, name?: string) {
     const existing = await this.prisma.user.findFirst({ where: { email } });
     if (existing) {
       // A row with a Google ID belongs to whoever proved the address through
@@ -350,21 +350,14 @@ export class AuthService {
       if (existing.emailVerified || existing.googleId) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
-      // Overwrite the stored hash with the *current* attempt's password so that
-      // a pre-registration attacker cannot lock the legitimate owner out by
-      // claiming the address first with an attacker-chosen password.
-      const passwordHash = await bcrypt.hash(password, 12);
-      const updated = await this.prisma.user.update({
-        where: { id: existing.id },
-        data: { passwordHash, name: name ?? existing.name },
-      });
-      await this.sendVerificationEmail(updated);
+      // An unverified account keeps whatever it has. The mailbox owner sets the password
+      // when verifying (verifyEmailToken), so no caller can pre-set it here.
+      await this.sendVerificationEmail(existing);
       return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, name: name ?? null },
+      data: { email, name: name ?? null },
     });
 
     await this.sendVerificationEmail(user);
@@ -400,7 +393,7 @@ export class AuthService {
     };
   }
 
-  async verifyEmailToken(token: string) {
+  async verifyEmailToken(token: string, password: string) {
     const record = await this.prisma.emailVerification.findFirst({
       where: { token, consumed: false, expiresAt: { gt: new Date() } },
       include: { user: true },
@@ -410,14 +403,21 @@ export class AuthService {
       throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
     }
 
+    // Only an unverified account is changed, so an old link cannot reset a verified account's password.
+    if (record.user.emailVerified) {
+      throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
+    }
+
     await this.prisma.emailVerification.update({
       where: { id: record.id },
       data: { consumed: true },
     });
 
+    // The mailbox owner chooses the password here, never the registrant.
+    const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.prisma.user.update({
       where: { id: record.userId },
-      data: { emailVerified: true },
+      data: { emailVerified: true, passwordHash },
     });
 
     const accessToken = this.signToken({
