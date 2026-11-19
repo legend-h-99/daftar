@@ -76,6 +76,7 @@ model User {
   // email with findFirst.
   email         String?
   emailVerified Boolean?  @default(false)
+  tokenVersion  Int       @default(0)
   passwordHash  String?
   // Google account subject ("sub" claim).
   googleId      String?
@@ -399,9 +400,9 @@ model TokenBlacklist {
 }
 
 model FundingEntry {
-  id String @id @default(dbgenerated("gen_random_uuid()::text"))
+  id String @id @default(dbgenerated("(gen_random_uuid())::text"))
   businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   requestId String @db.Uuid
   kind String
   amount Decimal @db.Decimal(14, 2)
@@ -409,7 +410,7 @@ model FundingEntry {
   note String?
   createdAt DateTime @default(now()) @db.Timestamptz
   @@unique([businessId, requestId])
-  @@index([businessId, date])
+  @@index([businessId, date], map: "FundingEntry_business_date_idx")
 }
 
 model AdminAuditLog {
