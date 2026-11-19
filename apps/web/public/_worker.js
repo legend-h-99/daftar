@@ -66,6 +66,8 @@ async function proxy(request, env, url) {
   // Cloudflare supplies this header, preventing browser spoofing of rate-limit IPs.
   const ip = request.headers.get("CF-Connecting-IP");
   if (ip) headers.set("CF-Connecting-IP", ip);
+  // The Edge function trusts CF-Connecting-IP only together with this secret (see clientIp there).
+  if (env.EDGE_SHARED_SECRET) headers.set("x-daftar-edge-secret", env.EDGE_SHARED_SECRET);
   try {
     const upstream = await fetch(target, {
       method: request.method, headers,

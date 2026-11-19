@@ -76,6 +76,10 @@ model User {
   email         String?
   emailVerified Boolean?  @default(false)
   passwordHash  String?
+  // Per-account token version (SQL migration 20261111120000_user_token_version).
+  // Inert under the current auth model; declared so schema.prisma matches the
+  // migrations (the source of truth, AgDR-0004).
+  tokenVersion  Int       @default(0)
   // Google account subject ("sub" claim).
   googleId      String?
   name          String?
