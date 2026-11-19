@@ -65,6 +65,9 @@ export default function Index() {
     }
 
     if (!isAuthenticated) {
+      // The pending flag must flip before the async attempt starts, so the
+      // Redirect below never renders ahead of the biometric prompt.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBiometricPending(true);
       (async () => {
         await tryBiometric();
