@@ -1,0 +1,13 @@
+{
+  "exceptions": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "reason": "Build-time only: reached through @sentry/nextjs > @rollup/plugin-commonjs (a webpack loader), @expo/cli and metro. Not found in shipped web or mobile bundles or the edge function. No patched version exists.",
+      "expires": "2026-12-17",
+      "owner": "legend-h-99",
+      "ticket": "https://github.com/legend-h-99/daftar/issues/79",
+      "agdr": "docs/agdr/AgDR-0003-picomatch-advisory-time-boxed-exception.md"
+    }
+  ]
+}

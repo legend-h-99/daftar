@@ -300,11 +300,27 @@ async function authGoogle(credential: string) {
   if (!user) {
     const { data: byEmail } = await supabase.from('User').select('*').eq('email', email).maybeSingle()
     if (byEmail) {
-      await supabase.from('User').update({ googleId, name: byEmail.name ?? name }).eq('id', byEmail.id)
-      user = { ...byEmail, googleId }
+      // Never move an email to a second Google account (#82).
+      if (byEmail.googleId && byEmail.googleId !== googleId) {
+        return err('This email is already linked to a different Google account', 409, 'GOOGLE_ACCOUNT_CONFLICT')
+      }
+      // An unverified row's password was set by someone who never proved they own
+      // this email. Google just proved it, so revoke that password and any pending
+      // verification links before linking (#82).
+      const takeover = byEmail.emailVerified !== true
+      const linkData: Record<string, unknown> = { googleId, name: byEmail.name ?? name }
+      if (takeover) Object.assign(linkData, { passwordHash: null, emailVerified: true })
+      const { error: linkErr } = await supabase.from('User').update(linkData).eq('id', byEmail.id)
+      if (linkErr) return err('Could not link account', 500)
+      if (takeover) {
+        const { error: consumeErr } = await supabase.from('EmailVerification').update({ consumed: true })
+          .eq('userId', byEmail.id).eq('consumed', false)
+        if (consumeErr) return err('Could not link account', 500)
+      }
+      user = { ...byEmail, ...linkData }
     } else {
       const userId = newId('user')
-      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name }).select().single()
+      const { data: created, error: insertErr } = await supabase.from('User').insert({ id: userId, email, googleId, name, emailVerified: true }).select().single()
       if (insertErr) return err('Could not create account', 500)
       user = created
       isNewUser = true
@@ -449,8 +465,9 @@ async function authEmailRegister(body: Record<string, unknown>) {
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
-  const { data: existing } = await supabase.from('User').select('id,emailVerified').eq('email', email).maybeSingle()
-  if (existing?.emailVerified) return err('Email already registered', 400)
+  const { data: existing } = await supabase.from('User').select('id,emailVerified,googleId').eq('email', email).maybeSingle()
+  // A Google-owned row must never receive a password from registration (#88).
+  if (existing?.emailVerified || existing?.googleId) return err('Email already registered', 400)
   const passwordHash = await bcrypt.hash(body.password as string, 12)
   let userId: string
   if (existing) {

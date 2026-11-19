@@ -16,9 +16,6 @@ type Db = Prisma.TransactionClient;
 function asInvoice<T>(p: Promise<T>): Promise<InvoiceWithDetails> {
   return p as unknown as Promise<InvoiceWithDetails>;
 }
-function asInvoices<T>(p: Promise<T>): Promise<InvoiceWithDetails[]> {
-  return p as unknown as Promise<InvoiceWithDetails[]>;
-}
 
 export class PrismaInvoiceRepository implements IInvoiceRepository {
   constructor(private readonly db: Db) {}
