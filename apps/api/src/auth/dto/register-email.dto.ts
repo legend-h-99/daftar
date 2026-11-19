@@ -1,9 +1,12 @@
-import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
-// No password here: the mailbox owner chooses it when verifying the email.
 export class RegisterEmailDto {
   @IsEmail()
   email: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
 
   @IsOptional()
   @IsString()

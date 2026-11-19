@@ -50,7 +50,9 @@ beforeEach(async () => {
   store = {
     query: (s, p) => pg.query(s, p),
     transaction: (work) =>
-      pg.transaction((tx) => work({ query: (s, p) => tx.query(s, p) })),
+      pg.transaction((tx: { query: typeof pg.query }) =>
+        work({ query: (s, p) => tx.query(s, p) }),
+      ),
   };
   process.env.OPS_INPUT_SAR_PER_MILLION = "1";
   process.env.OPS_OUTPUT_SAR_PER_MILLION = "4";

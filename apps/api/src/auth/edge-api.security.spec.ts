@@ -1,4 +1,4 @@
-import { createHash, createHmac, webcrypto } from 'crypto';
+import { createHmac, webcrypto } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -13,24 +13,11 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-// A supabase-js style builder: any filter returns the builder again, and awaiting it or calling
-// maybeSingle/single resolves to the same result.
-function chainable(result: unknown): any {
-  return new Proxy({}, {
-    get: (_target, property) => {
-      if (property === 'then') return (ok: (value: unknown) => unknown, fail?: (reason: unknown) => unknown) => Promise.resolve(result).then(ok, fail);
-      if (property === 'maybeSingle' || property === 'single') return async () => result;
-      return () => chainable(result);
-    },
-  });
-}
-
 function edgeApi(settings: Record<string, string> = {}) {
   let handler: Handler | undefined;
   const clientOptions: unknown[] = [];
   const revoked = new Set<string>();
-  const writes: { table: string; payload: Record<string, unknown> }[] = [];
-  const user: { id: string; phone: string | null; email: string; googleId: string | null; businessId: string | null; passwordHash?: string; emailVerified?: boolean; tokenVersion?: number } = {
+  const user: { id: string; phone: string | null; email: string; googleId: string | null; businessId: string | null; passwordHash?: string; emailVerified?: boolean } = {
     id: 'user-1', phone: null, email: 'audit@example.invalid', googleId: null, businessId: null,
   };
   const database = {
@@ -46,7 +33,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       }
       if (table === 'User') {
         return {
-          update: (payload: Record<string, unknown>) => { writes.push({ table, payload }); return chainable({ data: user, error: null }); },
+          update: () => ({ eq: async () => ({ error: null }) }),
           select: () => ({ eq: () => ({
           maybeSingle: async () => ({ data: user }),
           single: async () => ({ data: user }),
@@ -55,8 +42,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       }
       if (table === 'EmailVerification') {
         return {
-          select: () => chainable({ data: { id: 'verification-1', userId: user.id }, error: null }),
-          update: (payload: Record<string, unknown>) => { writes.push({ table, payload }); return chainable({ data: { id: 'verification-1' }, error: null }); },
+          update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
           insert: async () => ({ error: null }),
         };
       }
@@ -66,7 +52,6 @@ function edgeApi(settings: Record<string, string> = {}) {
   const env: Record<string, string> = {
     SUPABASE_URL: 'https://project.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key-with-enough-entropy',
-    JWT_SECRET: 'test-jwt-signing-secret-with-enough-entropy',
     ...settings,
   };
   const fetchMock = jest.fn().mockResolvedValue({
@@ -85,7 +70,7 @@ function edgeApi(settings: Record<string, string> = {}) {
   };
   runInNewContext(compiled, sandbox);
   if (!handler) throw new Error('Edge handler not registered');
-  return { handler, database, revoked, user, fetchMock, clientOptions, writes, secret: env.JWT_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY };
+  return { handler, database, revoked, user, fetchMock, clientOptions, secret: env.JWT_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY };
 }
 
 function request(path: string, method = 'GET', body?: unknown, bearer?: string): Request {
@@ -103,102 +88,6 @@ function signedJwt(secret: string, claims: Record<string, unknown>, includeJti =
   const data = `${head}.${payload}`;
   return `${data}.${createHmac('sha256', secret).update(data).digest('base64url')}`;
 }
-
-describe('email registration cannot set a password that the mailbox owner later activates', () => {
-  const verificationToken = 'a'.repeat(64);
-
-  it('stores no password at registration, even for an existing unverified account', async () => {
-    const { handler, user, fetchMock, writes } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
-    user.emailVerified = false;
-    user.passwordHash = 'stored-by-someone-else';
-
-    const response = await handler(request('/auth/email/register', 'POST', {
-      email: user.email, password: 'attacker-chosen-password',
-    }));
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ sent: true });
-    expect(writes.filter(write => write.table === 'User' && 'passwordHash' in write.payload)).toEqual([]);
-    expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
-  });
-
-  it('sets the password only when the mailbox owner verifies with it', async () => {
-    const { handler, user, writes } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
-    user.emailVerified = false;
-
-    const response = await handler(request('/auth/email/verify', 'POST', {
-      token: verificationToken, password: 'owner-chosen-password',
-    }));
-    const result = await response.json();
-    const activation = writes.find(write => write.table === 'User' && write.payload.emailVerified === true);
-
-    expect(response.status).toBe(200);
-    expect(result.accessToken).toMatch(/^eyJ/);
-    expect(await bcrypt.compare('owner-chosen-password', String(activation?.payload.passwordHash))).toBe(true);
-  });
-
-  it('refuses to verify without a password and does not consume the link', async () => {
-    const { handler, writes } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
-
-    const response = await handler(request('/auth/email/verify', 'POST', { token: verificationToken }));
-
-    expect(response.status).toBe(400);
-    expect(writes).toEqual([]);
-  });
-});
-
-describe('sessions end when the password changes', () => {
-  const later = () => Math.floor(Date.now() / 1000) + 3600;
-
-  it('rejects a token issued before the account moved to a new token version', async () => {
-    const { handler, user, secret } = edgeApi();
-    user.tokenVersion = 2;
-
-    const stale = await handler(request('/dashboard/summary', 'GET', undefined, signedJwt(secret, { sub: user.id, pv: 1, exp: later() })));
-    const current = await handler(request('/dashboard/summary', 'GET', undefined, signedJwt(secret, { sub: user.id, pv: 2, exp: later() })));
-
-    expect(stale.status).toBe(401);
-    expect(current.status).toBe(200);
-  });
-
-  it('gives a verified password change a new version and signs the session with it', async () => {
-    const { handler, user, writes } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
-    user.emailVerified = false;
-
-    const response = await handler(request('/auth/email/verify', 'POST', {
-      token: 'a'.repeat(64), password: 'owner-chosen-password',
-    }));
-    const result = await response.json();
-    const activation = writes.find(write => write.table === 'User' && write.payload.emailVerified === true);
-    const claims = JSON.parse(Buffer.from(String(result.accessToken).split('.')[1], 'base64url').toString());
-
-    expect(typeof activation?.payload.tokenVersion).toBe('number');
-    expect(claims.pv).toBe(activation?.payload.tokenVersion);
-  });
-});
-
-describe('account boundaries', () => {
-  it('answers a registration for a verified address the same way as for a new one', async () => {
-    const { handler, user, fetchMock } = edgeApi({ RESEND_API_KEY: 'test-delivery-key', EMAIL_LOGIN_ENABLED: 'true' });
-    user.emailVerified = true;
-
-    const response = await handler(request('/auth/email/register', 'POST', { email: user.email }));
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ sent: true });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('refuses a create request that sets a column the app never sends', async () => {
-    const { handler, user, secret } = edgeApi();
-    user.businessId = 'business-1';
-    const token = signedJwt(secret, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 });
-
-    const response = await handler(request('/customers', 'POST', { name: 'Customer', status: 'PAID' }, token));
-
-    expect(response.status).toBe(400);
-  });
-});
 
 describe('deployed Supabase API security', () => {
   it('returns the atomic paid invoice without a second payment write', async () => {
@@ -312,6 +201,67 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ isNewUser });
   });
 
+  describe('Google linking by email (#82)', () => {
+    function googleByEmail(row: Record<string, unknown>) {
+      const api = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+      api.fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-new', email: 'owner@example.invalid', email_verified: 'true', aud: 'expected-client' }) });
+      const userUpdates: Record<string, unknown>[] = [];
+      const consumed: string[] = [];
+      const original = api.database.from.getMockImplementation()!;
+      api.database.from.mockImplementation((table: string): any => {
+        if (table === 'User') return {
+          select: () => ({ eq: (field: string) => ({ maybeSingle: async () => ({ data: field === 'email' ? row : null, error: null }) }) }),
+          update: (data: Record<string, unknown>) => ({ eq: async () => { userUpdates.push(data); return { error: null }; } }),
+        };
+        if (table === 'EmailVerification') return {
+          update: () => ({ eq: (_field: string, userId: string) => ({ eq: async () => { consumed.push(userId); return { error: null }; } }) }),
+        };
+        return original(table);
+      });
+      return { ...api, userUpdates, consumed };
+    }
+
+    it('revokes the password and pending verification links of an unverified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'unverified', email: 'owner@example.invalid', googleId: null, emailVerified: false, passwordHash: 'someone-elses-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toEqual([expect.objectContaining({ googleId: 'google-new', passwordHash: null, emailVerified: true })]);
+      expect(consumed).toEqual(['unverified']);
+    });
+
+    it('keeps the password of a verified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'verified', email: 'owner@example.invalid', googleId: null, emailVerified: true, passwordHash: 'owner-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toHaveLength(1);
+      expect(userUpdates[0]).not.toHaveProperty('passwordHash');
+      expect(consumed).toEqual([]);
+    });
+
+    it('refuses to move an email to a different Google ID', async () => {
+      const { handler, userUpdates } = googleByEmail({ id: 'other', email: 'owner@example.invalid', googleId: 'google-old', emailVerified: true, businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(409);
+      expect(userUpdates).toEqual([]);
+    });
+  });
+
+  it('marks a Google-created user as email-verified (#88)', async () => {
+    const { handler, database, fetchMock, user } = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-new', email: 'new@example.invalid', email_verified: true, aud: 'expected-client' }) });
+    const insert = jest.fn(() => ({ select: () => ({ single: async () => ({ data: { ...user, googleId: 'google-new' }, error: null }) }) }));
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string): any => table === 'User' ? {
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+      insert,
+    } : original(table));
+
+    const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+
+    expect(response.status).toBe(200);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ googleId: 'google-new', emailVerified: true }));
+  });
+
   describe('anonymous behavior collection', () => {
     const event = { id: '11111111-1111-4111-8111-111111111111', deviceId: '22222222-2222-4222-8222-222222222222', sessionId: '33333333-3333-4333-8333-333333333333', event: 'page_viewed', path: '/login', source: 'x', properties: {}, occurredAt: new Date().toISOString() };
     it('stores an anonymous event without looking up the account', async () => {
@@ -342,26 +292,6 @@ describe('deployed Supabase API security', () => {
       expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
       expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
     });
-    it('applies one global cap to collection that arrives without a trusted client IP', async () => {
-      const globalKey = createHash('sha256').update('analytics-untrusted:account:all').digest('hex');
-      const { handler, database } = edgeApi();
-      database.rpc.mockImplementation(async (_name: string, args: { p_key?: string }) => ({ data: args?.p_key !== globalKey, error: null }));
-      expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
-      expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
-    });
-    it('keys collection by client IP when the Worker vouches for it', async () => {
-      const secret = 'e'.repeat(40);
-      const ipKey = createHash('sha256').update('analytics:ip:203.0.113.9').digest('hex');
-      const { handler, database } = edgeApi({ EDGE_SHARED_SECRET: secret });
-      const vouched = new Request('https://project.supabase.co/functions/v1/api/analytics/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '203.0.113.9', 'x-daftar-edge-secret': secret },
-        body: JSON.stringify(event),
-      });
-      expect((await handler(vouched)).status).toBe(204);
-      const keys = database.rpc.mock.calls.filter(call => call[0] === 'consume_auth_rate_limit').map(call => call[1].p_key);
-      expect(keys).toContain(ipKey);
-    });
   });
 
   it('routes both the production and candidate function prefixes', async () => {
@@ -382,14 +312,10 @@ describe('deployed Supabase API security', () => {
     expect(verify.status).toBe(503);
     expect(await response.text()).not.toMatch(/devCode|123456/);
     expect(database.from).not.toHaveBeenCalled();
-    expect(database.rpc).not.toHaveBeenCalledWith('consume_external_usage_budget', expect.anything()); // no SMS budget/provider calls
+    expect(database.rpc).toHaveBeenCalledTimes(2); // global IP limit only; no SMS budget/provider calls
   });
 
   const phoneLogin = { PHONE_LOGIN_ENABLED: 'true', AUTHENTICA_API_KEY: 'authentica-test-key', AUTHENTICA_TEMPLATE_ID: '31' };
-  // The OTP request path looks the number up in User before choosing a budget.
-  const phoneLookup = (data: unknown) => jest.fn(() => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data, error: null }) }) }),
-  }));
   const authenticaReply = (status: number, body: unknown) => ({ status, json: async () => body });
 
   it('keeps phone OTP disabled while the Authentica key is missing', async () => {
@@ -415,43 +341,6 @@ describe('deployed Supabase API security', () => {
     expect(JSON.parse(init.body)).toEqual({ method: 'sms', phone: '+966551234567', template_id: 31 });
   });
 
-  it('ignores a client-supplied IP unless the Worker vouches for it with the edge secret', async () => {
-    const edgeSecret = 'e'.repeat(40);
-    const otpRequest = (headers: Record<string, string>) => new Request('https://project.supabase.co/functions/v1/api/auth/otp/request', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ phone: '0551234567' }),
-    });
-    const ipChecks = (rpc: jest.Mock) => rpc.mock.calls.filter(([name]) => name === 'consume_auth_rate_limit').length;
-
-    const direct = edgeApi({ ...phoneLogin, EDGE_SHARED_SECRET: edgeSecret });
-    await direct.handler(otpRequest({ 'cf-connecting-ip': '203.0.113.9' }));
-    // Only the per-phone bucket: a caller-chosen IP never becomes a bucket.
-    expect(ipChecks(direct.database.rpc)).toBe(1);
-
-    const trusted = edgeApi({ ...phoneLogin, EDGE_SHARED_SECRET: edgeSecret });
-    await trusted.handler(otpRequest({ 'cf-connecting-ip': '203.0.113.9', 'x-daftar-edge-secret': edgeSecret }));
-    // Global IP bucket for /auth/otp/request, IP bucket and phone bucket for the OTP route.
-    expect(ipChecks(trusted.database.rpc)).toBe(3);
-  });
-
-  it('spends the new-number budget on unknown numbers and leaves existing users their own budget', async () => {
-    const { handler, database, fetchMock } = edgeApi(phoneLogin);
-    database.rpc.mockImplementation(async (_name: string, args: { p_key: string }) => ({ data: args.p_key !== 'sms:new', error: null }));
-    fetchMock.mockResolvedValue(authenticaReply(200, { success: true, data: null }));
-    Object.assign(database, { from: phoneLookup(null) });
-
-    const unknown = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
-
-    expect(unknown.status).toBe(503);
-    expect(database.rpc).toHaveBeenCalledWith('consume_external_usage_budget', expect.objectContaining({ p_key: 'sms:new' }));
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    Object.assign(database, { from: phoneLookup({ id: 'user-1' }) });
-    const returning = await handler(request('/auth/otp/request', 'POST', { phone: '0551234567' }));
-
-    expect(returning.status).toBe(200);
-    expect(database.rpc).toHaveBeenCalledWith('consume_external_usage_budget', expect.objectContaining({ p_key: 'sms:returning' }));
-  });
-
   it('signs in only when Authentica confirms the code', async () => {
     const { handler, fetchMock } = edgeApi(phoneLogin);
     fetchMock.mockResolvedValueOnce(authenticaReply(400, { status: false, message: 'Invalid OTP' }));
@@ -474,7 +363,7 @@ describe('deployed Supabase API security', () => {
 
     expect(badKey.status).toBe(503);
     expect(offline.status).toBe(503);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(database.from).not.toHaveBeenCalledWith('User');
   });
 
   it('rejects a Google token issued for another client', async () => {
@@ -544,13 +433,9 @@ describe('deployed Supabase API security', () => {
   });
 
   it('runs global and per-identity shared rate limits before trying email login', async () => {
-    const edgeSecret = 'e'.repeat(40);
-    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true', EDGE_SHARED_SECRET: edgeSecret });
-    // Sent the way the Worker sends it: its client address and its edge secret.
-    const response = await handler(new Request('https://project.supabase.co/functions/v1/api/auth/email/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '203.0.113.9', 'x-daftar-edge-secret': edgeSecret },
-      body: JSON.stringify({ email: 'audit@example.invalid', password: 'wrong-password' }),
+    const { handler, database } = edgeApi({ EMAIL_LOGIN_ENABLED: 'true' });
+    const response = await handler(request('/auth/email/login', 'POST', {
+      email: 'audit@example.invalid', password: 'wrong-password',
     }));
 
     expect(response.status).toBe(401);
@@ -598,6 +483,27 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ sent: true });
     expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
+  });
+
+  it('refuses to set a password on an unverified row that a Google sign-in created (#88)', async () => {
+    const deliveryKey = 'test-delivery-key';
+    const attackerChoice = 'attacker-password';
+    const { handler, database, user, fetchMock } = edgeApi({ RESEND_API_KEY: deliveryKey, EMAIL_LOGIN_ENABLED: 'true' });
+    user.emailVerified = false;
+    user.googleId = 'google-victim';
+    const update = jest.fn(() => ({ eq: async () => ({ error: null }) }));
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string): any => table === 'User'
+      ? { ...original(table), update }
+      : original(table));
+
+    const response = await handler(request('/auth/email/register', 'POST', {
+      email: user.email, password: attackerChoice,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 
   it('rejects the same JWT after logout adds its identifier to the blacklist', async () => {

@@ -97,8 +97,7 @@ describe("صفحة تسجيل الدخول بدون رقم الجوال", () => 
     render(<LoginPage />);
     await user.click(screen.getByRole("button", { name: "حساب جديد" }));
     await user.type(screen.getByLabelText("البريد الإلكتروني"), "test@example.com");
-    // The owner chooses the password after confirming the email, so none is asked for here.
-    expect(screen.queryByLabelText("كلمة المرور")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("كلمة المرور"), "password123");
     await user.click(screen.getByRole("button", { name: "إنشاء الحساب" }));
     expect(await screen.findByText("تم التسجيل بنجاح!")).toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith(
@@ -106,7 +105,7 @@ describe("صفحة تسجيل الدخول بدون رقم الجوال", () => 
       expect.objectContaining({
         method: "POST",
         credentials: "include",
-        body: JSON.stringify({ email: "test@example.com" }),
+        body: JSON.stringify({ email: "test@example.com", password: "password123" }),
       }),
     );
   });

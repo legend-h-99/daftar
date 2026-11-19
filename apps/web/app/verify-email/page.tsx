@@ -1,35 +1,34 @@
 "use client";
 
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { apiPost, ApiError } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { Business, User } from "@/lib/types";
 import EmailAuthGate from "@/components/EmailAuthGate";
-
-type VerifyResponse = {
-  accessToken?: string; sessionAuthenticated?: boolean;
-  user: User;
-  hasBusiness: boolean;
-  business?: Business;
-};
 
 function VerifyEmailContent() {
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token");
 
-  const [status, setStatus] = useState<"form" | "submitting" | "success" | "error">(token ? "form" : "error");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState(token ? "" : "رابط التحقق غير صالح");
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [message, setMessage] = useState("");
 
-  // The link alone never activates the account: the mailbox owner chooses the password here.
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!token) return;
-    setStatus("submitting");
-    apiPost<VerifyResponse>("/auth/email/verify", { token, password })
+  useEffect(() => {
+    if (!token) {
+      setStatus("error");
+      setMessage("رابط التحقق غير صالح");
+      return;
+    }
+
+    apiPost<{
+      accessToken?: string; sessionAuthenticated?: boolean;
+      user: User;
+      hasBusiness: boolean;
+      business?: Business;
+    }>("/auth/email/verify", { token })
       .then((res) => {
         setToken(res.accessToken, res.sessionAuthenticated);
         setStatus("success");
@@ -41,7 +40,8 @@ function VerifyEmailContent() {
         setStatus("error");
         setMessage(err instanceof ApiError ? err.message : "رابط التحقق غير صالح أو منتهي الصلاحية");
       });
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-6">
@@ -57,37 +57,11 @@ function VerifyEmailContent() {
             </span>
           </div>
 
-          {(status === "form" || status === "submitting") && (
+          {status === "loading" && (
             <>
-              <h1 className="text-xl font-extrabold text-foreground">أكمل تفعيل حسابك</h1>
-              <p className="mt-2 text-sm text-muted-foreground">اختر كلمة مرور لحسابك، 8 أحرف على الأقل.</p>
-              <form onSubmit={submit} className="mt-6 space-y-4 text-right">
-                <div>
-                  <label htmlFor="new-password" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-                    كلمة المرور الجديدة
-                  </label>
-                  <input
-                    id="new-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    minLength={8}
-                    maxLength={128}
-                    required
-                    dir="ltr"
-                    placeholder="8 أحرف على الأقل"
-                    className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-left text-sm text-foreground"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={status === "submitting"}
-                  className="w-full rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60"
-                >
-                  {status === "submitting" ? "جاري التفعيل..." : "تفعيل الحساب"}
-                </button>
-              </form>
+              <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+              <h1 className="text-lg font-bold text-foreground">جاري التحقق...</h1>
+              <p className="mt-2 text-sm text-muted-foreground">يرجى الانتظار</p>
             </>
           )}
 

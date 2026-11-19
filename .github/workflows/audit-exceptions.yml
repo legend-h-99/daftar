@@ -1,0 +1,22 @@
+name: Audit exceptions expiry
+
+# Fails on the day after an audit exception expires, even when no pull request
+# runs CI (#79, AgDR-0003). Needs no dependencies, so it runs in seconds.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check audit exceptions are listed and unexpired
+        run: node tests/security/check-audit-exceptions.mjs

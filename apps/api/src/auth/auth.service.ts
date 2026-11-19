@@ -1,5 +1,11 @@
 import { randomBytes, randomInt, randomUUID } from 'crypto';
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
@@ -228,28 +234,11 @@ export class AuthService {
       throw new UnauthorizedException('Google account email is not verified');
     }
 
-    const existing =
-      (await this.prisma.user.findUnique({ where: { googleSub: payload.sub } })) ??
-      (await this.prisma.user.findUnique({ where: { email: payload.email } }));
-
-    const user = existing
-      ? await this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            googleSub: payload.sub,
-            email: payload.email,
-            name: payload.name ?? existing.name,
-            avatarUrl: payload.picture,
-          },
-        })
-      : await this.prisma.user.create({
-          data: {
-            googleSub: payload.sub,
-            email: payload.email,
-            name: payload.name,
-            avatarUrl: payload.picture,
-          },
-        });
+    const user = await this.findOrLinkGoogleUser({
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+    });
 
     const accessToken = this.signToken({
       sub: user.id,
@@ -269,6 +258,63 @@ export class AuthService {
       },
       hasBusiness: !!user.businessId,
     };
+  }
+
+  /**
+   * Resolve the user for a verified Google identity.
+   *
+   * 1. A row with this Google `sub` wins.
+   * 2. Otherwise a row with the same email is linked, but only when it has no
+   *    other Google ID. If that row's email was never verified, whoever set its
+   *    password never proved they own the address, so the password and any
+   *    pending verification links are revoked (#82).
+   * 3. Otherwise a new user is created.
+   */
+  private async findOrLinkGoogleUser(identity: {
+    sub: string;
+    email: string;
+    name?: string;
+  }) {
+    const bySub = await this.prisma.user.findFirst({ where: { googleId: identity.sub } });
+    if (bySub) {
+      return this.prisma.user.update({
+        where: { id: bySub.id },
+        data: { email: identity.email, name: identity.name ?? bySub.name },
+      });
+    }
+
+    const byEmail = await this.prisma.user.findFirst({ where: { email: identity.email } });
+    if (!byEmail) {
+      return this.prisma.user.create({
+        // Google already proved the address (email_verified in googleLogin) (#88).
+        data: { googleId: identity.sub, email: identity.email, name: identity.name, emailVerified: true },
+      });
+    }
+
+    if (byEmail.googleId && byEmail.googleId !== identity.sub) {
+      throw new ConflictException('This email is already linked to a different Google account');
+    }
+
+    const linkData = {
+      googleId: identity.sub,
+      email: identity.email,
+      name: identity.name ?? byEmail.name,
+    };
+    if (byEmail.emailVerified) {
+      return this.prisma.user.update({ where: { id: byEmail.id }, data: linkData });
+    }
+
+    const [linked] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: { ...linkData, passwordHash: null, emailVerified: true },
+      }),
+      this.prisma.emailVerification.updateMany({
+        where: { userId: byEmail.id, consumed: false },
+        data: { consumed: true },
+      }),
+    ]);
+    return linked;
   }
 
   async me(userId: string) {
@@ -296,20 +342,29 @@ export class AuthService {
     };
   }
 
-  async registerEmail(email: string, name?: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+  async registerEmail(email: string, password: string, name?: string) {
+    const existing = await this.prisma.user.findFirst({ where: { email } });
     if (existing) {
-      if (existing.emailVerified) {
+      // A row with a Google ID belongs to whoever proved the address through
+      // Google. Never let registration plant a password on it (#88).
+      if (existing.emailVerified || existing.googleId) {
         throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
       }
-      // An unverified account keeps whatever it has. The mailbox owner sets the password
-      // when verifying (verifyEmailToken), so no caller can pre-set it here.
-      await this.sendVerificationEmail(existing);
+      // Overwrite the stored hash with the *current* attempt's password so that
+      // a pre-registration attacker cannot lock the legitimate owner out by
+      // claiming the address first with an attacker-chosen password.
+      const passwordHash = await bcrypt.hash(password, 12);
+      const updated = await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, name: name ?? existing.name },
+      });
+      await this.sendVerificationEmail(updated);
       return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
     }
 
+    const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.prisma.user.create({
-      data: { email, name: name ?? null },
+      data: { email, passwordHash, name: name ?? null },
     });
 
     await this.sendVerificationEmail(user);
@@ -317,7 +372,7 @@ export class AuthService {
   }
 
   async loginEmail(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
@@ -345,7 +400,7 @@ export class AuthService {
     };
   }
 
-  async verifyEmailToken(token: string, password: string) {
+  async verifyEmailToken(token: string) {
     const record = await this.prisma.emailVerification.findFirst({
       where: { token, consumed: false, expiresAt: { gt: new Date() } },
       include: { user: true },
@@ -355,21 +410,14 @@ export class AuthService {
       throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
     }
 
-    // Only an unverified account is changed, so an old link cannot reset a verified account's password.
-    if (record.user.emailVerified) {
-      throw new BadRequestException('رابط التحقق غير صالح أو منتهي الصلاحية');
-    }
-
     await this.prisma.emailVerification.update({
       where: { id: record.id },
       data: { consumed: true },
     });
 
-    // The mailbox owner chooses the password here, never the registrant.
-    const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.prisma.user.update({
       where: { id: record.userId },
-      data: { emailVerified: true, passwordHash },
+      data: { emailVerified: true },
     });
 
     const accessToken = this.signToken({
@@ -387,7 +435,7 @@ export class AuthService {
   }
 
   async resendVerificationEmail(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     if (!user) {
       // Don't reveal whether email exists
       return { sent: true };
@@ -419,7 +467,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({ where: { email } });
     // Only password-auth accounts can reset a password this way; Google-only
     // accounts have no passwordHash. Either way, never reveal whether the
     // address is registered — always return the same response.
