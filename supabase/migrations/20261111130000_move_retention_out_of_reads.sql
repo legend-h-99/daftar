@@ -30,20 +30,24 @@ begin
     '-- Best-effort pruning runs on ingestion and when opening the admin summary.', '');
 end $$;
 
-create extension if not exists pg_cron;
-
+-- Schedule the nightly retention job via pg_cron where it is available (the
+-- production project has it). Environments without pg_cron -- the CI schema
+-- build and local dev run on a plain Postgres -- skip this block safely; the
+-- function rewrites above are the schema-relevant change and still apply.
 do $$
 begin
-  if exists (select 1 from cron.job where jobname = 'daftar-retention-analytics-errors') then
-    perform cron.unschedule('daftar-retention-analytics-errors');
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    execute 'create extension if not exists pg_cron';
+    if exists (select 1 from cron.job where jobname = 'daftar-retention-analytics-errors') then
+      perform cron.unschedule('daftar-retention-analytics-errors');
+    end if;
+    perform cron.schedule(
+      'daftar-retention-analytics-errors',
+      '17 3 * * *',
+      $job$
+        delete from public."ProductAnalyticsEvent" where "createdAt" < now() - interval '30 days';
+        delete from public."ApiErrorEvent" where "createdAt" < now() - interval '30 days';
+      $job$
+    );
   end if;
 end $$;
-
-select cron.schedule(
-  'daftar-retention-analytics-errors',
-  '17 3 * * *',
-  $job$
-    delete from public."ProductAnalyticsEvent" where "createdAt" < now() - interval '30 days';
-    delete from public."ApiErrorEvent" where "createdAt" < now() - interval '30 days';
-  $job$
-);
