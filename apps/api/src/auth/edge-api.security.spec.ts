@@ -312,6 +312,67 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ isNewUser });
   });
 
+  describe('Google linking by email (#82)', () => {
+    function googleByEmail(row: Record<string, unknown>) {
+      const api = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+      api.fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-new', email: 'owner@example.invalid', email_verified: 'true', aud: 'expected-client' }) });
+      const userUpdates: Record<string, unknown>[] = [];
+      const consumed: string[] = [];
+      const original = api.database.from.getMockImplementation()!;
+      api.database.from.mockImplementation((table: string): any => {
+        if (table === 'User') return {
+          select: () => ({ eq: (field: string) => ({ maybeSingle: async () => ({ data: field === 'email' ? row : null, error: null }) }) }),
+          update: (data: Record<string, unknown>) => ({ eq: async () => { userUpdates.push(data); return { error: null }; } }),
+        };
+        if (table === 'EmailVerification') return {
+          update: () => ({ eq: (_field: string, userId: string) => ({ eq: async () => { consumed.push(userId); return { error: null }; } }) }),
+        };
+        return original(table);
+      });
+      return { ...api, userUpdates, consumed };
+    }
+
+    it('revokes the password and pending verification links of an unverified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'unverified', email: 'owner@example.invalid', googleId: null, emailVerified: false, passwordHash: 'someone-elses-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toEqual([expect.objectContaining({ googleId: 'google-new', passwordHash: null, emailVerified: true })]);
+      expect(consumed).toEqual(['unverified']);
+    });
+
+    it('keeps the password of a verified row', async () => {
+      const { handler, userUpdates, consumed } = googleByEmail({ id: 'verified', email: 'owner@example.invalid', googleId: null, emailVerified: true, passwordHash: 'owner-hash', businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(200);
+      expect(userUpdates).toHaveLength(1);
+      expect(userUpdates[0]).not.toHaveProperty('passwordHash');
+      expect(consumed).toEqual([]);
+    });
+
+    it('refuses to move an email to a different Google ID', async () => {
+      const { handler, userUpdates } = googleByEmail({ id: 'other', email: 'owner@example.invalid', googleId: 'google-old', emailVerified: true, businessId: null });
+      const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+      expect(response.status).toBe(409);
+      expect(userUpdates).toEqual([]);
+    });
+  });
+
+  it('marks a Google-created user as email-verified (#88)', async () => {
+    const { handler, database, fetchMock, user } = edgeApi({ GOOGLE_CLIENT_ID: 'expected-client' });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: 'google-new', email: 'new@example.invalid', email_verified: true, aud: 'expected-client' }) });
+    const insert = jest.fn(() => ({ select: () => ({ single: async () => ({ data: { ...user, googleId: 'google-new' }, error: null }) }) }));
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string): any => table === 'User' ? {
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+      insert,
+    } : original(table));
+
+    const response = await handler(request('/auth/google', 'POST', { credential: 'synthetic-google-token' }));
+
+    expect(response.status).toBe(200);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ googleId: 'google-new', emailVerified: true }));
+  });
+
   describe('anonymous behavior collection', () => {
     const event = { id: '11111111-1111-4111-8111-111111111111', deviceId: '22222222-2222-4222-8222-222222222222', sessionId: '33333333-3333-4333-8333-333333333333', event: 'page_viewed', path: '/login', source: 'x', properties: {}, occurredAt: new Date().toISOString() };
     it('stores an anonymous event without looking up the account', async () => {
@@ -598,6 +659,27 @@ describe('deployed Supabase API security', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ sent: true });
     expect(fetchMock).toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
+  });
+
+  it('refuses to set a password on an unverified row that a Google sign-in created (#88)', async () => {
+    const deliveryKey = 'test-delivery-key';
+    const attackerChoice = 'attacker-password';
+    const { handler, database, user, fetchMock } = edgeApi({ RESEND_API_KEY: deliveryKey, EMAIL_LOGIN_ENABLED: 'true' });
+    user.emailVerified = false;
+    user.googleId = 'google-victim';
+    const update = jest.fn(() => ({ eq: async () => ({ error: null }) }));
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string): any => table === 'User'
+      ? { ...original(table), update }
+      : original(table));
+
+    const response = await handler(request('/auth/email/register', 'POST', {
+      email: user.email, password: attackerChoice,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 
   it('rejects the same JWT after logout adds its identifier to the blacklist', async () => {

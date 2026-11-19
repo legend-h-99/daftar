@@ -65,6 +65,9 @@ export default function Index() {
     }
 
     if (!isAuthenticated) {
+      // Hold the splash until the biometric prompt settles; this loading flag must be set in the same
+      // pass as the effect, before the async prompt starts.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBiometricPending(true);
       (async () => {
         await tryBiometric();

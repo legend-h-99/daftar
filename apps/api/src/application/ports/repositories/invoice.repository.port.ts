@@ -1,6 +1,5 @@
 import {
   CreateInvoiceData,
-  Invoice,
   InvoiceFilter,
   InvoiceStatus,
   InvoiceWithDetails,
