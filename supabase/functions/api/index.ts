@@ -472,8 +472,12 @@ async function authEmailRegister(body: Record<string, unknown>) {
   let userId: string
   if (existing) {
     userId = existing.id
-    const { error } = await supabase.from('User').update({ passwordHash, name }).eq('id', userId)
+    // Re-check the row's state in the write itself. A first Google sign-in can
+    // verify and link the row while bcrypt runs (#92); then nothing is written.
+    const { data: written, error } = await supabase.from('User').update({ passwordHash, name })
+      .eq('id', userId).eq('emailVerified', false).is('googleId', null).select('id')
     if (error) return err('Could not register', 500)
+    if (!written || written.length === 0) return err('Email already registered', 400)
   } else {
     userId = newId('user')
     const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
