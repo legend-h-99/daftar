@@ -354,11 +354,18 @@ export class AuthService {
       // a pre-registration attacker cannot lock the legitimate owner out by
       // claiming the address first with an attacker-chosen password.
       const passwordHash = await bcrypt.hash(password, 12);
-      const updated = await this.prisma.user.update({
-        where: { id: existing.id },
-        data: { passwordHash, name: name ?? existing.name },
+      // Re-check the row's state in the write itself. A first Google sign-in
+      // can verify and link the row while bcrypt runs (#92); then nothing is
+      // written and the caller gets the same "already registered" answer.
+      const nextName = name ?? existing.name;
+      const { count } = await this.prisma.user.updateMany({
+        where: { id: existing.id, emailVerified: false, googleId: null },
+        data: { passwordHash, name: nextName },
       });
-      await this.sendVerificationEmail(updated);
+      if (count === 0) {
+        throw new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل');
+      }
+      await this.sendVerificationEmail({ id: existing.id, email: existing.email, name: nextName });
       return { sent: true, message: 'أُرسل رابط التحقق مجدداً إلى بريدك' };
     }
 
