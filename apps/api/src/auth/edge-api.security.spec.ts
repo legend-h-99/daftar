@@ -542,10 +542,13 @@ describe('deployed Supabase API security', () => {
     }));
 
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ message: 'Email already registered' });
     expect(update).toHaveBeenCalledTimes(1);
     expect(filters).toEqual(expect.arrayContaining([
       ['eq', 'id', user.id], ['eq', 'emailVerified', false], ['is', 'googleId', null],
     ]));
+    // No verification link is issued: the EmailVerification table is never touched.
+    expect(database.from).not.toHaveBeenCalledWith('EmailVerification');
     expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 

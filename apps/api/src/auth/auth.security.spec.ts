@@ -232,6 +232,12 @@ describe('authentication security boundaries', () => {
       new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل'),
     );
 
+    // The filter is the protection: the mock's count: 0 only stands in for
+    // the database rejecting a row that is no longer a pending sign-up.
+    expect(prisma.user.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user-1', emailVerified: false, googleId: null },
+    }));
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(prisma.emailVerification.create).not.toHaveBeenCalled();
     expect(email.sendVerificationEmail).not.toHaveBeenCalled();
