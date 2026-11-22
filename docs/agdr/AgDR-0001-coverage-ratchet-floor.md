@@ -52,6 +52,15 @@ Chosen: **ratchet floor at the measured baseline, with `@vitest/coverage-v8` pin
 - `@vitest/coverage-v8` must move in step with `vitest` on upgrade.
 - The 80% domain-logic target is not met. Tests for `apps/api/src/domain` and `apps/api/src/application` are follow-up work.
 
+## Update 2026-11-22: domain target set
+
+The owner chose an 80% target for `apps/api/src/domain` only.
+
+- Five new spec files cover `domain/services/recipe-cost.calculator`, two use cases, and two utils. All 205 tests pass.
+- `apps/api/src/domain` now has 100% on all four metrics. Jest enforces 80% on it through the `./src/domain/` key. Jest resolves that key from the package root, not from `rootDir`.
+- Files under that key no longer count toward the global floor. Measured without `src/domain`, the API is at statements 11.10%, branches 17.05%, functions 6.89%, lines 11.53%. The global floor is raised to 11 / 17 / 6 / 11.
+- `apps/api/src/application` stays under the global floor at about 6%. An 80% gate there would fail CI today. Raising it is follow-up work.
+
 ## Artifacts
 
 - Ticket: https://github.com/legend-h-99/daftar/issues/72
