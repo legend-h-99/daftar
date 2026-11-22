@@ -13,6 +13,18 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
+// A thenable stand-in for a supabase-js filter chain: `.eq()`/`.is()` return
+// the chain, `.select()` resolves to the rows the write matched.
+function conditionalUpdate(rows: { id: string }[]) {
+  const chain: any = {
+    eq: () => chain,
+    is: () => chain,
+    select: async () => ({ data: rows, error: null }),
+    then: (resolve: (value: unknown) => unknown) => resolve({ error: null }),
+  };
+  return chain;
+}
+
 function edgeApi(settings: Record<string, string> = {}) {
   let handler: Handler | undefined;
   const clientOptions: unknown[] = [];
@@ -33,7 +45,7 @@ function edgeApi(settings: Record<string, string> = {}) {
       }
       if (table === 'User') {
         return {
-          update: () => ({ eq: async () => ({ error: null }) }),
+          update: () => conditionalUpdate([{ id: user.id }]),
           select: () => ({ eq: () => ({
           maybeSingle: async () => ({ data: user }),
           single: async () => ({ data: user }),
@@ -503,6 +515,40 @@ describe('deployed Supabase API security', () => {
 
     expect(response.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
+  });
+
+  it('writes nothing when Google links the row between the check and the write (#92)', async () => {
+    const deliveryKey = 'test-delivery-key';
+    const attackerChoice = 'attacker-password';
+    const { handler, database, user, fetchMock } = edgeApi({ RESEND_API_KEY: deliveryKey, EMAIL_LOGIN_ENABLED: 'true' });
+    // The read sees a pending sign-up; the conditional write matches no row
+    // because a first Google sign-in verified and linked it meanwhile.
+    user.emailVerified = false;
+    const filters: [string, string, unknown][] = [];
+    const chain: any = {
+      eq: (field: string, value: unknown) => { filters.push(['eq', field, value]); return chain; },
+      is: (field: string, value: unknown) => { filters.push(['is', field, value]); return chain; },
+      select: async () => ({ data: [], error: null }),
+    };
+    const update = jest.fn(() => chain);
+    const original = database.from.getMockImplementation()!;
+    database.from.mockImplementation((table: string): any => table === 'User'
+      ? { ...original(table), update }
+      : original(table));
+
+    const response = await handler(request('/auth/email/register', 'POST', {
+      email: user.email, password: attackerChoice,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ message: 'Email already registered' });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(filters).toEqual(expect.arrayContaining([
+      ['eq', 'id', user.id], ['eq', 'emailVerified', false], ['is', 'googleId', null],
+    ]));
+    // No verification link is issued: the EmailVerification table is never touched.
+    expect(database.from).not.toHaveBeenCalledWith('EmailVerification');
     expect(fetchMock).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.any(Object));
   });
 

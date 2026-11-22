@@ -17,6 +17,7 @@ function setup(settings: Record<string, string> = {}) {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       create: jest.fn(),
     },
     business: { upsert: jest.fn() },
@@ -207,15 +208,39 @@ describe('authentication security boundaries', () => {
     const { service, prisma, email } = setup();
     const row = { id: 'user-1', email: 'audit@example.invalid', name: null, googleId: null, emailVerified: false };
     prisma.user.findFirst.mockResolvedValue(row);
-    prisma.user.update.mockResolvedValue(row);
+    prisma.user.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(service.registerEmail('audit@example.invalid', 'new-password')).resolves.toMatchObject({ sent: true });
 
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'user-1', emailVerified: false, googleId: null },
       data: { passwordHash: expect.any(String), name: null },
     });
     expect(email.sendVerificationEmail).toHaveBeenCalled();
+  });
+
+  it('writes nothing when Google links the row between the check and the write (#92)', async () => {
+    const { service, prisma, email } = setup();
+    // The read sees a pending sign-up; by write time a first Google sign-in
+    // has verified and linked it, so the conditional write matches no row.
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'user-1', email: 'audit@example.invalid', name: null, googleId: null, emailVerified: false,
+    });
+    prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.registerEmail('audit@example.invalid', 'attacker-password')).rejects.toThrow(
+      new BadRequestException('هذا البريد الإلكتروني مسجّل بالفعل'),
+    );
+
+    // The filter is the protection: the mock's count: 0 only stands in for
+    // the database rejecting a row that is no longer a pending sign-up.
+    expect(prisma.user.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user-1', emailVerified: false, googleId: null },
+    }));
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.emailVerification.create).not.toHaveBeenCalled();
+    expect(email.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
   it('rejects an expired or consumed email verification link without issuing a token', async () => {
