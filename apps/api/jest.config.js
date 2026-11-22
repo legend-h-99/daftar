@@ -6,10 +6,14 @@ module.exports = {
   coverageDirectory: '../coverage',
   // Measure every source file, not only the files a test happens to import.
   collectCoverageFrom: ['**/*.ts', '!**/*.spec.ts', '!main.ts'],
-  // Ratchet floor set from the 2026-11-17 baseline (#72). Raise these as tests
-  // land; never lower them to make a PR pass.
+  // Ratchet floor raised from the 2026-11-22 baseline (#72), measured without
+  // src/domain. Raise these as tests land; never lower them to make a PR pass.
   coverageThreshold: {
-    global: { statements: 7, branches: 9, functions: 4, lines: 7 },
+    global: { statements: 11, branches: 17, functions: 6, lines: 11 },
+    // Domain logic has its own target (#72, AgDR-0001). Files under this path
+    // are scored here and no longer count toward the global floor.
+    // Jest resolves this key from the package root, not from rootDir.
+    './src/domain/': { statements: 80, branches: 80, functions: 80, lines: 80 },
   },
   testEnvironment: 'node',
 };
