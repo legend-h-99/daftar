@@ -1,0 +1,84 @@
+name: Strix security assessment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: strix-security
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check model configuration and Docker
+        env:
+          STRIX_LLM: ${{ secrets.STRIX_LLM }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          test -n "$STRIX_LLM" || { echo "::error::Add the STRIX_LLM repository secret"; exit 1; }
+          test -n "$LLM_API_KEY" || { echo "::error::Add the LLM_API_KEY repository secret"; exit 1; }
+          docker info >/dev/null
+
+      - name: Install pinned Strix binary
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/usestrix/strix/releases/download/v1.7.0/strix-1.7.0-linux-x86_64.tar.gz \
+            --output "$RUNNER_TEMP/strix.tar.gz"
+          echo "b8cd7e84d63cbeff6726301a9e08fddedf40fc6a4edcdb4edda8a853b3312de6  $RUNNER_TEMP/strix.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/strix-bin"
+          tar -xzf "$RUNNER_TEMP/strix.tar.gz" -C "$RUNNER_TEMP/strix-bin"
+          STRIX_BIN=$(find "$RUNNER_TEMP/strix-bin" -type f -name strix -print -quit)
+          test -n "$STRIX_BIN"
+          chmod +x "$STRIX_BIN"
+          echo "STRIX_BIN=$STRIX_BIN" >> "$GITHUB_ENV"
+
+      - name: Review repository source
+        id: scan
+        continue-on-error: true
+        env:
+          STRIX_LLM: ${{ secrets.STRIX_LLM }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          "$STRIX_BIN" -n -t ./ --scan-mode quick --scope-mode full \
+            --max-budget 10 --instruction-file docs/security/strix-scope.md
+
+      - name: Check completion
+        if: always() && steps.scan.outcome != 'skipped'
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          runs = list(Path("strix_runs").glob("*/run.json"))
+          if not runs:
+              raise SystemExit("No run.json: scan did not produce verifiable results.")
+          latest = max(runs, key=lambda p: p.stat().st_mtime)
+          data = json.loads(latest.read_text())
+          if data.get("status") != "completed":
+              raise SystemExit("Incomplete scan. Review artifacts before drawing conclusions.")
+          print("Run completed; inspect coverage and cost in run.json and the report.")
+          PY
+
+      - name: Save assessment reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strix-assessment-${{ github.run_id }}
+          path: strix_runs/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve scanner failure
+        if: always() && steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::Strix reported findings or a runtime error. Review the assessment artifacts."
+          exit 1
