@@ -5,6 +5,7 @@ import { apiPost, ApiError } from "@/lib/api";
 import { MaterialUnit, UNIT_LABELS } from "@/lib/types";
 import BottomSheet from "@/components/BottomSheet";
 import { ErrorAlert, Field, fieldClass } from "@/components/ui/form-field";
+import posthog from "posthog-js";
 
 /** نافذة إضافة صنف جديد للمخزون يدويًا. */
 export default function AddMaterialSheet({
@@ -47,6 +48,7 @@ export default function AddMaterialSheet({
         initialQty: qtyNum,
         reorderLevel: reorder === "" ? undefined : Number(reorder),
       });
+      posthog.capture("inventory_material_added", { unit });
       onSaved();
       onClose();
     } catch (err) {

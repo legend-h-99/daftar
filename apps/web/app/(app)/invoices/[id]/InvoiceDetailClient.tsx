@@ -15,6 +15,7 @@ import InvoiceFileActions from "@/components/invoices/InvoiceFileActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorAlert } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
+import posthog from "posthog-js";
 
 export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
@@ -56,6 +57,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         { status: "PARTIAL", paidAmount: amount, expectedPaidAmount: invoice.paidAmount ?? 0 },
       );
       setInvoice(updated);
+      posthog.capture("invoice_partial_payment_recorded");
       setShowPartialForm(false);
       setPartialAmount("");
     } catch (err) {
@@ -87,6 +89,7 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
         { status: "PAID", expectedPaidAmount: invoice.paidAmount ?? 0 },
       );
       setInvoice(updated);
+      posthog.capture("invoice_marked_paid");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : en ? "Could not update the status" : "تعذر تحديث الحالة");
     } finally {

@@ -12,6 +12,7 @@ import { useLanguage } from "@/lib/language";
 import { currentDateStr } from "@/lib/format";
 import BottomSheet from "@/components/BottomSheet";
 import { ErrorAlert, Field, fieldClass } from "@/components/ui/form-field";
+import posthog from "posthog-js";
 
 const CATEGORY_OPTIONS = Object.entries(EXPENSE_CATEGORY_LABELS) as [
   ExpenseCategory,
@@ -59,6 +60,7 @@ export default function AddExpenseSheet({
         note: note.trim() || undefined,
       });
       track("expense_added", { category });
+      posthog.capture("expense_added", { category });
       onSaved();
       onClose();
     } catch (err) {

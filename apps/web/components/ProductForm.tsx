@@ -12,6 +12,7 @@ import { Material, Product, RecipeItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
+import posthog from "posthog-js";
 
 interface ProductFormProps {
   product?: Product;
@@ -92,9 +93,11 @@ export default function ProductForm({ product }: ProductFormProps) {
     try {
       if (isEdit && product) {
         await apiPatch(`/products/${product.id}`, payload);
+        posthog.capture("product_updated", { recipe_items: allItems.length });
       } else {
         await apiPost("/products", payload);
         track("product_created", { recipe_items: allItems.length });
+        posthog.capture("product_created", { recipe_items: allItems.length });
       }
       router.push("/products");
       router.refresh();

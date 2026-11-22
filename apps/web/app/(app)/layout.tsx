@@ -10,6 +10,7 @@ import { trackSessionStarted } from "@/lib/analytics";
 import { apiGet } from "@/lib/api";
 import { Business, User } from "@/lib/types";
 import { BusinessProvider } from "@/lib/business-context";
+import posthog from "posthog-js";
 
 export default function AppLayout({
   children,
@@ -27,6 +28,10 @@ export default function AppLayout({
     const me = await apiGet<{ user: User; business: Business | null }>(
       "/auth/me",
     );
+    posthog.identify(me.user.id, {
+      email: me.user.email ?? undefined,
+      name: me.user.name ?? undefined,
+    });
     setUser(me.user);
     setBusiness(me.business);
   }, []);

@@ -10,6 +10,7 @@ import { Business } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { fieldClass } from "@/components/ui/form-field";
 import { useLanguage } from "@/lib/language";
+import posthog from "posthog-js";
 
 import FirstExpensePrompt from "@/components/FirstExpensePrompt";
 
@@ -128,6 +129,7 @@ export default function OnboardingPage() {
       );
       setToken(res.accessToken, res.sessionAuthenticated);
       track("onboarding_completed", { vat_enabled: vatEnabled });
+      posthog.capture("onboarding_completed", { vat_enabled: vatEnabled });
       setSetupComplete(true);
     } catch (err) {
       track("workflow_failed", { workflow: "onboarding", status: err instanceof ApiError ? err.status : 0 });
