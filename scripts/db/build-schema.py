@@ -20,6 +20,7 @@ Usage: DATABASE_URL=postgresql://...@localhost/<empty db> python3 scripts/db/bui
 The target must be a local, empty database. The script refuses any other.
 """
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -161,7 +162,8 @@ def main() -> None:
             if not cron_stubbed:
                 run_sql(env, CRON_STUB, 'local pg_cron stand-in')
                 cron_stubbed = True
-            sql = sql.replace(CRON_EXTENSION, '-- pg_cron not available locally: stand-in used')
+            sql = re.sub(re.escape(CRON_EXTENSION), '-- pg_cron not available locally: stand-in used',
+                         sql, flags=re.IGNORECASE)
         run_sql(env, sql, path.name)
 
 
