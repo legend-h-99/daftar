@@ -285,7 +285,8 @@ async function handleAnalytics(req: Request): Promise<Response> {
   // global counter bounds writes: the per-device cap alone is bypassed by sending fresh device IDs.
   const limited = clientIp(req)
     ? await rateLimit(req, 'analytics', null, 60)
-    : await rateLimit(req, 'analytics-untrusted', 'all', 600, { includeIp: false });
+    // consume_auth_rate_limit rejects limits above 100, so 600 a minute is spread as 100 per 10 seconds.
+    : await rateLimit(req, 'analytics-untrusted', 'all', 100, { includeIp: false, windowSeconds: 10 });
   if (limited) return limited;
   const text = await req.text();
   if (text.length > 2048) return err('Event too large', 413);

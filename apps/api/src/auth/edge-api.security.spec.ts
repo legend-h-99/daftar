@@ -410,6 +410,18 @@ describe('deployed Supabase API security', () => {
       expect((await handler(request('/analytics/events', 'POST', event))).status).toBe(429);
       expect(database.rpc.mock.calls.some(call => call[0] === 'record_product_event')).toBe(false);
     });
+    it('keeps every rate limit within the bounds consume_auth_rate_limit accepts', async () => {
+      const { handler, database } = edgeApi();
+      await handler(request('/analytics/events', 'POST', event));
+      const limits = database.rpc.mock.calls.filter(([name]) => name === 'consume_auth_rate_limit').map(([, args]) => args);
+      expect(limits.length).toBeGreaterThan(0);
+      for (const args of limits) {
+        expect(args.p_limit).toBeGreaterThanOrEqual(1);
+        expect(args.p_limit).toBeLessThanOrEqual(100);
+        expect(args.p_window_seconds).toBeGreaterThanOrEqual(1);
+        expect(args.p_window_seconds).toBeLessThanOrEqual(3600);
+      }
+    });
     it('keys collection by client IP when the Worker vouches for it', async () => {
       const secret = 'e'.repeat(40);
       const ipKey = createHash('sha256').update('analytics:ip:203.0.113.9').digest('hex');
