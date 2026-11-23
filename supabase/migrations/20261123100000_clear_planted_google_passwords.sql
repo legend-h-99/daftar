@@ -6,7 +6,8 @@
 --
 -- Google has proven these rows' email addresses, so this applies the same change as the #82
 -- link step: clear the password, consume pending verification links, and mark the email
--- verified. Owners keep Google sign-in and can set a password later through password reset.
+-- verified. Owners keep Google sign-in. Password reset does not email an account without a
+-- password, so these owners sign in with Google only.
 -- Running it again is a no-op.
 BEGIN;
 
