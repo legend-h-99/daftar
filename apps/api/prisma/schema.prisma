@@ -84,6 +84,8 @@ model User {
   business      Business? @relation(fields: [businessId], references: [id])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime? @default(now()) @updatedAt @db.Timestamp(6)
+  // Bumped on password change; the Edge function rejects tokens with an older value.
+  tokenVersion  Int       @default(0)
 
   emailVerifications EmailVerification[]
   passwordResets     PasswordReset[]
@@ -399,9 +401,9 @@ model TokenBlacklist {
 }
 
 model FundingEntry {
-  id String @id @default(dbgenerated("gen_random_uuid()::text"))
+  id String @id @default(dbgenerated("(gen_random_uuid())::text"))
   businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   requestId String @db.Uuid
   kind String
   amount Decimal @db.Decimal(14, 2)
@@ -409,7 +411,7 @@ model FundingEntry {
   note String?
   createdAt DateTime @default(now()) @db.Timestamptz
   @@unique([businessId, requestId])
-  @@index([businessId, date])
+  @@index([businessId, date], map: "FundingEntry_business_date_idx")
 }
 
 model AdminAuditLog {

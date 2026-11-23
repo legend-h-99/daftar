@@ -9,7 +9,8 @@ before that date, so this script replays the earlier history first:
    of what production recorded).
 3. The known production drift that no recorded migration holds (the
    User email/password columns and two Prisma-era tables).
-4. Every file in supabase/migrations/, in name order.
+4. Every file in supabase/migrations/, in name order. A local stand-in
+   replaces pg_cron when the server does not ship it (plain Postgres in CI).
 
 This is the same sequence tests/red-team/bootstrap-audit.py uses, without
 its legacy test rows and with the payment ledger always applied.
@@ -49,6 +50,19 @@ PRODUCTION_DRIFT = '''ALTER TABLE "User" ADD COLUMN "emailVerified" boolean DEFA
   ADD COLUMN "passwordHash" text, ADD COLUMN "updatedAt" timestamp DEFAULT now();
 ALTER TABLE "Material" ADD COLUMN "updatedAt" timestamp DEFAULT now();
 ALTER TABLE "RecipeItem" ADD COLUMN "updatedAt" timestamp DEFAULT now();'''
+
+
+# Supabase ships pg_cron. Plain Postgres (CI, local) does not, so the
+# extension statement is dropped and this stand-in records the schedules.
+# The drift check compares the public schema only, so the stand-in has no
+# effect on its result.
+CRON_EXTENSION = 'create extension if not exists pg_cron;'
+CRON_STUB = '''CREATE SCHEMA IF NOT EXISTS cron;
+CREATE TABLE IF NOT EXISTS cron.job (jobid bigserial PRIMARY KEY, jobname text, schedule text, command text);
+CREATE OR REPLACE FUNCTION cron.schedule(job_name text, schedule text, command text) RETURNS bigint
+  LANGUAGE sql AS $$ INSERT INTO cron.job (jobname, schedule, command) VALUES (job_name, schedule, command) RETURNING jobid $$;
+CREATE OR REPLACE FUNCTION cron.unschedule(job_name text) RETURNS boolean
+  LANGUAGE sql AS $$ DELETE FROM cron.job WHERE jobname = job_name RETURNING true $$;'''
 
 
 def database_env() -> dict:
@@ -109,6 +123,17 @@ def require_empty(env: dict) -> None:
         sys.exit('build-schema: the public schema is not empty. Use a fresh database.')
 
 
+def has_extension(env: dict, name: str) -> bool:
+    pg_bin = os.environ.get('PG_BIN', '')
+    psql = (pg_bin.rstrip('/') + '/psql') if pg_bin else 'psql'
+    result = subprocess.run(
+        [psql, '-X', '-At', '-c',
+         "SELECT count(*) FROM pg_available_extensions WHERE name = '%s'" % name],
+        text=True, capture_output=True, env=env,
+    )
+    return result.returncode == 0 and result.stdout.strip() == '1'
+
+
 def main() -> None:
     env = database_env()
     require_empty(env)
@@ -129,8 +154,15 @@ def main() -> None:
         if '20260831' <= path.name < FIRST_SUPABASE_ONLY:
             run_sql(env, path.read_text(), path.name)
 
+    cron_stubbed = False
     for path in sorted(SUPABASE.glob('*.sql')):
-        run_sql(env, path.read_text(), path.name)
+        sql = path.read_text()
+        if CRON_EXTENSION in sql.lower() and not has_extension(env, 'pg_cron'):
+            if not cron_stubbed:
+                run_sql(env, CRON_STUB, 'local pg_cron stand-in')
+                cron_stubbed = True
+            sql = sql.replace(CRON_EXTENSION, '-- pg_cron not available locally: stand-in used')
+        run_sql(env, sql, path.name)
 
 
 if __name__ == '__main__':
