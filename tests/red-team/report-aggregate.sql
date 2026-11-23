@@ -10,7 +10,7 @@ CREATE TABLE "StockMovement" ("businessId" text, type text, "createdAt" timestam
 CREATE TABLE "Product" (id text, "overheadCost" float8);
 CREATE TABLE "InvoiceItem" ("invoiceId" text, "productId" text);
 CREATE TABLE "RecipeItem" ("productId" text, "materialId" text, "unitPrice" float8);
-\ir ../../supabase/migrations/20261009180000_report_sales_and_quality.sql
+\ir ../../supabase/migrations/20261009214714_report_sales_and_quality.sql
 INSERT INTO "Invoice" SELECT 'i'||n,'a','2026-10-05',1,0,'UNPAID',n,null,null FROM generate_series(1,1201) n;
 INSERT INTO "Invoice" VALUES ('other','b','2026-10-05',9999,9999,'PAID',1,null,null), ('boundary','a','2026-09-30 21:00',9,0,'UNPAID',1202,null,null);
 INSERT INTO "Expense" VALUES ('a',2,'2026-10-01'),('a',999,'2026-09-30'),('b',999,'2026-10-01');

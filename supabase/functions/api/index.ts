@@ -25,13 +25,16 @@ function corsFor(req: Request): Record<string, string> {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-// Prefer a separate signing secret. The service key is a private, deployment-stable
-// fallback until JWT_SECRET is provisioned; never use a source-code literal.
-const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? SERVICE_KEY
+// Required. Sessions are signed only with this secret, never with the service-role key, so a leak of
+// one does not expose the other. Without it signing and verification fail closed.
+const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? ''
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '269103980010-fbvbr60h67qh60j8cbib2a9agle2087n.apps.googleusercontent.com'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const EMAIL_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('EMAIL_DAILY_SEND_CAP') ?? '100', 10)
 const SMS_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_DAILY_SEND_CAP') ?? '100', 10)
+// Budget for numbers that have no account yet. Kept apart from SMS_DAILY_SEND_CAP so that a flood
+// of requests for unknown numbers cannot stop existing users from signing in.
+const SMS_NEW_DAILY_SEND_CAP = Number.parseInt(Deno.env.get('SMS_NEW_DAILY_SEND_CAP') ?? '50', 10)
 // Authentica sends and checks the SMS codes (docs.authentica.sa). The key is a function
 // secret only; the template is the Arabic OTP template picked in the Authentica dashboard.
 const AUTHENTICA_API_KEY = Deno.env.get('AUTHENTICA_API_KEY') ?? ''
@@ -90,6 +93,12 @@ function db() {
   return dbClient
 }
 
+// A new random version for each password change. Each token carries the version it was issued
+// with (claim `pv`), and getUser rejects tokens whose version no longer matches the account.
+function newTokenVersion(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff
+}
+
 async function signJwt(payload: Record<string, unknown>): Promise<string> {
   const enc = (s: string) => btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
   const header = enc(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -130,14 +139,16 @@ async function getUser(req: Request): Promise<Record<string, unknown> | Response
   // One parallel round trip: revocation, account and the per-account rate limit.
   const [blacklist, account, limited] = await Promise.all([
     supabase.from('TokenBlacklist').select('jti').eq('jti', claims.jti as string).maybeSingle(),
-    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified').eq('id', claims.sub).maybeSingle(),
+    supabase.from('User').select('id,phone,email,googleId,businessId,emailVerified,tokenVersion').eq('id', claims.sub).maybeSingle(),
     rateLimit(req, 'api-account', claims.sub, 100, { includeIp: false }),
   ])
   if (blacklist.error || account.error) return err('Service temporarily unavailable', 503)
   if (blacklist.data || !account.data) return err('Unauthorized', 401)
+  // A password change bumps the account's token version, which ends every earlier session.
+  if (Number(claims.pv ?? 0) !== Number(account.data.tokenVersion ?? 0)) return err('Unauthorized', 401)
   if (limited) return limited
   const row = account.data
-  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified }
+  return { ...claims, phone: row.phone, email: row.email, googleId: row.googleId, businessId: row.businessId, emailVerified: row.emailVerified, tokenVersion: row.tokenVersion }
 }
 
 // An admin's email must be on the list and proven: through Google or the
@@ -164,18 +175,35 @@ function err(msg: string, status = 400, code?: string, extra: Record<string, unk
   return json({ message: msg, statusCode: status, ...(code ? { code } : {}), ...extra }, status)
 }
 
+// Only the Worker holds EDGE_SHARED_SECRET and may vouch for the client address it saw. This function
+// URL is public, so a direct caller can set any header. Without the secret the request gets no
+// IP-keyed bucket (per-account buckets still apply) instead of a bucket the caller chose.
+function clientIp(req: Request): string | null {
+  const secret = Deno.env.get('EDGE_SHARED_SECRET') ?? ''
+  if (secret.length < 32 || req.headers.get('x-daftar-edge-secret') !== secret) return null
+  return req.headers.get('cf-connecting-ip')
+}
+
+// Hourly caps on phone sign-in, on top of the per-minute ones. The daily SMS budget is shared by
+// every user, so without a per-number cap a single number (an attacker's own account is enough)
+// could spend the whole day's budget in about half an hour and stop phone sign-in for everyone.
+// The verify cap also bounds how many codes can be guessed for one number.
+const OTP_REQUESTS_PER_NUMBER_HOUR = 5
+const OTP_REQUESTS_PER_IP_HOUR = 20
+const OTP_VERIFIES_PER_NUMBER_HOUR = 15
+
 async function rateLimit(
-  req: Request, action: string, identifier: unknown, limit: number, { includeIp = true } = {},
+  req: Request, action: string, identifier: unknown, limit: number,
+  { includeIp = true, windowSeconds = 60 } = {},
 ): Promise<Response | null> {
-  const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const ip = clientIp(req)
   const identity = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
-  const keys = includeIp ? [`${action}:ip:${ip}`] : []
+  const keys = includeIp && ip ? [`${action}:ip:${ip}`] : []
   if (identity) keys.push(`${action}:account:${identity}`)
   const outcomes = await Promise.all(keys.map(async key => {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
     const hashed = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')
-    return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: 60 })
+    return db().rpc('consume_auth_rate_limit', { p_key: hashed, p_limit: limit, p_window_seconds: windowSeconds })
   }))
   if (outcomes.some(o => o.error)) return err('Authentication temporarily unavailable', 503)
   if (outcomes.some(o => o.data !== true)) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
@@ -201,10 +229,11 @@ async function reserveDailyEmailSend(): Promise<boolean> {
   return !error && data === true
 }
 
-async function reserveDailySmsSend(): Promise<boolean> {
-  if (!Number.isInteger(SMS_DAILY_SEND_CAP) || SMS_DAILY_SEND_CAP < 1) return false
+async function reserveDailySmsSend(segment: 'returning' | 'new'): Promise<boolean> {
+  const cap = segment === 'returning' ? SMS_DAILY_SEND_CAP : SMS_NEW_DAILY_SEND_CAP
+  if (!Number.isInteger(cap) || cap < 1) return false
   const { data, error } = await db().rpc('consume_external_usage_budget', {
-    p_key: 'sms', p_daily_limit: SMS_DAILY_SEND_CAP,
+    p_key: `sms:${segment}`, p_daily_limit: cap,
   })
   return !error && data === true
 }
@@ -243,7 +272,7 @@ function currentRiyadhMonth(): string {
 }
 
 const ANALYTICS_EVENTS = new Set(["first_expense_prompt_viewed", "first_expense_prompt_clicked", "first_expense_prompt_skipped", "first_expense_completed", "user_signed_up", "user_signed_in", "login_started", "login_failed", "onboarding_started", "onboarding_completed", "product_created", "invoice_created", "expense_added", "purchase_recorded", "session_started", "landing_viewed", "cta_clicked", "page_viewed", "workflow_started", "workflow_failed"]);
-const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
+const ANALYTICS_PATHS = new Set(["/", "/landing", "/login", "/onboarding", "/dashboard", "/products", "/products/new", "/products/edit/view", "/inventory", "/expenses", "/invoices", "/invoices/list", "/invoices/new", "/invoices/detail/view", "/purchases", "/purchases/new", "/purchases/scan", "/reports", "/funding", "/plans", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/register", "/otp", "/offline"]);
 const ANALYTICS_SOURCES = new Set(['x', 'instagram', 'tiktok', 'whatsapp', 'direct', 'other']);
 const ANALYTICS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function handleAnalytics(req: Request): Promise<Response> {
@@ -252,7 +281,12 @@ async function handleAnalytics(req: Request): Promise<Response> {
   const origin = req.headers.get('Origin');
   if (origin && !ALLOWED_ORIGINS.has(origin)) return err('Origin not allowed', 403);
   if (Number(req.headers.get('Content-Length') || 0) > 2048) return err('Event too large', 413);
-  const limited = await rateLimit(req, 'analytics', null, 60);
+  // Without the Worker's edge secret there is no client IP, so the per-IP cap cannot apply. Then one
+  // global counter bounds writes: the per-device cap alone is bypassed by sending fresh device IDs.
+  const limited = clientIp(req)
+    ? await rateLimit(req, 'analytics', null, 60)
+    // consume_auth_rate_limit rejects limits above 100, so 600 a minute is spread as 100 per 10 seconds.
+    : await rateLimit(req, 'analytics-untrusted', 'all', 100, { includeIp: false, windowSeconds: 10 });
   if (limited) return limited;
   const text = await req.text();
   if (text.length > 2048) return err('Event too large', 413);
@@ -328,7 +362,7 @@ async function authGoogle(credential: string) {
   }
   if (!user) return err('Could not create user', 500)
 
-  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email, googleId, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, email, name: user.name ?? name, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -367,7 +401,10 @@ async function authOtpRequest(phoneInput: unknown) {
   if (typeof phoneInput !== 'string') return err('Enter a valid Saudi mobile number', 400)
   const phone = normalizePhone(phoneInput)
   if (!/^\+9665\d{8}$/.test(phone)) return err('Enter a valid Saudi mobile number', 400)
-  if (!await reserveDailySmsSend()) return disabled('Phone verification is temporarily unavailable')
+  // A number that already has an account draws on the returning-user budget, so a flood of requests
+  // for unknown numbers cannot stop existing users from signing in.
+  const { data: known } = await db().from('User').select('id').eq('phone', phone).maybeSingle()
+  if (!await reserveDailySmsSend(known ? 'returning' : 'new')) return disabled('Phone verification is temporarily unavailable')
 
   const sent = await authentica('send-otp', { method: 'sms', phone, template_id: AUTHENTICA_TEMPLATE_ID })
   if (sent.status === 429) return err('Too many requests; try again shortly', 429, 'RATE_LIMITED')
@@ -409,7 +446,7 @@ async function authOtpVerify(phoneInput: unknown, code: unknown) {
       isNewUser = true
     }
   }
-  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, phone: normalized, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, user: { id: user.id, phone: normalized, businessId: user.businessId }, hasBusiness: !!user.businessId, isNewUser })
 }
 
@@ -420,9 +457,13 @@ async function authMe(user: Record<string, unknown>) {
   return json({ ...data, business: data.Business, user: { id: data.id, phone: data.phone, email: data.email, name: data.name, businessId: data.businessId, isAdmin: isAdmin(user) } })
 }
 
-function validEmailInput(email: unknown, password: unknown): email is string {
-  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    typeof password === 'string' && password.length >= 8 && password.length <= 128
+function validEmailAddress(email: unknown): email is string {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+// Chosen by the mailbox owner when verifying (authEmailVerify), never at registration.
+function validNewPassword(password: unknown): password is string {
+  return typeof password === 'string' && password.length >= 8 && password.length <= 128
 }
 
 async function sendVerificationEmail(email: string, token: string): Promise<boolean> {
@@ -461,22 +502,23 @@ async function sendPasswordResetEmail(email: string, token: string): Promise<boo
 
 async function authEmailRegister(body: Record<string, unknown>) {
   if (!RESEND_API_KEY) return disabled('Email registration is temporarily unavailable')
-  if (!validEmailInput(body.email, body.password)) return err('Invalid email or password', 400)
+  if (!validEmailAddress(body.email)) return err('Invalid email address', 400)
   const email = body.email.trim().toLowerCase()
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : null
   const supabase = db()
   const { data: existing } = await supabase.from('User').select('id,emailVerified,googleId').eq('email', email).maybeSingle()
-  // A Google-owned row must never receive a password from registration (#88).
-  if (existing?.emailVerified || existing?.googleId) return err('Email already registered', 400)
-  const passwordHash = await bcrypt.hash(body.password as string, 12)
+  // Same answer as a new sign-up, so the response does not reveal which addresses have accounts.
+  // A Google-owned row never receives a password from this path (#88).
+  if (existing?.emailVerified || existing?.googleId) return json({ sent: true })
+  // No password is stored at registration, and an existing unverified account keeps whatever
+  // it has. The mailbox owner sets the password when verifying (authEmailVerify), so a stranger
+  // cannot pre-set the credential that the owner later activates.
   let userId: string
   if (existing) {
     userId = existing.id
-    const { error } = await supabase.from('User').update({ passwordHash, name }).eq('id', userId)
-    if (error) return err('Could not register', 500)
   } else {
     userId = newId('user')
-    const { error } = await supabase.from('User').insert({ id: userId, email, passwordHash, name, emailVerified: false })
+    const { error } = await supabase.from('User').insert({ id: userId, email, name, emailVerified: false })
     if (error) return err('Could not register', 500)
   }
   const issued = await issueVerificationLink(userId, email)
@@ -527,12 +569,12 @@ async function authEmailLogin(body: Record<string, unknown>) {
   if (typeof body.email !== 'string' || typeof body.password !== 'string') return invalid()
   const supabase = db()
   const email = body.email.trim().toLowerCase()
-  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified').eq('email', email).maybeSingle()
+  const { data: user, error } = await supabase.from('User').select('id,email,phone,name,businessId,passwordHash,emailVerified,tokenVersion').eq('email', email).maybeSingle()
   if (error) return err('Service temporarily unavailable', 503)
   const passwordMatches = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH) && Boolean(user?.passwordHash)
   if (!passwordMatches) return invalid()
   if (!user.emailVerified) return err('Please verify your email address first', 403, 'EMAIL_NOT_VERIFIED')
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, pv: user.tokenVersion ?? 0 })
   return json({
     accessToken,
     user: { id: user.id, email: user.email, name: user.name, businessId: user.businessId },
@@ -566,20 +608,28 @@ async function authPasswordReset(body: Record<string, unknown>) {
   const { data: record } = await supabase.from('PasswordReset').select('id,userId').eq('token', body.token)
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
   if (!record) return err('Invalid or expired password reset link', 400)
+  // Claim the link before changing the password. Two requests with the same link could both pass the
+  // lookup above; only the one whose update flips `consumed` may set a password.
+  const { data: claimed, error: claimError } = await supabase.from('PasswordReset').update({ consumed: true })
+    .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
+  if (claimError) return err('Could not reset password', 500)
+  if (!claimed) return err('Invalid or expired password reset link', 400)
 
   const passwordHash = await bcrypt.hash(body.password, 12)
-  const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true })
+  const tokenVersion = newTokenVersion()
+  const { data: user, error: userError } = await supabase.from('User').update({ passwordHash, emailVerified: true, tokenVersion })
     .eq('id', record.userId).select('id,email,phone,name,businessId').single()
-  const { error: resetError } = await supabase.from('PasswordReset').update({ consumed: true })
-    .eq('id', record.id).eq('consumed', false)
-  if (userError || resetError || !user) return err('Could not reset password', 500)
+  if (userError || !user) return err('Could not reset password', 500)
 
-  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId })
+  const accessToken = await signJwt({ sub: user.id, email: user.email, phone: user.phone, businessId: user.businessId, pv: tokenVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
 async function authEmailVerify(body: Record<string, unknown>) {
   if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) return err('Invalid verification link', 400)
+  // Checked before the link is consumed, so a request without a password does not burn it.
+  if (!validNewPassword(body.password)) return err('Choose a password of 8 to 128 characters', 400, 'PASSWORD_REQUIRED')
+  const password: string = body.password
   const supabase = db()
   const { data: record } = await supabase.from('EmailVerification').select('id,userId').eq('token', body.token)
     .eq('consumed', false).gt('expiresAt', new Date().toISOString()).maybeSingle()
@@ -587,10 +637,14 @@ async function authEmailVerify(body: Record<string, unknown>) {
   const { data: consumed } = await supabase.from('EmailVerification').update({ consumed: true })
     .eq('id', record.id).eq('consumed', false).select('id').maybeSingle()
   if (!consumed) return err('Invalid or expired verification link', 400)
-  const { data: user, error } = await supabase.from('User').update({ emailVerified: true })
-    .eq('id', record.userId).select('id,email,phone,name,businessId').single()
-  if (error || !user) return err('Could not verify email', 500)
-  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId })
+  // Only an unverified account is changed, so an old link cannot reset a verified account's password.
+  const passwordHash = await bcrypt.hash(password, 12)
+  const tokenVersion = newTokenVersion()
+  const { data: user, error } = await supabase.from('User').update({ emailVerified: true, passwordHash, tokenVersion })
+    .eq('id', record.userId).eq('emailVerified', false).select('id,email,phone,name,businessId').maybeSingle()
+  if (error) return err('Could not verify email', 500)
+  if (!user) return err('Invalid or expired verification link', 400)
+  const accessToken = await signJwt({ sub: user.id, email: user.email, businessId: user.businessId, pv: tokenVersion })
   return json({ accessToken, user, hasBusiness: !!user.businessId })
 }
 
@@ -647,7 +701,7 @@ async function handleOnboarding(req: Request, user: Record<string, unknown>) {
     p_vat_enabled: body.vatEnabled ?? false, p_vat_number: body.vatNumber ?? null,
   })
   if (error || !business) return err('تعذر إعداد النشاط؛ حدّث الصفحة وحاول مجددًا', 409)
-  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id })
+  const accessToken = await signJwt({ sub: userId, phone: user.phone, email: user.email, googleId: user.googleId, businessId: business.id, pv: user.tokenVersion ?? 0 })
   return json({ accessToken, business }, 201)
 }
 
@@ -818,7 +872,57 @@ async function handlePurchasesSummary(user: Record<string, unknown>) {
   return json(data ?? { bySupplier: [], byMonth: [] })
 }
 
+// Financing is deliberately separate from sales, COGS and profit.
+const FUNDING_KINDS = ['OWNER_CONTRIBUTION', 'LOAN', 'OWNER_WITHDRAWAL', 'LOAN_REPAYMENT']
+async function handleFunding(req: Request, user: Record<string, unknown>, url: URL) {
+  const bizId = user.businessId as string
+  if (!bizId) return err('Business not set up', 403)
+  const supabase = db()
+  if (req.method === 'GET') {
+    const month = url.searchParams.get('month')
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return err('Invalid month', 400)
+    let query = supabase.from('FundingEntry').select('*').eq('businessId', bizId)
+    const range = monthRange(month)
+    if (range) query = query.gte('date', range.startDate).lt('date', range.endDate)
+    const result = await readReportRows(query)
+    if (result.error) return err('تعذر تحميل تمويل المشروع', 503)
+    const entries = result.data
+    let cashIn = 0, cashOut = 0
+    for (const row of entries) {
+      if (['OWNER_CONTRIBUTION', 'LOAN'].includes(String(row.kind))) cashIn += Number(row.amount)
+      else cashOut += Number(row.amount)
+    }
+    return json({ entries: entries.sort((a,b) => String(b.date).localeCompare(String(a.date))).slice(0,200), count: entries.length, cashIn: Math.round(cashIn*100)/100, cashOut: Math.round(cashOut*100)/100 })
+  }
+  if (req.method !== 'POST') return err('Method not allowed', 405)
+  const body = await req.json()
+  const keys = ['requestId', 'kind', 'amount', 'date', 'note']
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k=>!keys.includes(k)) ||
+      !FUNDING_KINDS.includes(body.kind) || !validAmount(body.amount) || Math.abs(body.amount*100 - Math.round(body.amount*100)) > 0.00001 ||
+      typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId) ||
+      typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !validDate(body.date) || new Date(body.date).toISOString().slice(0,10) !== body.date || body.date > new Date(Date.now()+3*3600000).toISOString().slice(0,10) ||
+      (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_TEXT_LENGTH))) return err('أدخل نوع الحركة ومبلغًا موجبًا وتاريخًا صحيحًا غير مستقبلي', 400)
+  const payload = { ...body, businessId: bizId, note: body.note?.trim() || null }
+  const { data, error } = await supabase.from('FundingEntry').insert(payload).select().single()
+  if (error?.code === '23505') {
+    const existing = await supabase.from('FundingEntry').select('*').eq('businessId',bizId).eq('requestId',body.requestId).single()
+    const row = existing.data
+    if (!row || row.kind !== body.kind || Number(row.amount) !== body.amount || row.date !== body.date || row.note !== payload.note) return err('طلب مكرر ببيانات مختلفة',409)
+    return json(row)
+  }
+  if (error) return err('تعذر حفظ حركة التمويل',503)
+  return json(data,201)
+}
+
 // ── GENERIC CRUD ──────────────────────────────────────────────────────────────
+
+// Fields a client may set when creating a row. Anything else is refused, so a request cannot
+// write columns the app never sends (for example a stored status or totals).
+const CREATE_FIELDS: Record<string, string[]> = {
+  Customer: ['name', 'phone'],
+  Supplier: ['name', 'phone'],
+  Expense: ['amount', 'category', 'date', 'note'],
+}
 
 const TABLE_SELECTS: Record<string, string> = {
   Invoice: '*, items:InvoiceItem(*), customer:Customer(name,phone)',
@@ -1107,6 +1211,8 @@ async function handleCrud(req: Request, user: Record<string, unknown>, table: st
       const invalid = validateExpense(body, true)
       if (invalid) return err(invalid, 400)
     }
+    const createFields = CREATE_FIELDS[table]
+    if (createFields && Object.keys(body).some(key => !createFields.includes(key))) return err('Field cannot be set', 400)
     const items = body.items
     if (items != null && (!Array.isArray(items) || !['Invoice', 'Purchase'].includes(table) || items.length > 100)) return err('Invalid items', 400)
     delete body.items
@@ -1287,14 +1393,19 @@ async function handleRequest(req: Request) {
       const body = await req.json()
       // Keyed by the normalized number so 05… and +9665… share one budget.
       const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
-      const limited = await rateLimit(req, 'otp-request', phoneKey, 3)
+      // The hourly IP cap is looser than the per-number one: carrier NAT puts many phones behind one address.
+      const limited = await rateLimit(req, 'otp-request', phoneKey, 3) ??
+        await rateLimit(req, 'otp-request-hour', phoneKey, OTP_REQUESTS_PER_NUMBER_HOUR, { includeIp: false, windowSeconds: 3600 }) ??
+        await rateLimit(req, 'otp-request-ip-hour', null, OTP_REQUESTS_PER_IP_HOUR, { windowSeconds: 3600 })
       return limited ?? await authOtpRequest(body.phone)
     }
     if (req.method === 'POST' && path === '/auth/otp/verify') {
       if (!PHONE_LOGIN_ENABLED) return disabled('Phone verification is temporarily unavailable')
       const body = await req.json()
       const phoneKey = typeof body.phone === 'string' ? normalizePhone(body.phone) : null
-      return await rateLimit(req, 'otp-verify', phoneKey, 5) ?? authOtpVerify(body.phone, body.code)
+      return await rateLimit(req, 'otp-verify', phoneKey, 5) ??
+        await rateLimit(req, 'otp-verify-hour', phoneKey, OTP_VERIFIES_PER_NUMBER_HOUR, { includeIp: false, windowSeconds: 3600 }) ??
+        authOtpVerify(body.phone, body.code)
     }
     if (req.method === 'POST' && path === '/auth/demo') {
       const body = await req.json()
@@ -1355,6 +1466,7 @@ async function handleRequest(req: Request) {
       response.headers.set('Cache-Control', 'no-store')
       return response
     }
+    if (path === '/funding') return await handleFunding(req, user, url)
     if (seg[0] === 'business') return handleBusiness(req, user)
     if (path === '/onboarding' && req.method === 'POST') return handleOnboarding(req, user)
     if (path === '/dashboard' && req.method === 'GET') return handleDashboard(user)

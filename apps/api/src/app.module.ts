@@ -1,3 +1,4 @@
+import { FundingModule } from './funding/funding.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -26,6 +27,7 @@ import { HealthController } from './health.controller';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     ScheduleModule.forRoot(),
     PrismaModule,
+    FundingModule,
     AuthModule,
     BusinessModule,
     MaterialsModule,

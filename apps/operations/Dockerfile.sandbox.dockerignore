@@ -1,0 +1,10 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/
+!apps/web/
+!apps/web/package.json
+!apps/operations/
+!apps/operations/scripts/
+!apps/operations/scripts/sandbox-test.sh

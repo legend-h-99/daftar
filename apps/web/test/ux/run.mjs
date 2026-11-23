@@ -145,14 +145,14 @@ await scenario('reports error recovery',{},async(page,context)=>{
 });
 await scenario('English translation across app forms and reports',{},async(page,context)=>{
  await fixtures(context);await page.goto(`${base}/dashboard/`,{waitUntil:'networkidle'});
- await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.documentElement.dir==='ltr');
+ await page.locator('header summary',{hasText:'المزيد'}).click();await page.getByRole('button',{name:'Switch to English'}).click();await page.waitForFunction(()=>document.documentElement.dir==='ltr');
  await page.goto(`${base}/expenses/`,{waitUntil:'networkidle'});await page.getByRole('button',{name:'Add expense'}).first().click();
  await page.getByRole('heading',{name:'New expense'}).waitFor();assert.equal(await page.getByText('Category',{exact:true}).count(),1);
  assert((await page.locator('#expense-category option').allTextContents()).includes('Ingredients'));
  await page.goto(`${base}/reports/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Reports'}).waitFor();
  await page.getByRole('heading',{name:'Visual comparison'}).waitFor();await page.getByRole('heading',{name:'Profit and loss statement'}).waitFor();
  await page.goto(`${base}/invoices/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'New invoice'}).waitFor();
- await page.getByRole('button',{name:'Choose a product'}).waitFor();await page.getByText('Due date',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'Choose a product'}).waitFor();await page.locator('summary',{hasText:'Additional details (optional)'}).click();await page.getByText('Due date',{exact:false}).waitFor();
  await page.goto(`${base}/purchases/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'New purchase'}).waitFor();
  await page.getByRole('button',{name:'Save and update stock'}).waitFor();
  await page.goto(`${base}/products/new/`,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Product cost calculator'}).waitFor();

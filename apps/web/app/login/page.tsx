@@ -123,19 +123,11 @@ export default function LoginPage() {
     e.preventDefault();
     setEmailError(null);
 
-    if (emailMode === "register" && password.length < 8) {
-      setEmailError(
-        language === "ar"
-          ? "كلمة المرور لازم تكون 8 أحرف على الأقل"
-          : "Password must be at least 8 characters",
-      );
-      return;
-    }
-
     setEmailLoading(true);
     try {
       if (emailMode === "register") {
-        await apiPost("/auth/email/register", { email, password, name: name || undefined }, { auth: false });
+        // No password at registration: the owner chooses it after confirming the email.
+        await apiPost("/auth/email/register", { email, name: name || undefined }, { auth: false });
         setRegisterSuccess(true);
       } else {
         const res = await apiPost<{
@@ -218,8 +210,8 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {language === "ar"
-              ? "سجّل دخولك وتابع حسابات محلك بكل سهولة"
-              : "Sign in and keep your business accounts in one place."}
+              ? "ابدأ مجانًا أو سجّل دخولك"
+              : "Start for free or sign in."}
           </p>
         </div>
 
@@ -233,6 +225,9 @@ export default function LoginPage() {
             <GoogleSignInButton />
           </div>
 
+          <p className="px-6 pb-5 text-center text-sm leading-7 text-muted-foreground">
+            {language === "ar" ? (PHONE_LOGIN_ENABLED ? "أول زيارة؟ ينشأ حسابك عند المتابعة باستخدام Google أو التحقق من رقم جوالك، ثم تضيف بيانات مشروعك." : "أول زيارة؟ ينشأ حسابك عند المتابعة باستخدام Google، ثم تضيف بيانات مشروعك.") : (PHONE_LOGIN_ENABLED ? "New here? Continuing with Google or verifying your mobile creates your account. Then add your business details." : "New here? Continuing with Google creates your account. Then add your business details.")}
+          </p>
           {PHONE_LOGIN_ENABLED && <form onSubmit={handlePhoneSubmit} className="px-6 pb-5">
             <label htmlFor="phone" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Smartphone className="h-3.5 w-3.5 text-primary" />
@@ -345,6 +340,15 @@ export default function LoginPage() {
                 />
               </div>
 
+              {emailMode === "register" && (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {language === "ar"
+                    ? "سنرسل رابط تأكيد إلى بريدك. بعد التأكيد تختار كلمة المرور بنفسك."
+                    : "We will email you a confirmation link. After confirming, you choose your password."}
+                </p>
+              )}
+
+              {emailMode === "login" && (
               <div>
                 <label htmlFor="password" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                   <Lock className="h-3.5 w-3.5 text-primary" />
@@ -356,15 +360,10 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setEmailError(null); }}
-                    autoComplete={emailMode === "register" ? "new-password" : "current-password"}
+                    autoComplete="current-password"
                     dir="ltr"
-                    placeholder={
-                      emailMode === "register"
-                        ? language === "ar" ? "8 أحرف على الأقل" : "At least 8 characters"
-                        : "••••••••"
-                    }
+                    placeholder="••••••••"
                     className={cn(fieldClass, "py-3 text-left pr-11")}
-                    minLength={emailMode === "register" ? 8 : undefined}
                     required
                   />
                   <button
@@ -387,6 +386,7 @@ export default function LoginPage() {
                   </Link>
                 )}
               </div>
+              )}
 
               {emailError && (
                 <p role="alert" className="animate-scale-in rounded-xl bg-red-50 dark:bg-red-950 px-3 py-2.5 text-center text-sm font-medium text-red-600 dark:text-red-300">
