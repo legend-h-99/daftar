@@ -20,10 +20,16 @@ jobs:
         with:
           version: 10.33.2
       - run: pnpm install --frozen-lockfile
+      - name: Check audit exceptions are listed and unexpired
+        run: |
+          node --test tests/security/check-audit-exceptions.test.mjs
+          node tests/security/check-audit-exceptions.mjs
       - name: Audit workspace dependencies for high and critical advisories
         run: pnpm audit --prod --audit-level high
       - name: Verify parser and Metro compatibility
         run: node --test apps/mobile/test/dependency-security.test.cjs
+      - name: Lint mobile
+        run: pnpm --filter @daftar/mobile lint
       - name: Type-check mobile
         run: pnpm --filter @daftar/mobile type-check
       - name: Build Android and iOS Hermes bundles
@@ -61,7 +67,10 @@ jobs:
           version: 10.33.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api exec prisma generate
-      - run: pnpm --filter api exec prisma migrate deploy
+      # Builds the database from the Supabase SQL migrations (the schema
+      # source of truth, AgDR-0004) and fails if schema.prisma differs.
+      - name: Build schema from SQL migrations and check Prisma drift
+        run: scripts/db/check-schema-drift.sh
       - run: pnpm --filter api db:seed:scale
       - run: pnpm --filter api test:scale
 
@@ -90,8 +99,9 @@ jobs:
       - name: Lint web
         run: pnpm --filter web lint
 
-      - name: Test web
-        run: pnpm --filter web test -- --run
+      - name: Test web with coverage thresholds
+        # No bare "--": pnpm forwards it and vitest then drops the flags after it.
+        run: pnpm --filter web test --coverage
 
       - name: Install test browser
         run: pnpm --filter web exec playwright install --with-deps chromium
@@ -102,8 +112,11 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter api exec prisma generate
 
-      - name: Test API
-        run: pnpm --filter api test --runInBand
+      - name: Test API with coverage thresholds
+        run: pnpm --filter api test --runInBand --coverage
+
+      - name: Lint API
+        run: pnpm --filter api lint
 
       - name: Type-check API including test tooling
         run: pnpm --filter api exec tsc --noEmit

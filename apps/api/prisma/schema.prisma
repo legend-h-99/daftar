@@ -1,3 +1,10 @@
+// This file mirrors the database. It is not the schema source of truth.
+// The Supabase SQL migrations are (AgDR-0004). Change the schema with a new
+// file in supabase/migrations/, then update this file to match.
+// CI fails when the two differ: scripts/db/check-schema-drift.sh.
+// Prisma cannot express RLS, check constraints, partial indexes or SQL
+// functions, so those live only in the SQL migrations.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -40,38 +47,43 @@ enum ExpenseCategory {
 model Business {
   id         String   @id @default(uuid())
   name       String
-  ownerPhone String   @unique
+  ownerPhone String?  @unique
   vatEnabled Boolean  @default(false)
   vatNumber  String?
   city       String?
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt  DateTime @default(now()) @updatedAt
 
-  users          User[]
-  materials      Material[]
-  products       Product[]
-  customers      Customer[]
-  invoices       Invoice[]
-  fundingEntries FundingEntry[]
-  expenses       Expense[]
-  suppliers      Supplier[]
-  purchases      Purchase[]
-  stockMovements StockMovement[]
+  users             User[]
+  materials         Material[]
+  products          Product[]
+  customers         Customer[]
+  invoices          Invoice[]
+  invoicePayments   InvoicePayment[]
+  fundingEntries    FundingEntry[]
+  operationRequests OperationRequest[]
+  expenses          Expense[]
+  suppliers         Supplier[]
+  purchases         Purchase[]
+  stockMovements    StockMovement[]
 }
 
 model User {
-  id             String    @id @default(uuid())
-  phone          String?   @unique
-  email          String?   @unique
-  emailVerified  Boolean   @default(false)
-  passwordHash   String?
-  googleSub      String?   @unique
-  avatarUrl      String?
-  name           String?
-  businessId     String?
-  business       Business? @relation(fields: [businessId], references: [id])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  phone         String?   @unique
+  // Unique when not null: partial index "User_email_key" in the SQL
+  // migrations. Prisma cannot express a partial index, so look users up by
+  // email with findFirst.
+  email         String?
+  emailVerified Boolean?  @default(false)
+  passwordHash  String?
+  // Google account subject ("sub" claim).
+  googleId      String?
+  name          String?
+  businessId    String?
+  business      Business? @relation(fields: [businessId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime? @default(now()) @updatedAt @db.Timestamp(6)
 
   emailVerifications EmailVerification[]
   passwordResets     PasswordReset[]
@@ -113,14 +125,13 @@ model OtpCode {
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
-  // Composite covers the hot path: findFirst({ phone, consumed: false, expiresAt: { gt } })
-  @@index([phone, consumed, expiresAt])
+  @@index([phone])
 }
 
 model Material {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
+  business      Business  @relation(fields: [businessId], references: [id])
   name          String
   unit          Unit
   purchasePrice Float
@@ -128,11 +139,11 @@ model Material {
   unitPrice     Float
   // VAT % included in purchasePrice (informational: cost basis stays what
   // the owner actually paid; the extracted VAT portion is shown in the UI).
-  vatRate       Float    @default(0)
-  stockQty      Float    @default(0)
+  vatRate       Float     @default(0)
+  stockQty      Float     @default(0)
   reorderLevel  Float?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime? @updatedAt @db.Timestamp(6)
 
   recipeItems    RecipeItem[]
   purchaseItems  PurchaseItem[]
@@ -154,11 +165,6 @@ enum StockMovementType {
   ADJUSTMENT
 }
 
-enum StockRefType {
-  PURCHASE
-  INVOICE
-}
-
 model Supplier {
   id         String   @id @default(uuid())
   businessId String
@@ -175,17 +181,20 @@ model Supplier {
 }
 
 model Purchase {
-  id         String         @id @default(uuid())
-  businessId String
-  business   Business       @relation(fields: [businessId], references: [id])
-  supplierId String?
-  supplier   Supplier?      @relation(fields: [supplierId], references: [id])
-  number     Int
-  date       DateTime       @default(now())
-  total      Float
-  notes      String?
-  source     PurchaseSource @default(MANUAL)
-  createdAt  DateTime       @default(now())
+  id              String         @id @default(uuid())
+  businessId      String
+  business        Business       @relation(fields: [businessId], references: [id])
+  supplierId      String?
+  supplier        Supplier?      @relation(fields: [supplierId], references: [id])
+  number          Int
+  date            DateTime       @default(now())
+  total           Float
+  notes           String?
+  source          PurchaseSource @default(MANUAL)
+  createdAt       DateTime       @default(now())
+  voidedAt        DateTime?      @db.Timestamptz(6)
+  inventoryBefore Json?
+  inventoryAfter  Json?
 
   items PurchaseItem[]
 
@@ -194,6 +203,7 @@ model Purchase {
   @@index([businessId, date])
   @@index([businessId, number])
   @@index([businessId, supplierId])
+  @@index([businessId, createdAt])
 }
 
 model PurchaseItem {
@@ -207,9 +217,6 @@ model PurchaseItem {
   quantity   Float
   unitPrice  Float
   lineTotal  Float
-
-  @@index([purchaseId])
-  @@index([materialId])
 }
 
 // Append-only inventory ledger: every stock change (purchase in, sale out,
@@ -225,14 +232,14 @@ model StockMovement {
   qty          Float // signed: positive = in, negative = out
   balanceAfter Float
   costAmount   Float?
-  refType      StockRefType?
+  // 'PURCHASE' or 'INVOICE'. A text column in the database.
+  refType      String?
   refId        String?
   note         String?
   createdAt    DateTime          @default(now())
 
   @@index([businessId, createdAt])
   @@index([businessId, materialId, createdAt])
-  @@index([businessId, type, createdAt])
   @@index([materialId])
 }
 
@@ -271,7 +278,7 @@ model RecipeItem {
   lineCost     Float
   type         RecipeItemType @default(RAW)
   createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  updatedAt    DateTime?      @updatedAt @db.Timestamp(6)
 
   @@index([materialId])
   @@index([productId, materialId])
@@ -293,23 +300,27 @@ model Customer {
 }
 
 model Invoice {
-  id         String        @id @default(uuid())
-  businessId String
-  business   Business      @relation(fields: [businessId], references: [id])
-  customerId String?
-  customer   Customer?     @relation(fields: [customerId], references: [id])
-  number     Int
-  status     InvoiceStatus @default(UNPAID)
-  issueDate  DateTime      @default(now())
-  dueDate    DateTime?
-  subtotal   Float
-  vatAmount  Float         @default(0)
-  total      Float
-  paidAmount Float         @default(0)
-  notes      String?
-  createdAt  DateTime      @default(now())
+  id              String        @id @default(uuid())
+  businessId      String
+  business        Business      @relation(fields: [businessId], references: [id])
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  number          Int
+  status          InvoiceStatus @default(UNPAID)
+  issueDate       DateTime      @default(now())
+  dueDate         DateTime?
+  subtotal        Float
+  vatAmount       Float         @default(0)
+  total           Float
+  paidAmount      Float         @default(0)
+  notes           String?
+  createdAt       DateTime      @default(now())
+  idempotencyKey  String?
+  idempotencyHash String?
+  voidedAt        DateTime?     @db.Timestamptz(6)
 
-  items InvoiceItem[]
+  items    InvoiceItem[]
+  payments InvoicePayment[]
 
   @@unique([businessId, number])
   @@index([businessId])
@@ -317,6 +328,7 @@ model Invoice {
   @@index([businessId, status, issueDate])
   @@index([businessId, status, dueDate])
   @@index([businessId, number])
+  @@index([businessId, createdAt])
 }
 
 model InvoiceItem {
@@ -329,9 +341,38 @@ model InvoiceItem {
   unitPrice Float
   quantity  Float
   lineTotal Float
+  position  Int      @default(0)
 
-  @@index([invoiceId])
   @@index([productId])
+  @@index([invoiceId, position])
+}
+
+// Payment ledger: one row per payment recorded against an invoice. Written
+// by the Supabase functions; RLS and check constraints are in the SQL.
+model InvoicePayment {
+  id         String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onUpdate: NoAction)
+  invoiceId  String
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onUpdate: NoAction)
+  amount     Float
+  occurredAt DateTime? @db.Timestamptz(6)
+  recordedAt DateTime  @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+  source     String
+
+  @@index([businessId, occurredAt], map: "InvoicePayment_business_date_idx")
+}
+
+// Idempotency records for mutating API requests.
+model OperationRequest {
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kind        String
+  key         String
+  fingerprint String
+  response    Json
+
+  @@id([businessId, kind, key])
 }
 
 model Expense {
@@ -369,4 +410,55 @@ model FundingEntry {
   createdAt DateTime @default(now()) @db.Timestamptz
   @@unique([businessId, requestId])
   @@index([businessId, date])
+}
+
+model AdminAuditLog {
+  id           BigInt   @id @default(autoincrement())
+  adminUserId  String
+  action       String
+  targetUserId String?
+  result       String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt])
+}
+
+model ApiErrorEvent {
+  id        BigInt   @id @default(autoincrement())
+  method    String
+  path      String
+  status    Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt])
+}
+
+model AuthRateLimit {
+  key         String   @id
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int
+}
+
+model ExternalUsageBudget {
+  key       String
+  usageDate DateTime @db.Date
+  used      Int      @default(0)
+  updatedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([key, usageDate])
+}
+
+model ProductAnalyticsEvent {
+  id         String   @id @db.Uuid
+  deviceId   String   @db.Uuid
+  sessionId  String   @db.Uuid
+  event      String
+  path       String
+  source     String
+  properties Json     @default("{}")
+  occurredAt DateTime @db.Timestamptz(6)
+  createdAt  DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+
+  @@index([deviceId, createdAt], map: "product_analytics_device_time_idx")
+  @@index([createdAt], map: "product_analytics_time_idx")
 }

@@ -21,7 +21,7 @@ pnpm install
 cp apps/api/.env.example apps/api/.env   # edit DATABASE_URL / JWT_SECRET
 cd apps/api
 npx prisma generate
-npx prisma migrate dev --name init
+pnpm db:build             # empty local DB; builds supabase/migrations (AgDR-0004)
 npx prisma db seed        # demo business "مطبخ أم سلطان", phone +966500000001
 pnpm start:dev             # http://localhost:3001/api
 
