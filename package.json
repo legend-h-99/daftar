@@ -50,7 +50,9 @@
       "node-forge@1": "1.4.1",
       "qs@6": "6.16.1",
       "metro>image-size": "2.0.3",
-      "query-string>decode-uri-component": "0.5.1"
+      "query-string>decode-uri-component": "0.5.1",
+      "eslint-plugin-react-hooks@7>zod-validation-error": "4.0.2",
+      "@types/react@19": "19.3.0"
     }
   },
   "devDependencies": {

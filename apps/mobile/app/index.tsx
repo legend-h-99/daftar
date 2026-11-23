@@ -65,8 +65,10 @@ export default function Index() {
     }
 
     if (!isAuthenticated) {
-      setBiometricPending(true);
+      // The async body runs synchronously up to its first await, so the pending flag
+      // is still set before this effect returns.
       (async () => {
+        setBiometricPending(true);
         await tryBiometric();
         setBiometricPending(false);
       })();
