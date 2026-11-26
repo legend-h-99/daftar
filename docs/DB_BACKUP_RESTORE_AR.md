@@ -1,6 +1,6 @@
 # النسخ الاحتياطي وإبقاء قاعدة الإنتاج نشطة
 
-مهمة `DB keep-alive and backup` تعمل يومياً في 03:00 UTC، وتعمل يدوياً من تبويب Actions.
+مهمة `DB keep-alive and backup` تعمل يومياً في 03:17 UTC، وتعمل يدوياً من تبويب Actions.
 تنفّذ المهمة خطوتين:
 
 1. ترسل استعلام `select 1` إلى قاعدة الإنتاج حتى لا يتوقف مشروع Supabase المجاني.
@@ -74,6 +74,14 @@ docker run --name daftar-restore -e POSTGRES_PASSWORD=restore -p 55432:5432 -d p
 
 ### 4. استعد البيانات
 
+انتظر حتى تقبل قاعدة البيانات الاتصالات:
+
+```bash
+until docker exec daftar-restore pg_isready -U postgres -h localhost; do sleep 1; done
+```
+
+ثم استعد النسخة:
+
 ```bash
 docker exec -i daftar-restore psql -U postgres -c "create schema if not exists auth"
 ```
@@ -94,3 +102,4 @@ docker exec -i daftar-restore pg_restore -U postgres -d postgres --no-owner --no
 - ملفات Supabase Storage غير مشمولة. النسخة تحوي الجداول فقط.
 - مدة الاحتفاظ 30 يوماً.
 - لم يُتحقق بعد من أن استعلاماً يومياً يمنع توقف المشروع. راقب حالته أسبوعين.
+- في المستودعات العامة يعطّل GitHub المهام المجدولة بعد 60 يوماً بلا نشاط في المستودع، ويرسل بريداً بذلك. إذا تعطلت المهمة يتوقف المشروع مرة أخرى. أعد تفعيلها من تبويب Actions، أو ادفع أي commit قبل انقضاء المدة.

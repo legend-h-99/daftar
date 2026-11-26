@@ -43,6 +43,9 @@ The job runs in the `postgres:17` container, so `pg_dump` matches the server maj
 - Production gets one database query a day. The assumption that this prevents pausing is not yet verified. Watch the project status for two weeks.
 - The founder must keep the age private key outside GitHub. Without it, no backup can be restored.
 - Supabase Storage objects are not in the dump. Only table data is.
+- GitHub disables scheduled workflows in a public repository after 60 days with no repository activity. The keep-alive then stops, and the project can pause again. The guide tells the founder how to re-enable it.
+- Each step receives only the secrets it uses. `apt-get` and the upload action never see the database URL.
+- The job uses a database role that can write. A read-only backup role is a possible later hardening step.
 - A restore must be tested in a separate local database. The steps are in `docs/DB_BACKUP_RESTORE_AR.md`.
 - When the project moves to Supabase Pro, this job can remain as an off-site copy or be removed.
 

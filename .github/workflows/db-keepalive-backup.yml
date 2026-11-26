@@ -6,7 +6,8 @@ name: DB keep-alive and backup
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    # Off the hour: runs at minute 0 are delayed or dropped more often.
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -22,14 +23,16 @@ jobs:
     timeout-minutes: 20
     # pg_dump must match the server major version (Postgres 17).
     container: postgres:17
-    env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+    # Secrets are set per step, so apt-get and the upload action never see
+    # the production database URL.
     defaults:
       run:
         shell: bash
     steps:
       - name: Check required secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: |
           missing=0
           if [ -z "$SUPABASE_DB_URL" ]; then
@@ -46,6 +49,8 @@ jobs:
           exit "$missing"
 
       - name: Keep the database active
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           result=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -tAc "select 1")
           if [ "$result" != "1" ]; then
@@ -62,6 +67,9 @@ jobs:
 
       - name: Dump and encrypt
         id: dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: |
           set -euo pipefail
           mkdir -p backup
